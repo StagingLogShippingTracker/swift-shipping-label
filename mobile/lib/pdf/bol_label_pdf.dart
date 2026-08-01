@@ -965,6 +965,52 @@ class BolLabelPdf {
     c.drawImage(img, dx, dy, w, h);
   }
 
+  double _uniformLogoHeight(
+    List<PdfImage> logos,
+    double slotW,
+    double maxH,
+  ) {
+    var commonH = maxH;
+    for (final logo in logos) {
+      final iw = logo.width.toDouble();
+      final ih = logo.height.toDouble();
+      if (iw <= 0 || ih <= 0) continue;
+      final scale = slotW / iw < maxH / ih ? slotW / iw : maxH / ih;
+      final h = ih * scale;
+      if (h < commonH) commonH = h;
+    }
+    return commonH;
+  }
+
+  void _drawLogoAtHeight(
+    PdfGraphics c,
+    PdfImage img,
+    double slotX,
+    double slotY,
+    double slotW,
+    double slotH,
+    double targetH,
+  ) {
+    final iw = img.width.toDouble();
+    final ih = img.height.toDouble();
+    if (iw <= 0 || ih <= 0) return;
+    var scale = targetH / ih;
+    var w = iw * scale;
+    var h = targetH;
+    if (w > slotW) {
+      scale = slotW / iw;
+      w = slotW;
+      h = ih * scale;
+    }
+    c.drawImage(
+      img,
+      slotX + (slotW - w) / 2,
+      slotY + (slotH - h) / 2,
+      w,
+      h,
+    );
+  }
+
   /// Up to 2 customer logos in the left header frame only (no Swift/probill shift).
   void _drawCustomerLogosLeft(
     PdfGraphics c,
@@ -993,27 +1039,31 @@ class BolLabelPdf {
     final sideBySide = frameW >= logoH * 1.2;
     if (sideBySide) {
       final slotW = (frameW - gap) / 2;
+      final commonH = _uniformLogoHeight(logos, slotW, logoH);
       for (var i = 0; i < logos.length; i++) {
-        _drawImageInBox(
+        _drawLogoAtHeight(
           c,
           logos[i],
           frameLeft + i * (slotW + gap),
           frameBot,
           slotW,
           logoH,
+          commonH,
         );
       }
     } else {
       final slotH = (logoH - gap) / 2;
+      final commonH = _uniformLogoHeight(logos, frameW, slotH);
       for (var i = 0; i < logos.length; i++) {
         // i=0 on top of the stack (higher y in PDF = higher on page)
-        _drawImageInBox(
+        _drawLogoAtHeight(
           c,
           logos[i],
           frameLeft,
           frameBot + (logos.length - 1 - i) * (slotH + gap),
           frameW,
           slotH,
+          commonH,
         );
       }
     }

@@ -349,7 +349,96 @@ def draw_image_fit(
     return w, h
 
 
-def draw_header(c: canvas.Canvas, customer_logo: Path | None) -> float:
+def draw_image_in_box(
+    c: canvas.Canvas,
+    path: Path,
+    x: float,
+    y: float,
+    max_w: float,
+    max_h: float,
+) -> tuple[float, float]:
+    if not path.exists():
+        return 0.0, 0.0
+    img = ImageReader(str(path))
+    iw, ih = img.getSize()
+    scale = min(max_w / iw, max_h / ih)
+    w, h = iw * scale, ih * scale
+    c.drawImage(img, x + (max_w - w) / 2, y + (max_h - h) / 2, w, h, mask="auto", preserveAspectRatio=True)
+    return w, h
+
+
+def _uniform_logo_height(logos: list[Path], slot_w: float, max_h: float) -> float:
+    common_h = max_h
+    for path in logos:
+        if not path.exists():
+            continue
+        img = ImageReader(str(path))
+        iw, ih = img.getSize()
+        scale = min(slot_w / iw, max_h / ih)
+        h = ih * scale
+        if h < common_h:
+            common_h = h
+    return common_h
+
+
+def _draw_logo_at_height(
+    c: canvas.Canvas,
+    path: Path,
+    slot_x: float,
+    slot_y: float,
+    slot_w: float,
+    slot_h: float,
+    target_h: float,
+) -> None:
+    if not path.exists():
+        return
+    img = ImageReader(str(path))
+    iw, ih = img.getSize()
+    scale = target_h / ih
+    w, h = iw * scale, target_h
+    if w > slot_w:
+        scale = slot_w / iw
+        w, h = slot_w, ih * scale
+    c.drawImage(
+        img,
+        slot_x + (slot_w - w) / 2,
+        slot_y + (slot_h - h) / 2,
+        w,
+        h,
+        mask="auto",
+        preserveAspectRatio=True,
+    )
+
+
+def draw_customer_logos_header(
+    c: canvas.Canvas,
+    logos: list[Path],
+    logo_bottom: float,
+    band_h: float,
+) -> None:
+    logos = [p for p in logos if p and p.exists()][:2]
+    if not logos:
+        return
+    pad = 4
+    area_w = COL_W * 0.95
+    area_x = MX + pad
+    area_y = logo_bottom + pad
+    area_h = band_h - pad * 2
+    max_logo_h = min(band_h - 4, area_h)
+
+    if len(logos) == 1:
+        draw_image_in_box(c, logos[0], area_x, area_y, area_w - pad * 2, max_logo_h)
+        return
+
+    gap = 8
+    slot_w = (area_w - gap) / len(logos)
+    common_h = _uniform_logo_height(logos, slot_w, max_logo_h)
+    for i, path in enumerate(logos):
+        slot_x = MX + i * (slot_w + gap)
+        _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
+
+
+def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_logo2: Path | None = None) -> float:
     """
     Logos stay high under the top bumper. The red rule + body start lower
     so logos sit optically centered between top bumper and the rule, and the
@@ -360,16 +449,13 @@ def draw_header(c: canvas.Canvas, customer_logo: Path | None) -> float:
     band_h = 0.92 * inch
     logo_bottom = y_top - band_h
 
-    if customer_logo and customer_logo.exists():
-        pad = 4
-        draw_image_fit(
-            c,
-            customer_logo,
-            MX + pad,
-            logo_bottom + pad,
-            COL_W * 0.95 - pad * 2,
-            band_h - pad * 2,
-        )
+    logos: list[Path] = []
+    if customer_logo:
+        logos.append(customer_logo)
+    if customer_logo2:
+        logos.append(customer_logo2)
+    if logos:
+        draw_customer_logos_header(c, logos, logo_bottom, band_h)
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)
@@ -719,7 +805,8 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
 
 
 def draw_label_page(
-    c: canvas.Canvas, form, sample: dict | None = None, customer_logo: Path | None = None
+    c: canvas.Canvas, form, sample: dict | None = None,
+    customer_logo: Path | None = None, customer_logo2: Path | None = None,
 ) -> None:
     sample = sample or {}
     _ensure_customer_sample()
@@ -730,7 +817,7 @@ def draw_label_page(
     foot_y = MY + 6
     piece_top = foot_y + 70
 
-    y = draw_header(c, customer_logo)
+    y = draw_header(c, customer_logo, customer_logo2)
     y_l, y_r = draw_identity_pair(c, form, y, sample)
     # Notes stretch down to just above the piece band
     draw_notes_and_meta(c, form, y_l, y_r, sample, band_bottom=piece_top + 4)
@@ -750,6 +837,7 @@ def build_pdf(
     sample: dict | None = None,
     out_path: Path | None = None,
     customer_logo: Path | None = None,
+    customer_logo2: Path | None = None,
     fillable: bool = False,
 ) -> Path:
     """
@@ -768,7 +856,7 @@ def build_pdf(
     c.setTitle("Swift Oilfield Supply — Shipping Label")
     c.setAuthor("Swift Oilfield Supply")
     form = c.acroForm if fillable else None
-    draw_label_page(c, form, sample, customer_logo)
+    draw_label_page(c, form, sample, customer_logo, customer_logo2)
     c.save()
 
     if form is None:
@@ -822,6 +910,11 @@ def main() -> None:
         help="Customer logo image (PNG/JPG), baked into the PDF",
     )
     p.add_argument(
+        "--logo2",
+        type=Path,
+        help="Optional second customer logo (C/O)",
+    )
+    p.add_argument(
         "--out",
         type=Path,
         help="Output PDF path",
@@ -842,7 +935,7 @@ def main() -> None:
 
     if args.logo:
         out = args.out or (ROOT / f"Swift Supply Shipping Label - {args.logo.stem}.pdf")
-        print(build_pdf(out_path=out, customer_logo=args.logo, fillable=args.fillable))
+        print(build_pdf(out_path=out, customer_logo=args.logo, customer_logo2=args.logo2, fillable=args.fillable))
     else:
         print(
             build_pdf(

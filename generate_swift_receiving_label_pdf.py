@@ -245,22 +245,112 @@ def draw_image_fit(
     return w, h
 
 
-def draw_header(c: canvas.Canvas, customer_logo: Path | None) -> float:
+def draw_image_in_box(
+    c: canvas.Canvas,
+    path: Path,
+    x: float,
+    y: float,
+    max_w: float,
+    max_h: float,
+) -> tuple[float, float]:
+    if not path.exists():
+        return 0.0, 0.0
+    img = ImageReader(str(path))
+    iw, ih = img.getSize()
+    scale = min(max_w / iw, max_h / ih)
+    w, h = iw * scale, ih * scale
+    c.drawImage(img, x + (max_w - w) / 2, y + (max_h - h) / 2, w, h, mask="auto", preserveAspectRatio=True)
+    return w, h
+
+
+def _uniform_logo_height(logos: list[Path], slot_w: float, max_h: float) -> float:
+    common_h = max_h
+    for path in logos:
+        if not path.exists():
+            continue
+        img = ImageReader(str(path))
+        iw, ih = img.getSize()
+        scale = min(slot_w / iw, max_h / ih)
+        h = ih * scale
+        if h < common_h:
+            common_h = h
+    return common_h
+
+
+def _draw_logo_at_height(
+    c: canvas.Canvas,
+    path: Path,
+    slot_x: float,
+    slot_y: float,
+    slot_w: float,
+    slot_h: float,
+    target_h: float,
+) -> None:
+    if not path.exists():
+        return
+    img = ImageReader(str(path))
+    iw, ih = img.getSize()
+    scale = target_h / ih
+    w, h = iw * scale, target_h
+    if w > slot_w:
+        scale = slot_w / iw
+        w, h = slot_w, ih * scale
+    c.drawImage(
+        img,
+        slot_x + (slot_w - w) / 2,
+        slot_y + (slot_h - h) / 2,
+        w,
+        h,
+        mask="auto",
+        preserveAspectRatio=True,
+    )
+
+
+def draw_customer_logos_header(
+    c: canvas.Canvas,
+    logos: list[Path],
+    logo_bottom: float,
+    band_h: float,
+) -> None:
+    logos = [p for p in logos if p and p.exists()][:2]
+    if not logos:
+        return
+    pad = 4
+    area_w = COL_W * 0.95
+    area_x = MX + pad
+    area_y = logo_bottom + pad
+    area_h = band_h - pad * 2
+    max_logo_h = min(band_h - 4, area_h)
+
+    if len(logos) == 1:
+        draw_image_in_box(c, logos[0], area_x, area_y, area_w - pad * 2, max_logo_h)
+        return
+
+    gap = 8
+    slot_w = (area_w - gap) / len(logos)
+    common_h = _uniform_logo_height(logos, slot_w, max_logo_h)
+    for i, path in enumerate(logos):
+        slot_x = MX + i * (slot_w + gap)
+        _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
+
+
+def draw_header(
+    c: canvas.Canvas,
+    customer_logo: Path | None = None,
+    customer_logo2: Path | None = None,
+) -> float:
     """Customer logo left, Swift right — same as shipping. RECEIVING badge on the rule."""
     y_top = PAGE_H - MY - 14
     band_h = 0.92 * inch
     logo_bottom = y_top - band_h
 
-    if customer_logo and customer_logo.exists():
-        pad = 4
-        draw_image_fit(
-            c,
-            customer_logo,
-            MX + pad,
-            logo_bottom + pad,
-            COL_W * 0.95 - pad * 2,
-            band_h - pad * 2,
-        )
+    logos: list[Path] = []
+    if customer_logo:
+        logos.append(customer_logo)
+    if customer_logo2:
+        logos.append(customer_logo2)
+    if logos:
+        draw_customer_logos_header(c, logos, logo_bottom, band_h)
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)
@@ -332,24 +422,16 @@ def draw_sales_order_pill(c: canvas.Canvas, y: float, x: float, col_w: float, va
     val = (value or "").strip()
     pad_x, pad_y = 12, 8
     size = fit_single_line_size(val, col_w - 2 * pad_x, ENTRY_SO, min_size=14)
-    text_w = stringWidth(val, ENTRY_BOLD, size) if val else size * 2
-    pill_w = min(col_w, text_w + 2 * pad_x)
+    pill_w = col_w
     pill_h = size + 2 * pad_y
     row_h = max(pill_h, 48)
 
     c.setFillColor(SO_BG)
     c.roundRect(x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
     if val:
-        draw_value(
-            c,
-            val,
-            x + pad_x,
-            y - pill_h + pad_y - 2,
-            max(pill_w - 2 * pad_x, 20),
-            size + 4,
-            size,
-            ENTRY_BOLD,
-        )
+        c.setFont(ENTRY_BOLD, size)
+        text_y = y - pill_h + pad_y - 2 + (size + 4 - size) / 2 + 1
+        c.drawCentredString(x + pill_w / 2, text_y, val)
     hairline(c, x, y - row_h - 1, col_w)
     return y - row_h - 14
 
@@ -377,14 +459,17 @@ def draw_received_band(c: canvas.Canvas, y: float, sample: dict) -> float:
 
 
 def draw_label_page(
-    c: canvas.Canvas, sample: dict, customer_logo: Path | None = None
+    c: canvas.Canvas,
+    sample: dict,
+    customer_logo: Path | None = None,
+    customer_logo2: Path | None = None,
 ) -> None:
     bumper(c, PAGE_H - MY + 4, h=10, r=3.5)
 
     foot_y = MY + 6
     recv_top = foot_y + 78
 
-    y = draw_header(c, customer_logo)
+    y = draw_header(c, customer_logo, customer_logo2)
 
     lx = MX
     rx = MX + COL_W + GUTTER
@@ -441,13 +526,14 @@ def build_pdf(
     sample: dict | None = None,
     out_path: Path | None = None,
     customer_logo: Path | None = None,
+    customer_logo2: Path | None = None,
 ) -> Path:
     out_path = out_path or OUT_PATH
     sample = sample or {}
     c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
     c.setTitle("Swift Oilfield Supply — Receiving Label")
     c.setAuthor("Swift Oilfield Supply")
-    draw_label_page(c, sample, customer_logo)
+    draw_label_page(c, sample, customer_logo, customer_logo2)
     c.save()
     return out_path
 
@@ -468,6 +554,7 @@ SAMPLE = {
 def main() -> None:
     p = argparse.ArgumentParser(description="Swift Supply receiving label PDF (prototype).")
     p.add_argument("--logo", type=Path, help="Customer logo image (PNG/JPG)")
+    p.add_argument("--logo2", type=Path, help="Optional second customer logo")
     p.add_argument("--out", type=Path, help="Output PDF path")
     p.add_argument(
         "--blank",
@@ -478,14 +565,14 @@ def main() -> None:
 
     if args.blank:
         out = args.out or (ROOT / "Swift Supply Receiving Label.pdf")
-        print(build_pdf({}, out_path=out, customer_logo=args.logo))
+        print(build_pdf({}, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2))
     else:
         out = args.out or (
             ROOT / "Swift Supply Receiving Label - Sample (ConocoPhillips).pdf"
         )
-        print(build_pdf(SAMPLE, out_path=out, customer_logo=args.logo))
+        print(build_pdf(SAMPLE, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2))
         # Also write empty template beside it
-        print(build_pdf({}, out_path=ROOT / "Swift Supply Receiving Label.pdf", customer_logo=args.logo))
+        print(build_pdf({}, out_path=ROOT / "Swift Supply Receiving Label.pdf", customer_logo=args.logo, customer_logo2=args.logo2))
 
 
 if __name__ == "__main__":

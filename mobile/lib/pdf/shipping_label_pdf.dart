@@ -436,6 +436,107 @@ class ShippingLabelPdf {
     return PdfPoint(w, h);
   }
 
+  /// Fit [image] inside a box at (x,y) bottom-left, centered on both axes.
+  void _drawImageInBox(
+    PdfGraphics c,
+    PdfImage image,
+    double x,
+    double y,
+    double maxW,
+    double maxH,
+  ) {
+    final iw = image.width.toDouble();
+    final ih = image.height.toDouble();
+    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) return;
+    final scale = (maxW / iw < maxH / ih) ? maxW / iw : maxH / ih;
+    final w = iw * scale;
+    final h = ih * scale;
+    c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
+  }
+
+  /// Max rendered height every logo can share in [slotW]×[maxH] (Swift-height band).
+  double _uniformCustomerLogoHeight(
+    List<PdfImage> logos,
+    double slotW,
+    double maxH,
+  ) {
+    var commonH = maxH;
+    for (final logo in logos) {
+      final iw = logo.width.toDouble();
+      final ih = logo.height.toDouble();
+      if (iw <= 0 || ih <= 0) continue;
+      final scale = (slotW / iw < maxH / ih) ? slotW / iw : maxH / ih;
+      final h = ih * scale;
+      if (h < commonH) commonH = h;
+    }
+    return commonH;
+  }
+
+  void _drawCustomerLogoAtHeight(
+    PdfGraphics c,
+    PdfImage image,
+    double slotX,
+    double slotY,
+    double slotW,
+    double slotH,
+    double targetH,
+  ) {
+    final iw = image.width.toDouble();
+    final ih = image.height.toDouble();
+    if (iw <= 0 || ih <= 0) return;
+    var scale = targetH / ih;
+    var w = iw * scale;
+    var h = targetH;
+    if (w > slotW) {
+      scale = slotW / iw;
+      w = slotW;
+      h = ih * scale;
+    }
+    c.drawImage(
+      image,
+      slotX + (slotW - w) / 2,
+      slotY + (slotH - h) / 2,
+      w,
+      h,
+    );
+  }
+
+  void _drawCustomerLogosInHeader(
+    PdfGraphics c,
+    List<PdfImage> logos,
+    double logoBottom,
+    double bandH,
+  ) {
+    const pad = 4.0;
+    final areaW = colW * 0.95;
+    final areaX = mx + pad;
+    final areaY = logoBottom + pad;
+    final areaH = bandH - pad * 2;
+    // Match Swift logo band height (bandH - 4) without exceeding customer area.
+    final maxLogoH = (bandH - 4).clamp(0.0, areaH);
+
+    if (logos.length == 1) {
+      _drawImageInBox(c, logos[0], areaX, areaY, areaW - pad * 2, maxLogoH);
+      return;
+    }
+
+    const gap = 8.0;
+    final slotW = (areaW - gap) / logos.length;
+    final commonH = _uniformCustomerLogoHeight(logos, slotW, maxLogoH);
+    for (var i = 0; i < logos.length; i++) {
+      final slotX = mx + i * (slotW + gap);
+      _drawCustomerLogoAtHeight(
+        c,
+        logos[i],
+        slotX,
+        areaY,
+        slotW,
+        areaH,
+        commonH,
+      );
+    }
+  }
+
   double _drawHeader(
     PdfGraphics c,
     _ResolvedFonts fonts,
@@ -450,36 +551,7 @@ class ShippingLabelPdf {
     final logos = customerLogos.take(maxCustomerLogos).toList();
 
     if (logos.isNotEmpty) {
-      final areaW = colW * 0.95;
-      if (logos.length == 1) {
-        const pad = 4.0;
-        _drawImageFit(
-          c,
-          logos[0],
-          mx + pad,
-          logoBottom + pad,
-          areaW - pad * 2,
-          bandH - pad * 2,
-        );
-      } else {
-        const gap = 8.0;
-        const padY = 5.0;
-        final slotW = (areaW - gap) / logos.length;
-        for (var i = 0; i < logos.length; i++) {
-          final x = mx + i * (slotW + gap);
-          _drawImageFit(
-            c,
-            logos[i],
-            x,
-            logoBottom + padY,
-            slotW,
-            bandH - padY * 2,
-          );
-          if (i == 1) {
-            _microLabel(c, fonts, x, logoBottom + 2, 'C/O');
-          }
-        }
-      }
+      _drawCustomerLogosInHeader(c, logos, logoBottom, bandH);
     } else {
       c
         ..setStrokeColor(ruleSoft)
@@ -683,6 +755,7 @@ class ShippingLabelPdf {
       sample,
       pillBg: recvSoBg,
       preferredSize: entryRecvSo,
+      centerInPill: true,
     );
     yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.pm, rx, colW, sample);
 
@@ -773,6 +846,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample, {
     PdfColor? pillBg,
     double? preferredSize,
+    bool centerInPill = false,
   }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
     y -= 4;
@@ -789,7 +863,9 @@ class ShippingLabelPdf {
     );
     final textW =
         val.isEmpty ? size * 2 : stringWidth(fonts.calibriBold, val, size);
-    final pillW = textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX;
+    final pillW = centerInPill
+        ? colWidth
+        : (textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX);
     final pillH = size + 2 * padY;
     final rowH = pillH < 44 ? 44.0 : pillH;
 
@@ -797,17 +873,32 @@ class ShippingLabelPdf {
     _fillRRect(c, x, y - pillH, pillW, pillH, 8);
 
     if (val.isNotEmpty) {
-      _drawValue(
-        c,
-        fonts,
-        val,
-        x + padX,
-        y - pillH + padY - 2,
-        pillW - 2 * padX,
-        size + 4,
-        fontSize: size,
-        font: fonts.calibriBold,
-      );
+      final textBoxH = size + 4;
+      final textY = y - pillH + padY - 2;
+      if (centerInPill) {
+        c
+          ..setFillColor(black)
+          ..setFont(fonts.calibriBold, size);
+        c.drawString(
+          fonts.calibriBold,
+          size,
+          val,
+          x + pillW / 2 - textW / 2,
+          textY + (textBoxH - size) / 2 + 1,
+        );
+      } else {
+        _drawValue(
+          c,
+          fonts,
+          val,
+          x + padX,
+          textY,
+          pillW - 2 * padX,
+          textBoxH,
+          fontSize: size,
+          font: fonts.calibriBold,
+        );
+      }
     }
     _hairline(c, x, y - rowH - 1, colWidth);
     return y - rowH - 12;
