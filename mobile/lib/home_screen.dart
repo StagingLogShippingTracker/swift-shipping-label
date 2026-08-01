@@ -65,7 +65,9 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
   ),
 ];
 
-final _bolGroups = <(String title, String hint, List<String> keys)>[
+const _bolMaxLines = 7;
+
+const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   (
     'Document',
     'Document number (SW-####) is assigned automatically from the shared company counter when you Generate',
@@ -102,54 +104,37 @@ final _bolGroups = <(String title, String hint, List<String> keys)>[
       LabelFields.specialInstructions,
     ],
   ),
-  (
-    'Line 1',
-    'First goods row',
-    [
-      BolFields.lineKey(1, 'pieces'),
-      BolFields.lineKey(1, 'item_type'),
-      BolFields.lineKey(1, 'dimensions'),
-      BolFields.lineKey(1, 'description'),
-      BolFields.lineKey(1, 'weight'),
-    ],
-  ),
-  (
-    'Line 2',
-    'Second goods row',
-    [
-      BolFields.lineKey(2, 'pieces'),
-      BolFields.lineKey(2, 'item_type'),
-      BolFields.lineKey(2, 'dimensions'),
-      BolFields.lineKey(2, 'description'),
-      BolFields.lineKey(2, 'weight'),
-    ],
-  ),
-  (
-    'Line 3',
-    'Third goods row (optional)',
-    [
-      BolFields.lineKey(3, 'pieces'),
-      BolFields.lineKey(3, 'item_type'),
-      BolFields.lineKey(3, 'description'),
-      BolFields.lineKey(3, 'weight'),
-    ],
-  ),
-  (
-    'Signatures',
-    'Shipper / driver / consignee',
-    [
-      BolFields.shipperCertName,
-      BolFields.shipperCertDate,
-      BolFields.driverCompany,
-      BolFields.driverPrint,
-      BolFields.driverDate,
-      BolFields.departureTime,
-      BolFields.vehicleId,
-      BolFields.consigneePrint,
-      BolFields.consigneeDate,
-    ],
-  ),
 ];
+
+const _bolSignaturesGroup = (
+  'Signatures',
+  'Shipper / driver / consignee',
+  [
+    BolFields.shipperCertName,
+    BolFields.shipperCertDate,
+    BolFields.driverCompany,
+    BolFields.driverPrint,
+    BolFields.driverDate,
+    BolFields.departureTime,
+    BolFields.vehicleId,
+    BolFields.consigneePrint,
+    BolFields.consigneeDate,
+  ],
+);
+
+List<String> _bolLineFieldKeys(int lineNum) => [
+      BolFields.lineKey(lineNum, 'pieces'),
+      BolFields.lineKey(lineNum, 'item_type'),
+      BolFields.lineKey(lineNum, 'dimensions'),
+      BolFields.lineKey(lineNum, 'description'),
+      BolFields.lineKey(lineNum, 'weight'),
+    ];
+
+String _bolLineHint(int lineNum) => switch (lineNum) {
+      1 => 'First goods row',
+      2 => 'Second goods row',
+      _ => 'Additional goods row (optional)',
+    };
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.storage, required this.pdf});
@@ -174,6 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _bolStoreCopy = true;
   bool _bolDriverCopy = true;
   bool _bolCustomerCopy = true;
+  /// Visible BOL goods lines (1..7); start with line 1 only.
+  int _bolLineCount = 1;
 
   @override
   void initState() {
@@ -202,6 +189,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _setField(String key, String value) {
     _controllers[key]?.text = value;
+  }
+
+  int _detectBolLineCount() {
+    var maxLine = 1;
+    for (var i = 1; i <= _bolMaxLines; i++) {
+      final hasData = _bolLineFieldKeys(i).any(
+        (key) => (_controllers[key]?.text.trim() ?? '').isNotEmpty,
+      );
+      if (hasData) maxLine = i;
+    }
+    return maxLine;
+  }
+
+  void _clearBolLineFields(int lineNum) {
+    for (final key in _bolLineFieldKeys(lineNum)) {
+      _controllers[key]?.clear();
+    }
+  }
+
+  void _addBolLine() {
+    if (_bolLineCount >= _bolMaxLines) return;
+    setState(() => _bolLineCount++);
+  }
+
+  void _removeBolLine(int lineNum) {
+    if (lineNum <= 1 || lineNum > _bolLineCount) return;
+    for (var from = lineNum + 1; from <= _bolLineCount; from++) {
+      final to = from - 1;
+      for (final suffix
+          in ['pieces', 'item_type', 'dimensions', 'description', 'weight']) {
+        _setField(
+          BolFields.lineKey(to, suffix),
+          _controllers[BolFields.lineKey(from, suffix)]?.text ?? '',
+        );
+      }
+    }
+    _clearBolLineFields(_bolLineCount);
+    setState(() => _bolLineCount--);
   }
 
   (String, String, bool) _meta(String key) {
@@ -630,6 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_kind == LabelKind.bol) {
       final name = _controllers[BolFields.consigneeName]?.text ?? '';
       if (name.isNotEmpty) _setField(LabelFields.shipTo, name);
+      _bolLineCount = _detectBolLineCount();
     }
     setState(() {});
   }
@@ -667,6 +693,9 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final key in clear) {
       _controllers[key]?.clear();
     }
+    if (_kind == LabelKind.bol) {
+      _bolLineCount = 1;
+    }
     setState(() {});
   }
 
@@ -674,6 +703,7 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final c in _controllers.values) {
       c.clear();
     }
+    _bolLineCount = 1;
     setState(() {});
   }
 
@@ -794,13 +824,33 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildFormField(String key) {
+    final m = _meta(key);
+    final lines = !m.$3
+        ? 1
+        : (key == LabelFields.specialInstructions &&
+                _kind == LabelKind.receiving)
+            ? 2
+            : 3;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: TextField(
+        controller: _controllers[key],
+        maxLines: lines,
+        decoration: InputDecoration(
+          labelText: m.$2.toUpperCase(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final logos = widget.storage.listLogos();
     final presetNames = widget.storage.presetDisplayNamesFor(_kind);
     final groups = switch (_kind) {
       LabelKind.receiving => _receivingGroups,
-      LabelKind.bol => _bolGroups,
+      LabelKind.bol => _bolGroupsBeforeLines,
       LabelKind.shipping => _shippingGroups,
     };
 
@@ -838,6 +888,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     setState(() {
                       _kind = s.first;
                       _presetName = null;
+                      if (_kind == LabelKind.bol) {
+                        _bolLineCount = _detectBolLineCount();
+                      } else {
+                        _bolLineCount = 1;
+                      }
                     });
                   },
                   style: ButtonStyle(
@@ -1128,32 +1183,53 @@ class _HomeScreenState extends State<HomeScreen> {
                     hint: group.$2,
                     child: Column(
                       children: [
-                        for (final key in group.$3) ...[
-                          Builder(
-                            builder: (_) {
-                              final m = _meta(key);
-                              final lines = !m.$3
-                                  ? 1
-                                  : (key == LabelFields.specialInstructions &&
-                                          _kind == LabelKind.receiving)
-                                      ? 2
-                                      : 3;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: TextField(
-                                  controller: _controllers[key],
-                                  maxLines: lines,
-                                  decoration: InputDecoration(
-                                    labelText: m.$2.toUpperCase(),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                        for (final key in group.$3)
+                          _buildFormField(key),
                       ],
                     ),
                   ),
+                if (_kind == LabelKind.bol) ...[
+                  for (var lineNum = 1; lineNum <= _bolLineCount; lineNum++)
+                    _Card(
+                      title: 'Line $lineNum',
+                      hint: _bolLineHint(lineNum),
+                      trailing: lineNum > 1
+                          ? IconButton(
+                              tooltip: 'Remove line',
+                              onPressed: () => _removeBolLine(lineNum),
+                              icon: const Icon(Icons.delete_outline, size: 20),
+                            )
+                          : null,
+                      child: Column(
+                        children: [
+                          for (final key in _bolLineFieldKeys(lineNum))
+                            _buildFormField(key),
+                        ],
+                      ),
+                    ),
+                  if (_bolLineCount < _bolMaxLines)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton.filledTonal(
+                          tooltip: 'Add line',
+                          onPressed: _addBolLine,
+                          icon: const Icon(Icons.add),
+                        ),
+                      ),
+                    ),
+                  _Card(
+                    title: _bolSignaturesGroup.$1,
+                    hint: _bolSignaturesGroup.$2,
+                    child: Column(
+                      children: [
+                        for (final key in _bolSignaturesGroup.$3)
+                          _buildFormField(key),
+                      ],
+                    ),
+                  ),
+                ],
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -1304,11 +1380,13 @@ class _Card extends StatelessWidget {
     required this.title,
     required this.hint,
     required this.child,
+    this.trailing,
   });
 
   final String title;
   final String hint;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -1320,23 +1398,36 @@ class _Card extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Oswald',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: SwiftColors.ink,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                hint,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: SwiftColors.muted,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontFamily: 'Oswald',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: SwiftColors.ink,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          hint,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: SwiftColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) trailing!,
+                ],
               ),
               const SizedBox(height: 8),
               child,
