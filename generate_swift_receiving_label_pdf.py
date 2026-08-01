@@ -2,7 +2,7 @@
 Swift Oilfield Supply — Receiving Label (print PDF prototype)
 
 Same Swiss visual language as the Shipping Label (Oswald labels, Calibri Bold
-values, brand orange bumpers / SO pill). Fields match the warehouse receiving
+values, brand orange bumpers, solid yellow SO pill). Fields match the warehouse receiving
 skid label: Customer, Project, PO, Sales Order, PM, Date Received, Received By.
 
 Not wired into the Flutter app yet — regenerate samples until the layout is
@@ -31,7 +31,7 @@ LABEL_C = colors.HexColor("#6A6A6A")
 RULE = colors.HexColor("#C8C8C8")
 RULE_SOFT = colors.HexColor("#E2E2E2")
 WHITE = colors.white
-SO_BG = colors.HexColor("#F8EBE7")
+SO_BG = colors.HexColor("#FFEB3B")
 RECV_BG = colors.HexColor("#F7F0D8")
 PIECE_FILL = colors.HexColor("#F7F7F7")
 
@@ -56,7 +56,7 @@ ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
 ENTRY_SIZE = 18
 ENTRY_HERO = 22
-ENTRY_SO = 36
+ENTRY_SO = 48
 ENTRY_MIN = 9
 LINE_GAP = 3.0
 WRAP_MAX_LINES = 3

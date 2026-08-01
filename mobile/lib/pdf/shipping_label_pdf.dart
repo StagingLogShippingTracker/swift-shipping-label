@@ -34,6 +34,7 @@ class ShippingLabelPdf {
   static const notesBg = PdfColor.fromInt(0xFFF7F0D8);
   static const pieceFill = PdfColor.fromInt(0xFFF7F7F7);
   static const soBg = PdfColor.fromInt(0xFFF8EBE7);
+  static const recvSoBg = PdfColor.fromInt(0xFFFFEB3B);
 
   static final pageFormat = PdfPageFormat.letter.landscape;
   static const inch = PdfPageFormat.inch;
@@ -46,6 +47,7 @@ class ShippingLabelPdf {
   static const entrySize = 18.0;
   static const entryHero = 22.0;
   static const entrySo = 36.0;
+  static const entryRecvSo = 48.0;
   static const entryNotes = 18.0;
   static const entryMin = 9.0;
   static const lineGap = 3.0;
@@ -672,7 +674,16 @@ class ShippingLabelPdf {
       maxLines: 2,
     );
 
-    var yR = _drawSalesOrderRow(c, fonts, y, rx, colW, sample);
+    var yR = _drawSalesOrderRow(
+      c,
+      fonts,
+      y,
+      rx,
+      colW,
+      sample,
+      pillBg: recvSoBg,
+      preferredSize: entryRecvSo,
+    );
     yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.pm, rx, colW, sample);
 
     final yMid = yL < yR ? yL : yR;
@@ -759,18 +770,21 @@ class ShippingLabelPdf {
     double y,
     double x,
     double colWidth,
-    ShippingLabelData sample,
-  ) {
+    ShippingLabelData sample, {
+    PdfColor? pillBg,
+    double? preferredSize,
+  }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
     y -= 4;
     final val = sample.get(LabelFields.salesOrder);
     const padX = 12.0;
     const padY = 8.0;
+    final pref = preferredSize ?? entrySo;
     final size = fitSingleLineSize(
       val,
       colWidth - 2 * padX,
       fonts.calibriBold,
-      preferred: entrySo,
+      preferred: pref,
       minSize: 14,
     );
     final textW =
@@ -779,7 +793,7 @@ class ShippingLabelPdf {
     final pillH = size + 2 * padY;
     final rowH = pillH < 44 ? 44.0 : pillH;
 
-    c.setFillColor(soBg);
+    c.setFillColor(pillBg ?? soBg);
     _fillRRect(c, x, y - pillH, pillW, pillH, 8);
 
     if (val.isNotEmpty) {
