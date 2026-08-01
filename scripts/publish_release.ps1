@@ -159,8 +159,9 @@ $notes = @"
 ## Swift Shipping Label $Version
 
 ### What's new
-- Print PDF: bold Calibri entries (18), Ship To 22, Sales Order 36 with orange pill; shrink only when needed
-- Windows UI: tighter category / piece-count field spacing on wide screens
+- Shipping or Receiving label selector (defaults to Shipping)
+- Receiving label PDF with full-width Special Instructions (2 lines)
+- New app icon on Windows and Android
 
 ### Assets
 - SwiftShippingLabel-windows.zip - portable Flutter onedir (no admin). Extract and run swift_shipping_label.exe.

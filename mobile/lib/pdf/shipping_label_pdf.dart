@@ -182,10 +182,39 @@ class ShippingLabelPdf {
     required ShippingLabelData data,
     Uint8List? customerLogoBytes,
   }) async {
-    final doc = pw.Document(
+    return _buildDoc(
       title: 'Swift Oilfield Supply — Shipping Label',
-      author: 'Swift Oilfield Supply',
+      data: data,
+      customerLogoBytes: customerLogoBytes,
+      painter: _drawPage,
     );
+  }
+
+  Future<Uint8List> buildReceiving({
+    required ShippingLabelData data,
+    Uint8List? customerLogoBytes,
+  }) async {
+    return _buildDoc(
+      title: 'Swift Oilfield Supply — Receiving Label',
+      data: data,
+      customerLogoBytes: customerLogoBytes,
+      painter: _drawReceivingPage,
+    );
+  }
+
+  Future<Uint8List> _buildDoc({
+    required String title,
+    required ShippingLabelData data,
+    Uint8List? customerLogoBytes,
+    required void Function(
+      PdfGraphics c,
+      _ResolvedFonts fonts,
+      ShippingLabelData data,
+      PdfImage? customerLogo,
+      PdfImage? swiftLogo,
+    ) painter,
+  }) async {
+    final doc = pw.Document(title: title, author: 'Swift Oilfield Supply');
 
     doc.addPage(
       pw.Page(
@@ -215,7 +244,7 @@ class ShippingLabelPdf {
           return pw.CustomPaint(
             size: PdfPoint(pageFormat.width, pageFormat.height),
             painter: (PdfGraphics canvas, PdfPoint size) {
-              _drawPage(canvas, fonts, data, customerLogo, swiftLogo);
+              painter(canvas, fonts, data, customerLogo, swiftLogo);
             },
           );
         },
@@ -383,8 +412,9 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     PdfImage? customerLogo,
-    PdfImage? swiftLogo,
-  ) {
+    PdfImage? swiftLogo, {
+    bool receivingChip = false,
+  }) {
     final pageH = pageFormat.height;
     final yTop = pageH - my - 14;
     final bandH = 0.92 * inch;
@@ -434,10 +464,33 @@ class ShippingLabelPdf {
       );
     }
 
-    final airUnderLogos = 0.40 * inch;
+    final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
     final ruleY = logoBottom - airUnderLogos;
     c.setFillColor(swift);
     _fillRRect(c, mx, ruleY - 0.5, contentW, 2.5, 1.0);
+
+    if (receivingChip) {
+      const chip = 'RECEIVING';
+      final chipW = stringWidth(fonts.oswaldBold, chip, 9) + 16;
+      const chipH = 16.0;
+      final chipX = mx + contentW - chipW;
+      final chipY = ruleY + 8;
+      c.setFillColor(soBg);
+      _fillRRect(c, chipX, chipY, chipW, chipH, 4);
+      c
+        ..setFillColor(swift)
+        ..setFont(fonts.oswaldBold, 9);
+      final tw = stringWidth(fonts.oswaldBold, chip, 9);
+      c.drawString(
+        fonts.oswaldBold,
+        9,
+        chip,
+        chipX + chipW / 2 - tw / 2,
+        chipY + 4,
+      );
+      return ruleY - 18;
+    }
+
     return ruleY - 14;
   }
 
@@ -454,6 +507,8 @@ class ShippingLabelPdf {
     double? valueSize,
     bool multiline = false,
     double preferredSize = entrySize,
+    int maxLines = wrapMaxLines,
+    bool hero = false,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
@@ -463,12 +518,33 @@ class ShippingLabelPdf {
     late final double vh;
     if (multiline) {
       size = valueSize ??
-          fitWrappedSize(val, colWidth - 4, bold, preferred: preferredSize);
-      vh = valueH ?? fieldHeightFor(val, bold, size: size);
+          fitWrappedSize(
+            val,
+            colWidth - 4,
+            bold,
+            preferred: preferredSize,
+            maxLines: maxLines,
+          );
+      vh = valueH ??
+          fieldHeightFor(
+            val,
+            bold,
+            colWidth: colWidth,
+            size: size,
+            maxLines: maxLines,
+          );
     } else {
+      final pref = hero ? entryHero : preferredSize;
       size = valueSize ??
-          fitSingleLineSize(val, colWidth - 4, bold, preferred: preferredSize);
-      vh = valueH ?? (size + 10 < 26 ? 26 : size + 10);
+          fitSingleLineSize(
+            val,
+            colWidth - 4,
+            bold,
+            preferred: pref,
+            minSize: hero ? 12 : entryMin,
+          );
+      final base = size + (hero ? 12 : 10);
+      vh = valueH ?? (hero ? (base < 30 ? 30 : base) : (base < 26 ? 26 : base));
     }
     if (val.isNotEmpty) {
       _drawValue(
@@ -486,6 +562,146 @@ class ShippingLabelPdf {
     }
     _hairline(c, x, y - vh - 1, colWidth);
     return y - vh - 12;
+  }
+
+  void _drawReceivingPage(
+    PdfGraphics c,
+    _ResolvedFonts fonts,
+    ShippingLabelData sample,
+    PdfImage? customerLogo,
+    PdfImage? swiftLogo,
+  ) {
+    final pageH = pageFormat.height;
+    _bumper(c, pageH - my + 4);
+
+    final footY = my + 6;
+    final recvTop = footY + 78;
+    var y = _drawHeader(
+      c,
+      fonts,
+      customerLogo,
+      swiftLogo,
+      receivingChip: true,
+    );
+
+    final lx = mx;
+    final rx = mx + colW + gutter;
+
+    var yL = _fieldRow(
+      c,
+      fonts,
+      y,
+      'Customer',
+      LabelFields.customer,
+      lx,
+      colW,
+      sample,
+      hero: true,
+    );
+    yL = _fieldRow(
+      c,
+      fonts,
+      yL,
+      'Project',
+      LabelFields.project,
+      lx,
+      colW,
+      sample,
+      multiline: true,
+      maxLines: 3,
+    );
+    yL = _fieldRow(
+      c,
+      fonts,
+      yL,
+      'PO Number',
+      LabelFields.poNum,
+      lx,
+      colW,
+      sample,
+      multiline: true,
+      maxLines: 2,
+    );
+
+    var yR = _drawSalesOrderRow(c, fonts, y, rx, colW, sample);
+    yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.pm, rx, colW, sample);
+
+    final yMid = yL < yR ? yL : yR;
+    _fieldRow(
+      c,
+      fonts,
+      yMid,
+      'Special Instructions',
+      LabelFields.specialInstructions,
+      mx,
+      contentW,
+      sample,
+      multiline: true,
+      maxLines: 2,
+    );
+
+    _hairline(c, mx, recvTop + 10, contentW, ruleSoft);
+    _drawReceivedBand(c, fonts, recvTop, sample);
+
+    c
+      ..setFillColor(labelC)
+      ..setFont(fonts.oswald, 7);
+    c.drawString(
+      fonts.oswald,
+      7,
+      'SWIFT OILFIELD SUPPLY  ·  NISKU, AB  ·  780-423-6979',
+      mx,
+      footY,
+    );
+    const right = 'STAGED  ·  AWAITING SHIP INSTRUCTIONS';
+    final rw = stringWidth(fonts.oswald, right, 7);
+    c.drawString(fonts.oswald, 7, right, mx + contentW - rw, footY);
+
+    _bumper(c, my - 12);
+  }
+
+  void _drawReceivedBand(
+    PdfGraphics c,
+    _ResolvedFonts fonts,
+    double y,
+    ShippingLabelData sample,
+  ) {
+    const rowH = 56.0;
+    const gap = 12.0;
+    final half = (contentW - gap) / 2;
+
+    c.setFillColor(notesBg);
+    _fillRRect(c, mx, y - rowH, contentW, rowH, 6);
+    c.setFillColor(swift);
+    _fillRect(c, mx, y - rowH, 3.5, rowH);
+
+    void halfCell(double x, String label, String key) {
+      _microLabel(c, fonts, x + 14, y - 14, label);
+      final val = sample.get(key);
+      final size = fitSingleLineSize(
+        val,
+        half - 28,
+        fonts.calibriBold,
+        preferred: entryHero,
+        minSize: 12,
+      );
+      if (val.isNotEmpty) {
+        _drawValue(
+          c,
+          fonts,
+          val,
+          x + 14,
+          y - rowH + 8,
+          half - 28,
+          size + 6,
+          fontSize: size,
+          font: fonts.calibriBold,
+        );
+      }
+    }
+
+    halfCell(mx, 'Date Received', LabelFields.dateReceived);
+    halfCell(mx + half + gap, 'Received By', LabelFields.receivedBy);
   }
 
   double _drawSalesOrderRow(

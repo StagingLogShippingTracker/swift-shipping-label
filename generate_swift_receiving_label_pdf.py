@@ -403,34 +403,18 @@ def draw_label_page(
     y_r = draw_sales_order_pill(c, y, rx, COL_W, sample.get("sales_order", ""))
     y_r = draw_labeled_value(c, y_r, "PM", sample.get("pm", ""), rx, COL_W, hero=False)
 
-    # Optional staging note fills leftover left column above the received band
-    note = (sample.get("staging_notes") or "").strip()
-    if note:
-        notes_top = min(y_l, y_r) - 4
-        notes_floor = recv_top + 16
-        notes_h = max(notes_top - notes_floor, 40)
-        if notes_h >= 40:
-            micro_label(c, lx, notes_top + 4, "Staging Notes")
-            c.setFillColor(PIECE_FILL)
-            c.roundRect(lx, notes_top - notes_h, COL_W, notes_h, 4, stroke=0, fill=1)
-            size = ENTRY_SIZE
-            while size > ENTRY_MIN:
-                lines = wrap_lines(note, COL_W - 16, ENTRY_BOLD, size)
-                need = len(lines) * (size + LINE_GAP) + 4
-                if need <= notes_h - 8:
-                    break
-                size -= 0.5
-            draw_value(
-                c,
-                note,
-                lx + 10,
-                notes_top - notes_h + 4,
-                COL_W - 14,
-                notes_h - 8,
-                size,
-                ENTRY_BOLD,
-                multiline=True,
-            )
+    # Full-width Special Instructions after PO — 2 lines, same style as other fields
+    y_mid = min(y_l, y_r)
+    y_mid = draw_labeled_value(
+        c,
+        y_mid,
+        "Special Instructions",
+        sample.get("special_instructions", ""),
+        MX,
+        CONTENT_W,
+        multiline=True,
+        max_lines=2,
+    )
 
     hairline(c, MX, recv_top + 10, CONTENT_W, RULE_SOFT)
     draw_received_band(c, recv_top, sample)
@@ -469,7 +453,7 @@ SAMPLE = {
     "pm": "CHRIS ACORN",
     "date_received": "May 1st, 2026",
     "received_by": "Keith Blackman",
-    "staging_notes": "",
+    "special_instructions": "Hold on dock until ship confirm. Do not break skid.",
 }
 
 

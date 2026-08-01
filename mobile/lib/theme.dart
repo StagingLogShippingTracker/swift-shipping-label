@@ -121,6 +121,25 @@ class SwiftTheme {
           ),
         ),
       ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return SwiftColors.accentSoft;
+            }
+            return SwiftColors.surface;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return SwiftColors.accent;
+            }
+            return SwiftColors.muted;
+          }),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: SwiftColors.border),
+          ),
+        ),
+      ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: SwiftColors.ink,

@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
-/// Field keys shared by the form UI and PDF generator.
+/// Which print template the generator is targeting.
+enum LabelKind { shipping, receiving }
+
+/// Field keys shared by the form UI and PDF generators.
 class LabelFields {
   static const customer = 'customer';
   static const poNum = 'po_num';
@@ -17,6 +20,9 @@ class LabelFields {
   static const palletOf = 'pallet_of';
   static const boxNum = 'box_num';
   static const boxOf = 'box_of';
+  static const pm = 'pm';
+  static const dateReceived = 'date_received';
+  static const receivedBy = 'received_by';
 
   static const formDefs = <(String key, String label, bool multiline)>[
     (customer, 'Customer', false),
@@ -34,6 +40,9 @@ class LabelFields {
     (palletOf, 'Pallet / Crate of', false),
     (boxNum, 'Box #', false),
     (boxOf, 'Box of', false),
+    (pm, 'PM', false),
+    (dateReceived, 'Date Received', false),
+    (receivedBy, 'Received By', false),
   ];
 
   /// Fields stored on a customer preset (shipment-specific stay blank).
@@ -45,6 +54,7 @@ class LabelFields {
     carrier,
     swiftContact,
     specialInstructions,
+    pm,
   ];
 }
 
@@ -81,6 +91,18 @@ class ShippingLabelData {
     LabelFields.packingSlip: '1224618',
     LabelFields.salesOrder: 'SO-88421',
     LabelFields.swiftContact: 'J. SMITH',
+  });
+
+  static final receivingSample = ShippingLabelData({
+    LabelFields.customer: 'CONOCOPHILLIPS CANADA (BRC) PARTNERSHIP',
+    LabelFields.project: 'Gateway Pipelines & CBR Pad 107 Lateral FEL3',
+    LabelFields.poNum: '278-07-31 - 0009',
+    LabelFields.salesOrder: '1380380',
+    LabelFields.pm: 'CHRIS ACORN',
+    LabelFields.dateReceived: 'May 1st, 2026',
+    LabelFields.receivedBy: 'Keith Blackman',
+    LabelFields.specialInstructions:
+        'Hold on dock until ship confirm. Do not break skid.',
   });
 }
 

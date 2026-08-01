@@ -11,7 +11,7 @@ import 'platform_io.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
 
-const _groups = <(String title, String hint, List<String> keys)>[
+const _shippingGroups = <(String title, String hint, List<String> keys)>[
   (
     'Customer & job',
     'Who the shipment is for',
@@ -49,6 +49,29 @@ const _groups = <(String title, String hint, List<String> keys)>[
   ),
 ];
 
+const _receivingGroups = <(String title, String hint, List<String> keys)>[
+  (
+    'Customer & job',
+    'Who the staged material is for',
+    [
+      LabelFields.customer,
+      LabelFields.project,
+      LabelFields.poNum,
+      LabelFields.specialInstructions,
+    ],
+  ),
+  (
+    'Order & PM',
+    'Swift sales order and project manager',
+    [LabelFields.salesOrder, LabelFields.pm],
+  ),
+  (
+    'Received',
+    'Dock stamp — date and who signed',
+    [LabelFields.dateReceived, LabelFields.receivedBy],
+  ),
+];
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.storage, required this.pdf});
 
@@ -65,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _activeLogoPath;
   String? _pickedLogoName;
   bool _busy = false;
+  LabelKind _kind = LabelKind.shipping;
 
   @override
   void initState() {
@@ -299,7 +323,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadSample() {
-    final s = ShippingLabelData.sample;
+    final s = _kind == LabelKind.receiving
+        ? ShippingLabelData.receivingSample
+        : ShippingLabelData.sample;
     for (final e in s.values.entries) {
       _setField(e.key, e.value);
     }
@@ -307,17 +333,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _clearShipment() {
-    const clear = {
-      LabelFields.poNum,
-      LabelFields.project,
-      LabelFields.packingSlip,
-      LabelFields.salesOrder,
-      LabelFields.palletNum,
-      LabelFields.palletOf,
-      LabelFields.boxNum,
-      LabelFields.boxOf,
-      LabelFields.specialInstructions,
-    };
+    final clear = _kind == LabelKind.receiving
+        ? {
+            LabelFields.poNum,
+            LabelFields.project,
+            LabelFields.salesOrder,
+            LabelFields.pm,
+            LabelFields.dateReceived,
+            LabelFields.receivedBy,
+            LabelFields.specialInstructions,
+          }
+        : {
+            LabelFields.poNum,
+            LabelFields.project,
+            LabelFields.packingSlip,
+            LabelFields.salesOrder,
+            LabelFields.palletNum,
+            LabelFields.palletOf,
+            LabelFields.boxNum,
+            LabelFields.boxOf,
+            LabelFields.specialInstructions,
+          };
     for (final key in clear) {
       _controllers[key]?.clear();
     }
@@ -342,10 +378,15 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final data = _collect();
-      final bytes = await widget.pdf.build(
-        data: data,
-        customerLogoBytes: logoBytes,
-      );
+      final bytes = _kind == LabelKind.receiving
+          ? await widget.pdf.buildReceiving(
+              data: data,
+              customerLogoBytes: logoBytes,
+            )
+          : await widget.pdf.build(
+              data: data,
+              customerLogoBytes: logoBytes,
+            );
 
       final customer = data.get(LabelFields.customer);
       final stamp = DateTime.now()
@@ -353,9 +394,11 @@ class _HomeScreenState extends State<HomeScreen> {
           .replaceAll(':', '')
           .replaceAll('.', '')
           .substring(0, 15);
+      final kindLabel =
+          _kind == LabelKind.receiving ? 'Receiving Label' : 'Shipping Label';
       final name = customer.isEmpty
-          ? 'Swift Supply Shipping Label $stamp.pdf'
-          : 'Swift Supply Shipping Label - ${widget.storage.safeCustomerName(customer)} $stamp.pdf';
+          ? 'Swift Supply $kindLabel $stamp.pdf'
+          : 'Swift Supply $kindLabel - ${widget.storage.safeCustomerName(customer)} $stamp.pdf';
 
       final file = await widget.storage.writePdf(name, bytes);
 
@@ -381,6 +424,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final logos = widget.storage.listLogos();
     final presetNames = widget.storage.presets.keys.toList()..sort();
+    final groups =
+        _kind == LabelKind.receiving ? _receivingGroups : _shippingGroups;
 
     return Scaffold(
       body: Column(
@@ -393,8 +438,39 @@ class _HomeScreenState extends State<HomeScreen> {
                   ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               children: [
+                SegmentedButton<LabelKind>(
+                  segments: const [
+                    ButtonSegment(
+                      value: LabelKind.shipping,
+                      label: Text('Shipping Label'),
+                      icon: Icon(Icons.local_shipping_outlined, size: 18),
+                    ),
+                    ButtonSegment(
+                      value: LabelKind.receiving,
+                      label: Text('Receiving Label'),
+                      icon: Icon(Icons.inventory_2_outlined, size: 18),
+                    ),
+                  ],
+                  selected: {_kind},
+                  onSelectionChanged: (s) {
+                    setState(() => _kind = s.first);
+                  },
+                  style: ButtonStyle(
+                    textStyle: WidgetStatePropertyAll(
+                      TextStyle(
+                        fontFamily: 'Oswald',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Text(
-                  'Pre-fill the label → Generate PDF. Long PO / Project lines wrap and shrink Special Instructions for print.',
+                  _kind == LabelKind.receiving
+                      ? 'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.'
+                      : 'Pre-fill the label → Generate PDF. Long PO / Project lines wrap and shrink Special Instructions for print.',
                   style: TextStyle(
                     color: SwiftColors.muted,
                     fontSize: 13,
@@ -519,7 +595,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-                for (final group in _groups)
+                for (final group in groups)
                   _Card(
                     title: group.$1,
                     hint: group.$2,
@@ -535,11 +611,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Builder(
                                   builder: (_) {
                                     final m = _meta(key);
+                                    final lines = !m.$3
+                                        ? 1
+                                        : (key ==
+                                                    LabelFields
+                                                        .specialInstructions &&
+                                                _kind == LabelKind.receiving)
+                                            ? 2
+                                            : 3;
                                     return Padding(
                                       padding: const EdgeInsets.only(bottom: 6),
                                       child: TextField(
                                         controller: _controllers[key],
-                                        maxLines: m.$3 ? 3 : 1,
+                                        maxLines: lines,
                                         decoration: InputDecoration(
                                           labelText: m.$2.toUpperCase(),
                                         ),

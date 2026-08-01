@@ -25,7 +25,7 @@ class SwiftShippingLabelApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Swift Supply Shipping Label',
+      title: 'Swift Supply Labels',
       debugShowCheckedModeBanner: false,
       theme: SwiftTheme.light(),
       home: HomeScreen(storage: storage, pdf: pdf),
