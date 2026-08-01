@@ -70,13 +70,25 @@ class BolLabelPdf {
   Future<Uint8List> build({
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
+    /// Which copy pages to include (subset of [copyTypes]). Defaults to all three.
+    List<String>? copies,
   }) async {
+    final selected = (copies == null || copies.isEmpty)
+        ? List<String>.from(copyTypes)
+        : [
+            for (final c in copyTypes)
+              if (copies.contains(c)) c,
+          ];
+    if (selected.isEmpty) {
+      throw ArgumentError('At least one BOL copy must be selected.');
+    }
+
     final doc = pw.Document(
       title: 'Swift Oilfield Supply — Straight Bill of Lading',
       author: 'Swift Oilfield Supply',
     );
 
-    for (final copy in copyTypes) {
+    for (final copy in selected) {
       doc.addPage(
         pw.Page(
           pageFormat: pageFormat,

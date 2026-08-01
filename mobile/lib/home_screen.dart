@@ -170,6 +170,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _findingLogo = false;
   bool _showManualLogoUpload = false;
   LabelKind _kind = LabelKind.shipping;
+  /// Which BOL copy pages to generate (all selected by default).
+  bool _bolStoreCopy = true;
+  bool _bolDriverCopy = true;
+  bool _bolCustomerCopy = true;
 
   @override
   void initState() {
@@ -687,6 +691,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (piecePlan == null || piecePlan.isEmpty) return;
     }
 
+    final bolCopies = <String>[];
+    if (_kind == LabelKind.bol) {
+      if (_bolStoreCopy) bolCopies.add('STORE COPY');
+      if (_bolDriverCopy) bolCopies.add('DRIVER COPY');
+      if (_bolCustomerCopy) bolCopies.add('CUSTOMER COPY');
+      if (bolCopies.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Select at least one BOL copy to generate.'),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _busy = true);
     try {
       final logoBytes = await _loadSelectedLogoBytes();
@@ -732,6 +752,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes = await BolLabelPdf(widget.pdf).build(
             data: data,
             customerLogoBytes: logoBytes,
+            copies: bolCopies,
           );
         case LabelKind.shipping:
           bytes = await widget.pdf.build(
@@ -760,7 +781,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final pages = switch (_kind) {
           LabelKind.shipping => ' (${piecePlan!.totalPages} pages)',
           LabelKind.bol =>
-            ' (3 copies · ${data.get(BolFields.documentNumber)})',
+            ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
         };
         ScaffoldMessenger.of(context).showSnackBar(
@@ -838,7 +859,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     LabelKind.receiving =>
                       'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.',
                     LabelKind.bol =>
-                      'Straight Bill of Lading (3 copies). Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
+                      'Straight Bill of Lading. Choose which copies to print below. Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
                     LabelKind.shipping =>
                       'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
                   },
@@ -848,6 +869,44 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 1.3,
                   ),
                 ),
+                if (_kind == LabelKind.bol) ...[
+                  const SizedBox(height: 10),
+                  _Card(
+                    title: 'Copies to generate',
+                    hint: 'Only selected pages are included in the PDF',
+                    child: Column(
+                      children: [
+                        CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Store Copy'),
+                          value: _bolStoreCopy,
+                          onChanged: (v) =>
+                              setState(() => _bolStoreCopy = v ?? false),
+                        ),
+                        CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Driver Copy'),
+                          value: _bolDriverCopy,
+                          onChanged: (v) =>
+                              setState(() => _bolDriverCopy = v ?? false),
+                        ),
+                        CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Customer Copy'),
+                          value: _bolCustomerCopy,
+                          onChanged: (v) =>
+                              setState(() => _bolCustomerCopy = v ?? false),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 _Card(
                   title: 'Customer preset',
