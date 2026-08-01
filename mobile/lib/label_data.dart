@@ -23,10 +23,15 @@ class BolFields {
   static const totalPieces = 'total_pieces';
   static const totalWeight = 'total_weight';
   static const shipperCertName = 'shipper_cert_name';
+  static const shipperCertSign = 'shipper_cert_sign';
   static const shipperCertDate = 'shipper_cert_date';
   static const driverPrint = 'driver_print';
+  static const driverSign = 'driver_sign';
   static const driverDate = 'driver_date';
   static const vehicleId = 'vehicle_id';
+  static const arrivalTime = 'arrival_time';
+  static const departureTime = 'departure_time';
+  static const consigneeSign = 'consignee_sign';
   static const consigneePrint = 'consignee_print';
   static const consigneeDate = 'consignee_date';
 

@@ -6,7 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../label_data.dart';
 import 'shipping_label_pdf.dart';
 
-/// Flat print Bill of Lading — layout ported from `generate_swift_bol_pdf.py`.
+/// Flat print Bill of Lading — geometry ported from `generate_swift_bol_pdf.py`.
 /// Three pages: STORE / DRIVER / CUSTOMER copy (same field values).
 class BolLabelPdf {
   BolLabelPdf(this.shipping);
@@ -23,13 +23,20 @@ class BolLabelPdf {
   static const tableHead = PdfColor.fromInt(0xFFF0F0F0);
   static const zebra = PdfColor.fromInt(0xFFF7F7F7);
   static const fieldBg = PdfColor.fromInt(0xFFF4F7FA);
+  static const white = PdfColor.fromInt(0xFFFFFFFF);
 
   static final pageFormat = PdfPageFormat.letter;
   static const inch = PdfPageFormat.inch;
   static final margin = 0.4 * inch;
   static final contentW = pageFormat.width - 2 * margin;
+  static final footerH = 0.52 * inch;
+  static final footerBase = margin + 2;
+  static final footerBoxH = footerH - 2;
+  static final contentBottom = footerBase + footerBoxH + 8;
   static const gap = 7.0;
   static const pad = 6.0;
+  static const bodyInset = 8.0;
+  static const inset = 3.0;
   static const lineRows = 7;
   static const itemTypes = ['Pallets', 'Crates', 'Boxes', 'Pipe', 'Other'];
   static const copyTypes = ['STORE COPY', 'DRIVER COPY', 'CUSTOMER COPY'];
@@ -39,6 +46,26 @@ class BolLabelPdf {
     'Nisku, AB  T9E 1C6',
     '780-423-6979',
   ];
+
+  static const legal =
+      'RECEIVED AT THE POINT OF ORIGIN ON THE DATE SPECIFIED, FROM THE CONSIGNOR '
+      'MENTIONED HEREIN, THE PROPERTY DESCRIBED IN APPARENT GOOD ORDER EXCEPT AS '
+      'NOTED (CONTENTS AND CONDITION OF CONTENTS OF PACKAGES UNKNOWN), MARKED, '
+      'CONSIGNED, AND DESTINED AS INDICATED BELOW. NOTICE OF CLAIM: (A) NO CARRIER '
+      'IS LIABLE FOR LOSS, DAMAGE, OR DELAY TO ANY GOODS UNDER THIS BILL OF LADING '
+      'UNLESS NOTICE THEREOF IS GIVEN IN WRITING TO THE ORIGINATING CARRIER OR THE '
+      'DELIVERING CARRIER WITHIN FIVE (5) DAYS AFTER DELIVERY OF THE GOODS, OR IN '
+      'THE CASE OF FAILURE TO MAKE DELIVERY, WITHIN NINE (9) MONTHS FROM THE DATE OF '
+      'SHIPMENT. (B) THE FINAL STATEMENT OF THE CLAIM MUST BE FILED WITHIN NINE (9) '
+      'MONTHS FROM THE DATE OF SHIPMENT, TOGETHER WITH A COPY OF THE PAID FREIGHT '
+      'BILL. THE CONTRACT FOR CARRIAGE IS DEEMED TO CONTAIN AND BE SUBJECT TO ALL '
+      'CONDITIONS NOT PROHIBITED BY LAW UNDER THE MOTOR TRANSPORT ACT (ALBERTA).';
+
+  static const shipperCert =
+      'This is to certify that the above-named materials are properly classified, '
+      'described, packaged, marked and labeled, and are in proper condition for '
+      'transportation according to the applicable regulations of the Department of '
+      'Transportation.';
 
   Future<Uint8List> build({
     required ShippingLabelData data,
@@ -58,7 +85,6 @@ class BolLabelPdf {
             final fonts = _Fonts(
               regular: pw.Font.helvetica().getFont(context),
               bold: pw.Font.helveticaBold().getFont(context),
-              oswaldBold: shipping.oswaldBold.getFont(context),
             );
             PdfImage? swiftLogo;
             if (shipping.swiftLogoBytes != null) {
@@ -97,8 +123,8 @@ class BolLabelPdf {
     final pageH = pageFormat.height;
     var y = pageH - margin - 2;
 
-    // Logo centered
-    var logoH = 0.72 * inch;
+    // Cropped wordmark centered — customer logos sit left without shifting it.
+    var logoH = 0.82 * inch;
     var logoW = 0.0;
     var logoX = margin;
     if (swiftLogo != null) {
@@ -106,7 +132,7 @@ class BolLabelPdf {
       final ih = swiftLogo.height.toDouble();
       if (iw > 0 && ih > 0) {
         logoW = logoH * iw / ih;
-        final maxW = contentW * 0.7;
+        final maxW = contentW * 0.92;
         if (logoW > maxW) {
           logoW = maxW;
           logoH = logoW * ih / iw;
@@ -116,7 +142,6 @@ class BolLabelPdf {
       }
     }
 
-    // Optional C/O logos small on left of header
     if (customerLogos.isNotEmpty) {
       final slot = 0.9 * inch;
       for (var i = 0; i < customerLogos.length; i++) {
@@ -125,48 +150,46 @@ class BolLabelPdf {
         final ih = img.height.toDouble();
         if (iw <= 0 || ih <= 0) continue;
         final h = logoH * 0.85;
-        final w = h * iw / ih;
-        final x = margin + i * (slot);
-        final drawW = w > slot - 4 ? slot - 4 : w;
-        c.drawImage(img, x, y - h, drawW, h);
+        var w = h * iw / ih;
+        final x = margin + i * slot;
+        if (w > slot - 4) w = slot - 4;
+        c.drawImage(img, x, y - h, w, h);
       }
     }
 
-    // Probill cutout (right)
     _probillCutout(c, fonts, d, logoX, logoW, y, logoH);
     y -= logoH + 6;
 
     // Title band
     const bandH = 22.0;
-    _orangeBar(c, margin, y - bandH, contentW, bandH);
-    c
-      ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
-      ..setFont(fonts.bold, 8.5)
-      ..drawString(
-        fonts.bold,
-        8.5,
-        'SWIFT OILFIELD SUPPLY',
-        pageW / 2 - fonts.bold.stringMetrics('SWIFT OILFIELD SUPPLY').width * 8.5 / 2,
-        y - 11,
-      )
-      ..setFont(fonts.regular, 6.5);
-    const sub = 'STRAIGHT BILL OF LADING  ·  NOT NEGOTIABLE';
-    c.drawString(
+    _orangeBar(c, margin, y - bandH, contentW, bandH, r: 3);
+    _drawCentered(
+      c,
+      fonts.bold,
+      8.5,
+      'SWIFT OILFIELD SUPPLY',
+      pageW / 2,
+      y - 11,
+      color: white,
+    );
+    _drawCentered(
+      c,
       fonts.regular,
       6.5,
-      sub,
-      pageW / 2 - fonts.regular.stringMetrics(sub).width * 6.5 / 2,
+      'STRAIGHT BILL OF LADING  ·  NOT NEGOTIABLE',
+      pageW / 2,
       y - 18,
+      color: white,
     );
     c
-      ..setFont(fonts.bold, 6)
-      ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
+      ..setFillColor(white)
+      ..setFont(fonts.bold, 7)
       ..drawString(
         fonts.bold,
-        6,
+        7,
         copyLabel,
-        margin + contentW - fonts.bold.stringMetrics(copyLabel).width * 6 - 8,
-        y - 14,
+        margin + contentW - pad - _sw(fonts.bold, 7, copyLabel),
+        y - bandH + 6,
       );
     y -= bandH + 10;
 
@@ -176,69 +199,129 @@ class BolLabelPdf {
     final lx = margin;
     final rx = margin + colW + gap;
     const hdrH = 15.0;
-    final panelH = 1.05 * inch;
+    final panelH = 1.12 * inch;
 
     _sectionTitle(c, fonts, lx, y, colW, 'SHIPPER (CONSIGNOR)', hdrH);
     _sectionTitle(c, fonts, rx, y, colW, 'SHIP TO (CONSIGNEE)', hdrH);
     final top = y - hdrH;
     final bot = top - panelH;
-    _rect(c, lx, bot, colW, panelH);
+    _rect(c, lx, bot, colW, panelH, lw: 0.75);
     var sy = top - 12;
     for (final line in shipperLines) {
       c
         ..setFillColor(black)
         ..setFont(fonts.bold, 7)
         ..drawString(fonts.bold, 7, line, lx + pad, sy);
-      sy -= 10;
+      sy -= 11; // size 7 + 4
     }
 
     final row1 = top - panelH * 0.30;
     final row2 = top - panelH * 0.58;
     final midX = rx + colW / 2;
-    _cellValue(c, fonts, rx, row1, colW, top - row1, 'Ship To Name', d.get(BolFields.consigneeName));
-    _cellValue(c, fonts, rx, row2, colW, row1 - row2, 'Delivery Address', d.get(BolFields.consigneeAddress));
-    _cellValue(c, fonts, rx, bot, midX - rx, row2 - bot, 'Contact Name', d.get(BolFields.consigneeContactName));
-    _cellValue(c, fonts, midX, bot, rx + colW - midX, row2 - bot, 'Contact Number', d.get(BolFields.consigneeContactNumber));
+    _cellValue(
+      c,
+      fonts,
+      rx,
+      row1,
+      colW,
+      top - row1,
+      'Ship To Name',
+      d.get(BolFields.consigneeName),
+    );
+    _cellValue(
+      c,
+      fonts,
+      rx,
+      row2,
+      colW,
+      row1 - row2,
+      'Delivery Address',
+      d.get(BolFields.consigneeAddress),
+    );
+    _cellValue(
+      c,
+      fonts,
+      rx,
+      bot,
+      midX - rx,
+      row2 - bot,
+      'Contact Name',
+      d.get(BolFields.consigneeContactName),
+    );
+    _cellValue(
+      c,
+      fonts,
+      midX,
+      bot,
+      rx + colW - midX,
+      row2 - bot,
+      'Contact Number',
+      d.get(BolFields.consigneeContactNumber),
+    );
     y = bot - gap;
 
-    final billH = 0.38 * inch;
+    final billH = 0.42 * inch;
     _sectionTitle(c, fonts, lx, y, colW, '3RD PARTY BILLING (COLLECT)', hdrH);
-    final bodyBot = y - hdrH - billH;
-    _rect(c, lx, bodyBot, colW, billH);
-    _drawText(c, fonts, d.get(BolFields.thirdPartyBilling), lx + pad, bodyBot + 8, colW - 2 * pad, 7);
+    final billBodyBot = y - hdrH - billH;
+    _rect(c, lx, billBodyBot, colW, billH, lw: 0.75);
+    _drawValue(
+      c,
+      fonts,
+      d.get(BolFields.thirdPartyBilling),
+      lx + pad,
+      billBodyBot + pad,
+      colW - 2 * pad,
+      billH - 2 * pad,
+      7,
+      maxLines: 3,
+    );
 
     final freightH = hdrH + billH;
-    _rect(c, rx, y - freightH, colW, freightH);
+    _rect(c, rx, y - freightH, colW, freightH, lw: 0.75);
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
-    final freight = d.get(BolFields.freightCharges).toLowerCase();
-    final opts = ['Prepaid', 'Collect', '3rd Party'];
-    final keys = ['prepaid', 'collect', 'third_party'];
-    var ox = rx + pad;
-    final ry = bodyBot + (billH - 10) / 2;
-    for (var i = 0; i < opts.length; i++) {
-      final on = freight == keys[i] || freight == opts[i].toLowerCase();
+    final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
+    const radioSize = 11.0;
+    final freightBodyBot = y - freightH;
+    final freightBodyTop = y - hdrH;
+    final ry = freightBodyBot + (freightBodyTop - freightBodyBot - radioSize) / 2;
+    final options = [
+      ('prepaid', 'Prepaid'),
+      ('collect', 'Collect'),
+      ('third_party', '3rd Party'),
+    ];
+    final innerLeft = rx + pad;
+    final innerRight = rx + colW - pad;
+    final widths = [
+      for (final o in options) radioSize + 4 + _sw(fonts.regular, 6.5, o.$2),
+    ];
+    final totalW = widths.fold<double>(0, (a, b) => a + b);
+    final free = (innerRight - innerLeft - totalW).clamp(0.0, double.infinity);
+    final radioGap = free / 2;
+    var ox = innerLeft;
+    for (var i = 0; i < options.length; i++) {
+      final key = options[i].$1;
+      final label = options[i].$2;
+      final on = freight == key || freight == label.toLowerCase();
+      _radio(c, ox, ry, radioSize, on);
       c
-        ..setStrokeColor(swift)
-        ..setLineWidth(0.8)
-        ..drawEllipse(ox, ry, 5, 5)
-        ..strokePath();
-      if (on) {
-        c
-          ..setFillColor(swift)
-          ..drawEllipse(ox + 1.5, ry + 1.5, 2, 2)
-          ..fillPath();
-      }
-      c
-        ..setFillColor(black)
+        ..setFillColor(secondary)
         ..setFont(fonts.regular, 6.5)
-        ..drawString(fonts.regular, 6.5, opts[i], ox + 12, ry);
-      ox += 70;
+        ..drawString(fonts.regular, 6.5, label, ox + radioSize + 4, ry + 1.5);
+      ox += widths[i] + radioGap;
     }
     y -= freightH + gap;
 
     // Tracking
     const trackHdr = 13.0;
-    _sectionTitle(c, fonts, margin, y, contentW, 'TRACKING & REFERENCE NUMBERS', trackHdr);
+    _sectionTitle(
+      c,
+      fonts,
+      margin,
+      y,
+      contentW,
+      'TRACKING & REFERENCE NUMBERS',
+      trackHdr,
+    );
     y -= trackHdr;
     final trackCols = [
       (LabelFields.poNum, 'PO #', 1.15),
@@ -251,9 +334,10 @@ class BolLabelPdf {
     final tWidths = trackCols.map((e) => contentW * e.$3 / tSum).toList();
     var cx = margin;
     for (var i = 0; i < trackCols.length; i++) {
-      c.setFillColor(tableHead);
-      c.drawRect(cx, y - th, tWidths[i], th);
-      c.fillPath();
+      c
+        ..setFillColor(tableHead)
+        ..drawRect(cx, y - th, tWidths[i], th)
+        ..fillPath();
       _rect(c, cx, y - th, tWidths[i], th);
       c
         ..setFillColor(secondary)
@@ -265,7 +349,16 @@ class BolLabelPdf {
     cx = margin;
     for (var i = 0; i < trackCols.length; i++) {
       _rect(c, cx, y - rh, tWidths[i], rh);
-      _drawText(c, fonts, d.get(trackCols[i].$1), cx + 3, y - rh + 3, tWidths[i] - 6, 7);
+      _drawValue(
+        c,
+        fonts,
+        d.get(trackCols[i].$1),
+        cx + inset,
+        y - rh + inset,
+        tWidths[i] - 2 * inset,
+        rh - 2 * inset,
+        7,
+      );
       cx += tWidths[i];
     }
     y -= rh + gap;
@@ -278,22 +371,23 @@ class BolLabelPdf {
       ('description', 'DESCRIPTION OF GOODS', 2.2),
       ('weight', 'WEIGHT (LBS)', 0.8),
     ];
-    const lh = 14.0, lr = 13.0;
+    const lh = 14.0, lr = 14.0;
     final lSum = lineCols.fold<double>(0, (a, e) => a + e.$3);
     final lWidths = lineCols.map((e) => contentW * e.$3 / lSum).toList();
     cx = margin;
     for (var i = 0; i < lineCols.length; i++) {
       _orangeBar(c, cx, y - lh, lWidths[i], lh, r: 0);
-      _rect(c, cx, y - lh, lWidths[i], lh);
+      _rect(c, cx, y - lh, lWidths[i], lh, lw: 0.4);
       c
-        ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
+        ..setFillColor(white)
         ..setFont(fonts.bold, 5)
         ..drawString(fonts.bold, 5, lineCols[i].$2, cx + 3, y - lh + 4);
       cx += lWidths[i];
     }
     y -= lh;
 
-    double totalPieces = 0, totalWeight = 0;
+    var totalPieces = 0.0;
+    var totalWeight = 0.0;
     final typeTotals = {for (final t in itemTypes) t: 0.0};
 
     for (var row = 0; row < lineRows; row++) {
@@ -316,159 +410,300 @@ class BolLabelPdf {
       }
       for (var i = 0; i < lineCols.length; i++) {
         if (row.isOdd) {
-          c.setFillColor(zebra);
-          c.drawRect(cx, y - lr, lWidths[i], lr);
-          c.fillPath();
+          c
+            ..setFillColor(zebra)
+            ..drawRect(cx, y - lr, lWidths[i], lr)
+            ..fillPath();
         }
         _rect(c, cx, y - lr, lWidths[i], lr);
-        _drawText(c, fonts, vals[i], cx + 2, y - lr + 3, lWidths[i] - 4, 6.5);
+        _drawValue(
+          c,
+          fonts,
+          vals[i],
+          cx + inset,
+          y - lr + inset,
+          lWidths[i] - 2 * inset,
+          lr - 2 * inset,
+          7,
+        );
         cx += lWidths[i];
       }
       y -= lr;
     }
     y -= gap;
 
-    // Bottom: product totals | special instructions | totals
-    final blockH = 1.15 * inch;
+    // Product total | Special instructions | Totals
+    final blockH = 1.40 * inch;
+    const bHdr = 16.0;
+    _alignedBottomRow(
+      c,
+      fonts,
+      d,
+      y,
+      blockH,
+      bHdr,
+      typeTotals,
+      totalPieces,
+      totalWeight,
+    );
+    y -= blockH + gap;
+
+    // Signature columns
+    final sw = (contentW - 2 * gap) / 3;
+    final sh = 1.38 * inch;
+    const shdr = 16.0;
+    var sx = margin;
+    final bodyTop = y - shdr;
+    final bodyBot = bodyTop - sh;
+
+    // Shipper's Certification
+    _sectionTitle(c, fonts, sx, y, sw, "SHIPPER'S CERTIFICATION", shdr);
+    _rect(c, sx, bodyBot, sw, sh, lw: 0.75);
+    final certBot = bodyBot + sh * 0.55;
+    _wrapText(
+      c,
+      fonts,
+      shipperCert,
+      sx + pad,
+      bodyTop - bodyInset,
+      sw - 2 * pad,
+      size: 4.4,
+      leading: 5.2,
+      color: secondary,
+      minY: certBot + 3,
+    );
+    c
+      ..setStrokeColor(rule)
+      ..setLineWidth(0.5)
+      ..drawLine(sx, certBot, sx + sw, certBot)
+      ..strokePath();
+    _sigFields(
+      c,
+      fonts,
+      d,
+      sx,
+      certBot,
+      bodyBot,
+      sw,
+      [
+        [(BolFields.shipperCertName, 'Name', 1.0)],
+        [
+          (BolFields.shipperCertSign, 'Signature', 0.62),
+          (BolFields.shipperCertDate, 'Date', 0.38),
+        ],
+      ],
+      topInset: 7,
+    );
+    sx += sw + gap;
+
+    // Carrier / Driver Acceptance
+    _sectionTitle(c, fonts, sx, y, sw, 'CARRIER / DRIVER ACCEPTANCE', shdr);
+    _rect(c, sx, bodyBot, sw, sh, lw: 0.75);
+    _sigFields(
+      c,
+      fonts,
+      d,
+      sx,
+      bodyTop,
+      bodyBot,
+      sw,
+      [
+        [(BolFields.driverPrint, 'Driver Print Name', 1.0)],
+        [
+          (BolFields.driverSign, 'Signature', 0.62),
+          (BolFields.driverDate, 'Date', 0.38),
+        ],
+        [(BolFields.vehicleId, 'Vehicle ID', 1.0)],
+        [
+          (BolFields.arrivalTime, 'Arrival', 0.62),
+          (BolFields.departureTime, 'Departure', 0.38),
+        ],
+      ],
+      topInset: bodyInset,
+    );
+    sx += sw + gap;
+
+    // Consignee Delivery Receipt
+    _sectionTitle(c, fonts, sx, y, sw, 'CONSIGNEE DELIVERY RECEIPT', shdr);
+    _rect(c, sx, bodyBot, sw, sh, lw: 0.75);
+    _sigFields(
+      c,
+      fonts,
+      d,
+      sx,
+      bodyTop,
+      bodyBot,
+      sw,
+      [
+        [(BolFields.consigneeSign, 'Consignee Signature', 1.0)],
+        [(BolFields.consigneePrint, 'Print Name', 1.0)],
+        [(BolFields.consigneeDate, 'Date', 1.0)],
+      ],
+      topInset: bodyInset,
+    );
+
+    _drawPageFrame(c, pageH, contentBot: bodyBot - 4);
+    _drawFooter(c, fonts);
+  }
+
+  void _alignedBottomRow(
+    PdfGraphics c,
+    _Fonts fonts,
+    ShippingLabelData d,
+    double y,
+    double blockH,
+    double hdrH,
+    Map<String, double> typeTotals,
+    double totalPieces,
+    double totalWeight,
+  ) {
     final blockBot = y - blockH;
     final pw = 1.48 * inch;
     final tw = 1.28 * inch;
     final iw = contentW - pw - tw - 2 * gap;
     final ix = margin + pw + gap;
     final tx = ix + iw + gap;
-    const bHdr = 14.0;
-    final bodyH = blockH - bHdr;
-    final bodyTop = y - bHdr;
+    final bodyH = blockH - hdrH;
+    final bodyTop = y - hdrH;
 
-    _sectionTitle(c, fonts, margin, y, pw, 'PRODUCT TOTAL', bHdr);
-    _rect(c, margin, blockBot, pw, bodyH);
-    _sectionTitle(c, fonts, ix, y, iw, 'SPECIAL INSTRUCTIONS', bHdr);
-    _rect(c, ix, blockBot, iw, bodyH);
-    _sectionTitle(c, fonts, tx, y, tw, 'TOTALS', bHdr);
-    c.setFillColor(swiftLight);
-    c.drawRect(tx, blockBot, tw, bodyH);
-    c.fillPath();
-    _rect(c, tx, blockBot, tw, bodyH);
+    _sectionTitle(c, fonts, margin, y, pw, 'PRODUCT TOTAL', hdrH);
+    _rect(c, margin, blockBot, pw, bodyH, lw: 0.75);
 
-    final avail = bodyH - 10;
-    final rowH = avail / itemTypes.length;
-    for (var i = 0; i < itemTypes.length; i++) {
+    _sectionTitle(c, fonts, ix, y, iw, 'SPECIAL INSTRUCTIONS', hdrH);
+    _rect(c, ix, blockBot, iw, bodyH, lw: 0.75);
+
+    _sectionTitle(c, fonts, tx, y, tw, 'TOTALS', hdrH);
+    c
+      ..setFillColor(swiftLight)
+      ..drawRect(tx, blockBot, tw, bodyH)
+      ..fillPath();
+    _rect(c, tx, blockBot, tw, bodyH, lw: 0.75);
+
+    final n = itemTypes.length;
+    final avail = bodyH - bodyInset - 4;
+    final rowH = avail / n;
+    const labelW = 0.72 * inch; // ~51.84 pt
+    final innerX = margin + pad;
+    final fieldX = innerX + labelW;
+    final fieldW = pw - 2 * pad - labelW;
+    for (var i = 0; i < n; i++) {
       final label = itemTypes[i];
-      final rowTop = bodyTop - 6 - i * rowH;
-      _micro(c, fonts, margin + pad, rowTop - 8, label);
+      final rowTop = bodyTop - bodyInset - i * rowH;
+      _micro(c, fonts, innerX, rowTop - 8, label);
+      final fieldH = (rowH - 10).clamp(8.0, 11.0);
+      final fieldBot = rowTop - rowH + 3;
       final v = typeTotals[label] ?? 0;
-      _drawText(
-        c,
-        fonts,
-        v > 0 ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1) : '',
-        margin + pad + 48,
-        rowTop - 18,
-        pw - 2 * pad - 48,
-        8,
-      );
+      final text = v > 0
+          ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)
+          : '';
+      _drawValue(c, fonts, text, fieldX, fieldBot, fieldW, fieldH, 8);
+      _hline(c, fieldX, fieldBot, fieldW);
     }
-    _drawText(
+
+    _drawValue(
       c,
       fonts,
       d.get(LabelFields.specialInstructions),
       ix + pad,
-      blockBot + 6,
+      blockBot + bodyInset - 2,
       iw - 2 * pad,
+      bodyH - bodyInset - (bodyInset - 2),
       7,
-      maxLines: 6,
+      maxLines: 8,
+      alignTop: true,
     );
+
     final midTot = blockBot + bodyH / 2;
     c
       ..setStrokeColor(rule)
       ..setLineWidth(0.45)
       ..drawLine(tx, midTot, tx + tw, midTot)
       ..strokePath();
-    _micro(c, fonts, tx + pad, bodyTop - 8, 'Total Piece Count');
-    _drawText(
+
+    _micro(c, fonts, tx + pad, bodyTop - bodyInset - 1, 'Total Piece Count');
+    final piecesTop = bodyTop - bodyInset - 12;
+    final piecesText = totalPieces > 0
+        ? totalPieces.toStringAsFixed(0)
+        : d.get(BolFields.totalPieces);
+    _drawValue(
       c,
       fonts,
-      totalPieces > 0 ? totalPieces.toStringAsFixed(0) : d.get(BolFields.totalPieces),
+      piecesText,
       tx + pad,
-      midTot + 6,
+      midTot + 5,
       tw - 2 * pad,
-      9,
+      (piecesTop - (midTot + 5)).clamp(11.0, 40.0),
+      8,
     );
-    _micro(c, fonts, tx + pad, midTot - 8, 'Total Weight');
-    _drawText(
+
+    _micro(c, fonts, tx + pad, midTot - bodyInset - 1, 'Total Weight');
+    final weightText = totalWeight > 0
+        ? totalWeight.toStringAsFixed(0)
+        : d.get(BolFields.totalWeight);
+    _drawValue(
       c,
       fonts,
-      totalWeight > 0 ? totalWeight.toStringAsFixed(0) : d.get(BolFields.totalWeight),
+      weightText,
       tx + pad,
-      blockBot + 14,
+      blockBot + 16,
       tw - 2 * pad,
-      9,
+      (midTot - bodyInset - 12 - (blockBot + 16)).clamp(11.0, 40.0),
+      8,
     );
     c
       ..setFillColor(hint)
       ..setFont(fonts.regular, 5)
-      ..drawString(fonts.regular, 5, 'LBS', tx + pad, blockBot + 5);
+      ..drawString(fonts.regular, 5, 'LBS', tx + pad, blockBot + 6);
+  }
 
-    y = blockBot - gap;
+  void _sigFields(
+    PdfGraphics c,
+    _Fonts fonts,
+    ShippingLabelData d,
+    double x,
+    double yTop,
+    double yBottom,
+    double w,
+    List<List<(String, String, double)>> rows, {
+    double? topInset,
+  }) {
+    final innerX = x + pad;
+    final innerW = w - 2 * pad;
+    final insetTop = topInset ?? bodyInset;
+    const insetBot = 5.0;
+    final contentTop = yTop - insetTop;
+    final contentBot = yBottom + insetBot;
+    final availH = contentTop - contentBot;
+    if (availH < 20 || rows.isEmpty) return;
 
-    // Signature columns (compact)
-    final sw = (contentW - 2 * gap) / 3;
-    final sh = 1.05 * inch;
-    const shdr = 14.0;
-    var sx = margin;
-    final sTop = y - shdr;
-    final sBot = sTop - sh;
+    const fieldH = 11.0;
+    const labelToRule = 13.0;
+    const stackH = labelToRule + 2;
+    const colGap = 10.0;
+    final n = rows.length;
+    final rowH = availH / n;
 
-    void sigCol(String title, List<(String, String)> fields) {
-      _sectionTitle(c, fonts, sx, y, sw, title, shdr);
-      _rect(c, sx, sBot, sw, sh);
-      var yy = sTop - 12;
-      for (final f in fields) {
-        _micro(c, fonts, sx + pad, yy, f.$2);
-        _drawText(c, fonts, d.get(f.$1), sx + pad, yy - 14, sw - 2 * pad, 7);
-        c
-          ..setStrokeColor(rule)
-          ..setLineWidth(0.4)
-          ..drawLine(sx + pad, yy - 16, sx + sw - pad, yy - 16)
-          ..strokePath();
-        yy -= 22;
+    for (var i = 0; i < n; i++) {
+      final bandTop = contentTop - i * rowH;
+      final bandBot = bandTop - rowH;
+      var labelY = bandBot + (rowH + stackH) / 2 - 1;
+      if (labelY > bandTop - 3) labelY = bandTop - 3;
+      if (labelY < bandBot + stackH) labelY = bandBot + stackH;
+      final yRule = labelY - labelToRule;
+
+      final row = rows[i];
+      final total = row.fold<double>(0, (a, e) => a + e.$3);
+      var cx = innerX;
+      final avail = innerW - colGap * (row.length - 1);
+      for (final cell in row) {
+        final fw = avail * (cell.$3 / total);
+        _micro(c, fonts, cx, labelY, cell.$2);
+        final value = d.get(cell.$1);
+        _drawValue(c, fonts, value, cx, yRule + 1.5, fw, fieldH - 1, 8);
+        _hline(c, cx, yRule, fw);
+        cx += fw + colGap;
       }
-      sx += sw + gap;
     }
-
-    sigCol('SHIPPER\'S CERTIFICATION', [
-      (BolFields.shipperCertName, 'Name'),
-      (BolFields.shipperCertDate, 'Date'),
-    ]);
-    sigCol('CARRIER / DRIVER ACCEPTANCE', [
-      (BolFields.driverPrint, 'Driver Print Name'),
-      (BolFields.vehicleId, 'Vehicle ID'),
-      (BolFields.driverDate, 'Date'),
-    ]);
-    sigCol('CONSIGNEE DELIVERY RECEIPT', [
-      (BolFields.consigneePrint, 'Print Name'),
-      (BolFields.consigneeDate, 'Date'),
-    ]);
-
-    // Frame + footer
-    c
-      ..setStrokeColor(rule)
-      ..setLineWidth(0.75)
-      ..drawRect(margin - 3, sBot - 4, contentW + 6, pageH - margin + 2 - (sBot - 4))
-      ..strokePath();
-    c.setFillColor(swift);
-    c.drawRect(margin - 3, pageH - margin + 2, contentW + 6, 3);
-    c.fillPath();
-
-    c
-      ..setFillColor(muted)
-      ..setFont(fonts.regular, 6)
-      ..drawString(
-        fonts.regular,
-        6,
-        'SWIFT OILFIELD SUPPLY  ·  NISKU, AB  ·  780-423-6979',
-        margin,
-        margin + 4,
-      );
   }
 
   void _probillCutout(
@@ -480,155 +715,77 @@ class BolLabelPdf {
     double logoTop,
     double logoH,
   ) {
-    final boxW = 2.1 * inch;
-    final boxH = logoH < 0.75 * inch ? logoH : 0.75 * inch;
-    var boxX = logoX + logoW + 14;
-    if (boxX + boxW > margin + contentW) {
-      boxX = margin + contentW - boxW;
+    final boxW = 2.35 * inch;
+    final boxH = logoH < 0.85 * inch ? logoH : 0.85 * inch;
+    const cutGap = 14.0;
+    final rightX = logoX + logoW + cutGap;
+    final leftX = logoX - cutGap - boxW;
+    double boxX;
+    if (rightX + boxW <= margin + contentW - 2) {
+      boxX = rightX;
+    } else if (leftX >= margin) {
+      boxX = leftX;
+    } else {
+      boxX = (rightX < margin ? margin : rightX)
+          .clamp(margin, margin + contentW - boxW);
     }
     final boxY = logoTop - logoH + (logoH - boxH) / 2;
-    c.setFillColor(const PdfColor.fromInt(0xFFFAFAFA));
-    c.drawRect(boxX, boxY, boxW, boxH);
-    c.fillPath();
+
     c
+      ..setFillColor(const PdfColor.fromInt(0xFFFAFAFA))
+      ..drawRect(boxX, boxY, boxW, boxH)
+      ..fillPath()
       ..setStrokeColor(swift)
       ..setLineWidth(1)
       ..setLineDashPattern(const [3, 2])
       ..drawRect(boxX, boxY, boxW, boxH)
       ..strokePath()
-      ..setLineDashPattern([]);
-    c
-      ..setFillColor(swift)
-      ..setFont(fonts.bold, 6)
-      ..drawString(
-        fonts.bold,
-        6,
-        'PROBILL',
-        boxX + boxW / 2 - fonts.bold.stringMetrics('PROBILL').width * 3,
-        boxY + boxH - 11,
-      )
-      ..setFillColor(muted)
-      ..setFont(fonts.regular, 5)
-      ..drawString(
-        fonts.regular,
-        5,
-        'AFFIX STICKER HERE',
-        boxX + boxW / 2 - fonts.regular.stringMetrics('AFFIX STICKER HERE').width * 2.5,
-        boxY + boxH - 20,
-      );
-    _drawText(c, fonts, d.get(BolFields.probillNumber), boxX + 6, boxY + 6, boxW - 12, 8);
+      ..setLineDashPattern(const []);
+
+    _drawCentered(
+      c,
+      fonts.bold,
+      6,
+      'PROBILL',
+      boxX + boxW / 2,
+      boxY + boxH - 11,
+      color: swift,
+    );
+    _drawCentered(
+      c,
+      fonts.regular,
+      5,
+      'AFFIX STICKER HERE',
+      boxX + boxW / 2,
+      boxY + boxH - 20,
+      color: muted,
+    );
+    _drawValue(
+      c,
+      fonts,
+      d.get(BolFields.probillNumber),
+      boxX + 6,
+      boxY + 6,
+      boxW - 12,
+      12,
+      8,
+    );
+    _hline(c, boxX + 6, boxY + 6, boxW - 12);
   }
 
-  void _orangeBar(PdfGraphics c, double x, double y, double w, double h, {double r = 3}) {
-    c.setFillColor(swift);
-    if (r > 0) {
-      c.drawRRect(x, y, w, h, r, r);
-    } else {
-      c.drawRect(x, y, w, h);
-    }
-    c.fillPath();
-  }
-
-  void _rect(PdfGraphics c, double x, double y, double w, double h) {
-    c
-      ..setStrokeColor(rule)
-      ..setLineWidth(0.6)
-      ..drawRect(x, y, w, h)
-      ..strokePath();
-  }
-
-  void _sectionTitle(
+  double _metaStrip(
     PdfGraphics c,
     _Fonts fonts,
-    double x,
+    ShippingLabelData d,
     double y,
-    double w,
-    String text,
-    double h,
   ) {
-    _orangeBar(c, x, y - h, w, h);
-    c
-      ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
-      ..setFont(fonts.bold, 7)
-      ..drawString(fonts.bold, 7, text, x + 6, y - h + 4);
-  }
-
-  void _micro(PdfGraphics c, _Fonts fonts, double x, double y, String text) {
-    c
-      ..setFillColor(muted)
-      ..setFont(fonts.regular, 5.5)
-      ..drawString(fonts.regular, 5.5, text.toUpperCase(), x, y);
-  }
-
-  String _latin1(String text) => text
-      .replaceAll('\u2014', '-')
-      .replaceAll('\u2013', '-')
-      .replaceAll('\u2018', "'")
-      .replaceAll('\u2019', "'")
-      .replaceAll('\u201c', '"')
-      .replaceAll('\u201d', '"')
-      .replaceAll('\u2026', '...')
-      .replaceAllMapped(RegExp(r'[^\x00-\xff]'), (_) => '?');
-
-  void _drawText(
-    PdfGraphics c,
-    _Fonts fonts,
-    String text,
-    double x,
-    double y,
-    double w,
-    double size, {
-    int maxLines = 2,
-  }) {
-    text = _latin1(text).trim();
-    if (text.isEmpty) return;
-    c
-      ..setFillColor(black)
-      ..setFont(fonts.bold, size);
-    // Simple wrap
-    final words = text.split(RegExp(r'\s+'));
-    var line = '';
-    var yy = y + (maxLines > 1 ? (maxLines - 1) * (size + 1) : 0);
-    var lines = 0;
-    for (final word in words) {
-      final trial = line.isEmpty ? word : '$line $word';
-      if (fonts.bold.stringMetrics(trial).width * size > w && line.isNotEmpty) {
-        c.drawString(fonts.bold, size, line, x, yy);
-        yy -= size + 1;
-        line = word;
-        lines++;
-        if (lines >= maxLines) return;
-      } else {
-        line = trial;
-      }
-    }
-    if (line.isNotEmpty && lines < maxLines) {
-      c.drawString(fonts.bold, size, line, x, yy);
-    }
-  }
-
-  void _cellValue(
-    PdfGraphics c,
-    _Fonts fonts,
-    double x,
-    double y,
-    double w,
-    double h,
-    String label,
-    String value,
-  ) {
-    _rect(c, x, y, w, h);
-    _micro(c, fonts, x + pad, y + h - 10, label);
-    _drawText(c, fonts, value, x + pad, y + 4, w - 2 * pad, 7.5, maxLines: h > 28 ? 2 : 1);
-  }
-
-  double _metaStrip(PdfGraphics c, _Fonts fonts, ShippingLabelData d, double y) {
     const stripH = 36.0;
     final bot = y - stripH;
-    c.setFillColor(fieldBg);
-    c.drawRect(margin, bot, contentW, stripH);
-    c.fillPath();
-    _rect(c, margin, bot, contentW, stripH);
+    c
+      ..setFillColor(fieldBg)
+      ..drawRect(margin, bot, contentW, stripH)
+      ..fillPath();
+    _rect(c, margin, bot, contentW, stripH, lw: 0.75);
     final colW = contentW / 3;
     final specs = [
       (BolFields.documentNumber, 'Document Number'),
@@ -645,9 +802,329 @@ class BolLabelPdf {
           ..strokePath();
       }
       _micro(c, fonts, cx + pad, y - 10, specs[i].$2);
-      _drawText(c, fonts, d.get(specs[i].$1), cx + 4, bot + 5, colW - 8, 8);
+      _drawValue(c, fonts, d.get(specs[i].$1), cx + 4, bot + 5, colW - 8, 14, 8);
+      _hline(c, cx + 4, bot + 5, colW - 8);
     }
     return bot - gap;
+  }
+
+  void _drawPageFrame(PdfGraphics c, double pageH, {required double contentBot}) {
+    final top = pageH - margin + 4;
+    final bot = contentBot - 2;
+    c
+      ..setStrokeColor(rule)
+      ..setLineWidth(0.75)
+      ..drawRect(margin - 3, bot, contentW + 6, top - bot)
+      ..strokePath()
+      ..setFillColor(swift)
+      ..drawRect(margin - 3, pageH - margin + 2, contentW + 6, 3)
+      ..fillPath();
+  }
+
+  void _drawFooter(PdfGraphics c, _Fonts fonts) {
+    final boxY = footerBase;
+    final boxH = footerBoxH;
+    final boxTop = boxY + boxH;
+    c
+      ..setStrokeColor(rule)
+      ..setLineWidth(0.5)
+      ..drawRect(margin, boxY, contentW, boxH)
+      ..strokePath()
+      ..setFillColor(swift)
+      ..drawRect(margin, boxTop - 2, contentW, 2)
+      ..fillPath();
+
+    const size = 5.2;
+    const leading = 6.2;
+    final textW = contentW - 2 * pad;
+    final textH = _measureWrapped(fonts, legal, textW, size: size, leading: leading);
+    final bodyTop = boxTop - 3;
+    final bodyBot = boxY + 2;
+    final bodyH = bodyTop - bodyBot;
+    final topPad = ((bodyH - textH) / 2).clamp(1.0, bodyH);
+    final legalTop = bodyTop - topPad - size + 0.5;
+    _wrapText(
+      c,
+      fonts,
+      legal,
+      margin + pad,
+      legalTop,
+      textW,
+      size: size,
+      leading: leading,
+      color: muted,
+      minY: bodyBot + 1,
+      bold: false,
+    );
+  }
+
+  void _orangeBar(
+    PdfGraphics c,
+    double x,
+    double y,
+    double w,
+    double h, {
+    double r = 3,
+  }) {
+    c.setFillColor(swift);
+    if (r > 0) {
+      c.drawRRect(x, y, w, h, r, r);
+    } else {
+      c.drawRect(x, y, w, h);
+    }
+    c.fillPath();
+  }
+
+  void _rect(
+    PdfGraphics c,
+    double x,
+    double y,
+    double w,
+    double h, {
+    double lw = 0.5,
+  }) {
+    c
+      ..setStrokeColor(rule)
+      ..setLineWidth(lw)
+      ..drawRect(x, y, w, h)
+      ..strokePath();
+  }
+
+  void _hline(PdfGraphics c, double x, double y, double w) {
+    c
+      ..setStrokeColor(rule)
+      ..setLineWidth(0.4)
+      ..drawLine(x, y, x + w, y)
+      ..strokePath();
+  }
+
+  void _sectionTitle(
+    PdfGraphics c,
+    _Fonts fonts,
+    double x,
+    double y,
+    double w,
+    String text,
+    double h,
+  ) {
+    // Sharp corners so panel grids join cleanly.
+    c
+      ..setFillColor(swift)
+      ..drawRect(x, y - h, w, h)
+      ..fillPath();
+    _rect(c, x, y - h, w, h, lw: 0.5);
+    const fontSize = 6.5;
+    c
+      ..setFillColor(white)
+      ..setFont(fonts.bold, fontSize)
+      ..drawString(
+        fonts.bold,
+        fontSize,
+        text,
+        x + pad,
+        y - h + (h - fontSize) / 2 + 0.5,
+      );
+  }
+
+  void _micro(PdfGraphics c, _Fonts fonts, double x, double y, String text) {
+    c
+      ..setFillColor(muted)
+      ..setFont(fonts.bold, 5.5)
+      ..drawString(fonts.bold, 5.5, text.toUpperCase(), x, y);
+  }
+
+  void _radio(PdfGraphics c, double x, double y, double size, bool on) {
+    final r = size / 2 - 1.25;
+    final cx = x + size / 2;
+    final cy = y + size / 2;
+    c
+      ..setFillColor(white)
+      ..drawEllipse(x, y, size, size)
+      ..fillPath()
+      ..setStrokeColor(black)
+      ..setLineWidth(1.1)
+      ..drawEllipse(cx - r, cy - r, r * 2, r * 2)
+      ..strokePath();
+    if (on) {
+      final dr = r * 0.42;
+      c
+        ..setFillColor(black)
+        ..drawEllipse(cx - dr, cy - dr, dr * 2, dr * 2)
+        ..fillPath();
+    }
+  }
+
+  void _cellValue(
+    PdfGraphics c,
+    _Fonts fonts,
+    double x,
+    double y,
+    double w,
+    double h,
+    String label,
+    String value,
+  ) {
+    _rect(c, x, y, w, h, lw: 0.6);
+    _micro(c, fonts, x + pad, y + h - 10, label);
+    _drawValue(
+      c,
+      fonts,
+      value,
+      x + pad,
+      y + 4,
+      w - 2 * pad,
+      (h - 16).clamp(8.0, h),
+      7.5,
+      maxLines: h > 28 ? 2 : 1,
+    );
+  }
+
+  String _latin1(String text) => text
+      .replaceAll('\u2014', '-')
+      .replaceAll('\u2013', '-')
+      .replaceAll('\u2018', "'")
+      .replaceAll('\u2019', "'")
+      .replaceAll('\u201c', '"')
+      .replaceAll('\u201d', '"')
+      .replaceAll('\u2026', '...')
+      .replaceAll('\u00b7', '·')
+      .replaceAllMapped(RegExp(r'[^\x00-\xff]'), (_) => '?');
+
+  double _sw(PdfFont font, double size, String text) =>
+      font.stringMetrics(_latin1(text)).width * size;
+
+  void _drawCentered(
+    PdfGraphics c,
+    PdfFont font,
+    double size,
+    String text,
+    double cx,
+    double y, {
+    required PdfColor color,
+  }) {
+    text = _latin1(text);
+    c
+      ..setFillColor(color)
+      ..setFont(font, size)
+      ..drawString(font, size, text, cx - _sw(font, size, text) / 2, y);
+  }
+
+  void _drawValue(
+    PdfGraphics c,
+    _Fonts fonts,
+    String text,
+    double x,
+    double y,
+    double w,
+    double h,
+    double size, {
+    int maxLines = 1,
+    bool alignTop = false,
+  }) {
+    text = _latin1(text).trim();
+    if (text.isEmpty || w <= 2 || h <= 2) return;
+    final leading = size + 1;
+    final words = text.split(RegExp(r'\s+'));
+    final lines = <String>[];
+    var line = '';
+    for (final word in words) {
+      final trial = line.isEmpty ? word : '$line $word';
+      if (_sw(fonts.bold, size, trial) > w && line.isNotEmpty) {
+        lines.add(line);
+        line = word;
+        if (lines.length >= maxLines) break;
+      } else {
+        line = trial;
+      }
+    }
+    if (line.isNotEmpty && lines.length < maxLines) lines.add(line);
+
+    c
+      ..setFillColor(black)
+      ..setFont(fonts.bold, size);
+    if (alignTop) {
+      var yy = y + h - size;
+      for (final l in lines) {
+        if (yy < y) break;
+        c.drawString(fonts.bold, size, l, x, yy);
+        yy -= leading;
+      }
+    } else {
+      // Baseline near bottom of the field rect (AcroForm-like).
+      var yy = y + (h - size).clamp(0.0, h) * 0.15;
+      if (lines.length > 1) {
+        yy = y + (lines.length - 1) * leading;
+        if (yy + size > y + h) yy = y + h - size;
+      }
+      for (final l in lines) {
+        c.drawString(fonts.bold, size, l, x, yy);
+        yy -= leading;
+      }
+    }
+  }
+
+  double _measureWrapped(
+    _Fonts fonts,
+    String text,
+    double maxW, {
+    required double size,
+    required double leading,
+  }) {
+    final words = text.split(RegExp(r'\s+'));
+    var lines = 0;
+    var current = <String>[];
+    for (final word in words) {
+      final trial = [...current, word].join(' ');
+      if (_sw(fonts.regular, size, trial) <= maxW) {
+        current.add(word);
+      } else {
+        if (current.isNotEmpty) lines++;
+        current = [word];
+      }
+    }
+    if (current.isNotEmpty) lines++;
+    if (lines <= 0) return 0;
+    return size + (lines - 1) * leading;
+  }
+
+  void _wrapText(
+    PdfGraphics c,
+    _Fonts fonts,
+    String text,
+    double x,
+    double y,
+    double maxW, {
+    required double size,
+    required double leading,
+    required PdfColor color,
+    double? minY,
+    bool bold = false,
+  }) {
+    final font = bold ? fonts.bold : fonts.regular;
+    c
+      ..setFillColor(color)
+      ..setFont(font, size);
+    final words = text.split(RegExp(r'\s+'));
+    var curY = y;
+    var current = <String>[];
+    for (final word in words) {
+      final trial = [...current, word].join(' ');
+      if (_sw(font, size, trial) <= maxW) {
+        current.add(word);
+      } else {
+        if (current.isNotEmpty) {
+          if (minY != null && curY < minY) return;
+          c.drawString(font, size, current.join(' '), x, curY);
+          curY -= leading;
+        }
+        current = [word];
+      }
+    }
+    if (current.isNotEmpty) {
+      if (minY == null || curY >= minY) {
+        c.drawString(font, size, current.join(' '), x, curY);
+      }
+    }
   }
 }
 
@@ -655,9 +1132,7 @@ class _Fonts {
   _Fonts({
     required this.regular,
     required this.bold,
-    required this.oswaldBold,
   });
   final PdfFont regular;
   final PdfFont bold;
-  final PdfFont oswaldBold;
 }
