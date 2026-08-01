@@ -182,18 +182,6 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
     };
-    final logos = widget.storage.listLogos();
-    if (logos.isNotEmpty) {
-      final sample = logos.firstWhere(
-        (f) => p.basename(f.path).contains('Pacific'),
-        orElse: () => logos.first,
-      );
-      _logoPaths.add(sample.path);
-    }
-    if (widget.storage.presets.containsKey('Pacific Canbriam')) {
-      _presetName = 'Pacific Canbriam';
-      _applyPreset('Pacific Canbriam', notify: false);
-    }
   }
 
   @override
@@ -223,10 +211,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _applyPreset(String name, {bool notify = true}) {
-    final preset = widget.storage.presets[name];
+  String _presetStorageKey(String displayName) =>
+      AppStorage.presetStorageKey(_kind, displayName);
+
+  void _applyPreset(String displayName, {bool notify = true}) {
+    final preset = widget.storage.presetFor(_kind, displayName);
     if (preset == null) return;
-    for (final key in LabelFields.presetKeys) {
+    for (final key in presetKeysFor(_kind)) {
       if (preset.fields.containsKey(key)) {
         _setField(key, preset.fields[key] ?? '');
       }
@@ -239,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .where((path) => File(path).existsSync())
             .take(maxCustomerLogos),
       );
-    _presetName = name;
+    _presetName = displayName;
     if (notify) setState(() {});
   }
 
@@ -251,7 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (name == null || name.trim().isEmpty) return;
 
     final fields = <String, String>{};
-    for (final key in LabelFields.presetKeys) {
+    for (final key in presetKeysFor(_kind)) {
       fields[key] = _controllers[key]?.text.trim() ?? '';
     }
 
@@ -267,16 +258,18 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    widget.storage.presets[name.trim()] = CustomerPreset(
-      name: name.trim(),
+    final displayName = name.trim();
+    widget.storage.presets[_presetStorageKey(displayName)] = CustomerPreset(
+      name: displayName,
+      kind: _kind,
       fields: fields,
       logoFileNames: logoNames,
     );
     await widget.storage.savePresets();
-    setState(() => _presetName = name.trim());
+    setState(() => _presetName = displayName);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved preset “${name.trim()}”.')),
+        SnackBar(content: Text('Saved preset “$displayName”.')),
       );
     }
   }
@@ -302,7 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (ok != true) return;
-    widget.storage.presets.remove(name);
+    widget.storage.presets.remove(_presetStorageKey(name));
     await widget.storage.savePresets();
     setState(() => _presetName = null);
   }
@@ -372,10 +365,12 @@ class _HomeScreenState extends State<HomeScreen> {
         final name = widget.storage.safeCustomerName(
           p.basenameWithoutExtension(imported.path),
         );
+        final storageKey = AppStorage.presetStorageKey(_kind, name);
         widget.storage.presets.putIfAbsent(
-          name,
+          storageKey,
           () => CustomerPreset(
             name: name,
+            kind: _kind,
             logoFileNames: [p.basename(imported.path)],
             fields: {LabelFields.customer: name.toUpperCase()},
           ),
@@ -802,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final logos = widget.storage.listLogos();
-    final presetNames = widget.storage.presets.keys.toList()..sort();
+    final presetNames = widget.storage.presetDisplayNamesFor(_kind);
     final groups = switch (_kind) {
       LabelKind.receiving => _receivingGroups,
       LabelKind.bol => _bolGroups,
@@ -840,7 +835,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                   selected: {_kind},
                   onSelectionChanged: (s) {
-                    setState(() => _kind = s.first);
+                    setState(() {
+                      _kind = s.first;
+                      _presetName = null;
+                    });
                   },
                   style: ButtonStyle(
                     textStyle: WidgetStatePropertyAll(
@@ -910,15 +908,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 10),
                 _Card(
                   title: 'Customer preset',
-                  hint: 'Reuse customer defaults; shipment fields stay per job',
+                  hint:
+                      'Presets are saved per document type; shipment fields stay per job',
                   child: Column(
                     children: [
                       DropdownButtonFormField<String>(
-                        key: ValueKey('preset-$_presetName-${presetNames.length}'),
-                        initialValue: presetNames.contains(_presetName)
+                        key: ValueKey(
+                          'preset-$_kind-$_presetName-${presetNames.length}',
+                        ),
+                        initialValue: _presetName != null &&
+                                presetNames.contains(_presetName)
                             ? _presetName
                             : null,
-                        decoration: const InputDecoration(labelText: 'PRESET'),
+                        decoration: const InputDecoration(
+                          labelText: 'PRESET',
+                          hintText: 'Select preset',
+                        ),
                         items: [
                           for (final n in presetNames)
                             DropdownMenuItem(value: n, child: Text(n)),

@@ -19,6 +19,38 @@ class AppStorage {
 
   Map<String, CustomerPreset> presets = {};
 
+  /// Storage map key for a preset (`shipping::Name`, etc.).
+  static String presetStorageKey(LabelKind kind, String displayName) =>
+      '${kind.name}::$displayName';
+
+  static LabelKind presetKindFromStorageKey(String storageKey) {
+    final sep = storageKey.indexOf('::');
+    if (sep <= 0) return LabelKind.shipping;
+    final kindName = storageKey.substring(0, sep);
+    return LabelKind.values.firstWhere(
+      (k) => k.name == kindName,
+      orElse: () => LabelKind.shipping,
+    );
+  }
+
+  static String presetDisplayNameFromStorageKey(String storageKey) {
+    final sep = storageKey.indexOf('::');
+    if (sep < 0) return storageKey;
+    return storageKey.substring(sep + 2);
+  }
+
+  List<String> presetDisplayNamesFor(LabelKind kind) {
+    final prefix = '${kind.name}::';
+    return presets.entries
+        .where((e) => e.key.startsWith(prefix))
+        .map((e) => e.value.name)
+        .toList()
+      ..sort();
+  }
+
+  CustomerPreset? presetFor(LabelKind kind, String displayName) =>
+      presets[presetStorageKey(kind, displayName)];
+
   static Future<AppStorage> open() async {
     final docs = await getApplicationDocumentsDirectory();
     final root = Directory(p.join(docs.path, 'swift_document_generator'));
@@ -47,24 +79,38 @@ class AppStorage {
   Future<void> loadPresets() async {
     presets = {};
     if (!await presetsFile.exists()) return;
+    var migrated = false;
     try {
       final data = jsonDecode(await presetsFile.readAsString()) as Map<String, dynamic>;
       final customers = data['customers'];
       if (customers is Map) {
         for (final entry in customers.entries) {
+          final rawKey = entry.key.toString();
           final v = entry.value;
-          if (v is Map<String, dynamic>) {
-            presets[entry.key.toString()] = CustomerPreset.fromJson(
-              entry.key.toString(),
-              v,
-            );
-          } else if (v is Map) {
-            presets[entry.key.toString()] = CustomerPreset.fromJson(
-              entry.key.toString(),
-              Map<String, dynamic>.from(v),
-            );
-          }
+          if (v is! Map) continue;
+          final json = v is Map<String, dynamic>
+              ? v
+              : Map<String, dynamic>.from(v);
+
+          final legacy = !rawKey.contains('::');
+          final kind = legacy
+              ? LabelKind.shipping
+              : presetKindFromStorageKey(rawKey);
+          final displayName = legacy
+              ? rawKey
+              : presetDisplayNameFromStorageKey(rawKey);
+          final storageKey = presetStorageKey(kind, displayName);
+
+          if (legacy) migrated = true;
+          presets[storageKey] = CustomerPreset.fromJson(
+            displayName,
+            json,
+            defaultKind: kind,
+          );
         }
+      }
+      if (migrated) {
+        await savePresets();
       }
     } catch (_) {
       presets = {};
@@ -86,20 +132,6 @@ class AppStorage {
     if (!await dest.exists()) {
       final bytes = await rootBundle.load('assets/images/sample_customer_logo.png');
       await dest.writeAsBytes(bytes.buffer.asUint8List());
-    }
-    if (!presets.containsKey('Pacific Canbriam')) {
-      presets['Pacific Canbriam'] = CustomerPreset(
-        name: 'Pacific Canbriam',
-        logoFileNames: const ['Pacific Canbriam.png'],
-        fields: {
-          LabelFields.customer: 'PACIFIC CANBRIAM',
-          LabelFields.shipTo: 'STRAIT PROJECTS',
-          LabelFields.location: '12341 271 RD, FORT ST. JOHN, BC',
-          LabelFields.attn: 'RICK SHUMAN / JEREMY PLATZ',
-          LabelFields.carrier: 'WILLYS',
-        },
-      );
-      await savePresets();
     }
   }
 

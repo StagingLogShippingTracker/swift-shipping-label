@@ -609,8 +609,10 @@ def checkbox_field(c: canvas.Canvas, form, name: str, x: float, y: float, label:
 
 
 def radio_option(c: canvas.Canvas, form, group: str, value: str, x: float, y: float, label: str,
-                 size: float = 11) -> float:
+                 size: float = 8) -> float:
     """Circular radio widget. Returns the width occupied (widget + label)."""
+    label_size = 6.5
+    label_gap = 4.0
     # No widget border — rebuild_freight_radios supplies the only visible circle.
     form.radio(
         name=group,
@@ -629,10 +631,11 @@ def radio_option(c: canvas.Canvas, form, group: str, value: str, x: float, y: fl
         forceBorder=False,
     )
     c.setFillColor(INK_SECONDARY)
-    c.setFont("Helvetica", 6.5)
-    label_x = x + size + 4
-    c.drawString(label_x, y + 1.5, label)
-    return size + 4 + c.stringWidth(label, "Helvetica", 6.5)
+    c.setFont("Helvetica", label_size)
+    label_x = x + size + label_gap
+    label_y = y + size / 2 - label_size * 0.35
+    c.drawString(label_x, label_y, label)
+    return size + label_gap + c.stringWidth(label, "Helvetica", label_size)
 
 
 def _bezier_circle(cx: float, cy: float, r: float) -> str:
@@ -647,11 +650,11 @@ def _bezier_circle(cx: float, cy: float, r: float) -> str:
     )
 
 
-def _radio_circle_ap(on: bool, size: float = 11) -> StreamObject:
+def _radio_circle_ap(on: bool, size: float = 8) -> StreamObject:
     """Clean circular radio AP — no square frame (avoids the vertical bleed line)."""
     cx = cy = size / 2.0
     # Keep ring fully inside the widget so stroke never clips into a square edge.
-    r = (size / 2.0) - 1.25
+    r = (size / 2.0) - 0.9
     ring = _bezier_circle(cx, cy, r)
     if on:
         dot = _bezier_circle(cx, cy, r * 0.42)
@@ -747,7 +750,7 @@ def rebuild_freight_radios(pdf_path: Path) -> None:
     for ref, state in zip(widgets, export_for):
         annot = ref.get_object()
         rect = [float(v) for v in annot.get("/Rect")]
-        size = max(rect[2] - rect[0], rect[3] - rect[1], 11)
+        size = max(rect[2] - rect[0], rect[3] - rect[1], 8)
         off_ap = writer._add_object(_radio_circle_ap(False, size))
         on_ap = writer._add_object(_radio_circle_ap(True, size))
         ap_n = DictionaryObject({
@@ -1237,11 +1240,12 @@ def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
     freight_h = hdr_h + bill_h
     rect_stroke(c, rx, y - freight_h, col_w, freight_h, 0.75)
     section_title(c, rx, y, col_w, "FREIGHT CHARGES", hdr_h)
-    # Vertically center radios in the body; evenly distribute across the panel width.
-    radio_size = 11
+    # Vertically center radios + labels in the body; evenly distribute across the panel width.
+    radio_size = 8
     body_bot = y - freight_h
     body_top = y - hdr_h
-    ry = body_bot + (body_top - body_bot - radio_size) / 2
+    row_center = (body_bot + body_top) / 2
+    ry = row_center - radio_size / 2
     options = (
         ("prepaid", "Prepaid"),
         ("collect", "Collect"),
@@ -1251,7 +1255,7 @@ def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
     inner_right = rx + col_w - PAD
     # Measure each option width, then space remaining gap evenly between them.
     c.setFont("Helvetica", 6.5)
-    widths = [radio_size + 4 + c.stringWidth(lbl, "Helvetica", 6.5) for _, lbl in options]
+    widths = [radio_size + 4 + c.stringWidth(lbl, "Helvetica", 6.5) for _, lbl in options]  # 4 = label gap
     total_w = sum(widths)
     gaps = 2  # spaces between the three options
     free = max(inner_right - inner_left - total_w, 0)

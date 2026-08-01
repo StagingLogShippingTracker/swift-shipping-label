@@ -280,14 +280,15 @@ class BolLabelPdf {
     _rect(c, rx, y - freightH, colW, freightH, lw: 0.75);
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
     final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
-    const radioSize = 10.0;
+    const radioSize = 8.0;
     const labelSize = 7.0;
+    const radioLabelGap = 4.0;
     final freightBodyBot = y - freightH;
     final freightBodyTop = y - hdrH;
-    final bodyMid = (freightBodyBot + freightBodyTop) / 2;
-    final ry = bodyMid - radioSize / 2;
-    // PDF text baseline sits below the glyph center — nudge up to optical mid.
-    final labelY = ry + (radioSize - labelSize) / 2 + 0.8;
+    final rowCenter = (freightBodyBot + freightBodyTop) / 2;
+    final ry = rowCenter - radioSize / 2;
+    // Baseline so label cap-height aligns with the radio circle center.
+    final labelY = rowCenter - labelSize * 0.35;
     final options = [
       ('prepaid', 'Prepaid'),
       ('collect', 'Collect'),
@@ -296,7 +297,8 @@ class BolLabelPdf {
     final innerLeft = rx + pad + 2;
     final innerRight = rx + colW - pad - 2;
     final widths = [
-      for (final o in options) radioSize + 5 + _sw(fonts.regular, labelSize, o.$2),
+      for (final o in options)
+        radioSize + radioLabelGap + _sw(fonts.regular, labelSize, o.$2),
     ];
     final totalW = widths.fold<double>(0, (a, b) => a + b);
     final free = (innerRight - innerLeft - totalW).clamp(0.0, double.infinity);
@@ -312,7 +314,13 @@ class BolLabelPdf {
       c
         ..setFillColor(black)
         ..setFont(fonts.regular, labelSize)
-        ..drawString(fonts.regular, labelSize, label, ox + radioSize + 5, labelY);
+        ..drawString(
+          fonts.regular,
+          labelSize,
+          label,
+          ox + radioSize + radioLabelGap,
+          labelY,
+        );
       ox += widths[i] + radioGap;
     }
     y -= freightH + gap;
@@ -1014,17 +1022,17 @@ class BolLabelPdf {
   void _radio(PdfGraphics c, double x, double y, double size, bool on) {
     final cx = x + size / 2;
     final cy = y + size / 2;
-    final r = size / 2 - 0.6;
+    final r = size / 2 - 0.45;
     c
       ..setFillColor(white)
       ..drawEllipse(x, y, size, size)
       ..fillPath()
       ..setStrokeColor(on ? swift : black)
-      ..setLineWidth(on ? 1.35 : 1.0)
+      ..setLineWidth(on ? 1.1 : 0.85)
       ..drawEllipse(cx - r, cy - r, r * 2, r * 2)
       ..strokePath();
     if (on) {
-      final dr = r * 0.48;
+      final dr = r * 0.45;
       c
         ..setFillColor(swift)
         ..drawEllipse(cx - dr, cy - dr, dr * 2, dr * 2)

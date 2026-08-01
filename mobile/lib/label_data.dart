@@ -115,7 +115,7 @@ class LabelFields {
     ...BolFields.formDefs,
   ];
 
-  /// Fields stored on a customer preset (shipment-specific stay blank).
+  /// Legacy shipping preset keys (prefer [presetKeysFor]).
   static const presetKeys = <String>[
     customer,
     shipTo,
@@ -126,6 +126,46 @@ class LabelFields {
     specialInstructions,
     pm,
   ];
+}
+
+/// Form field keys persisted on a customer preset for [kind].
+List<String> presetKeysFor(LabelKind kind) {
+  switch (kind) {
+    case LabelKind.shipping:
+      return const [
+        LabelFields.customer,
+        LabelFields.shipTo,
+        LabelFields.location,
+        LabelFields.attn,
+        LabelFields.carrier,
+        LabelFields.swiftContact,
+        LabelFields.specialInstructions,
+      ];
+    case LabelKind.receiving:
+      return const [
+        LabelFields.customer,
+        LabelFields.project,
+        LabelFields.poNum,
+        LabelFields.specialInstructions,
+        LabelFields.pm,
+      ];
+    case LabelKind.bol:
+      return const [
+        LabelFields.customer,
+        LabelFields.specialInstructions,
+        LabelFields.poNum,
+        LabelFields.project,
+        BolFields.consigneeName,
+        BolFields.consigneeAddress,
+        BolFields.consigneeContactName,
+        BolFields.consigneeContactNumber,
+        BolFields.freightCharges,
+        BolFields.packingList,
+        BolFields.orderNum,
+        BolFields.driverCompany,
+        BolFields.shipperCertName,
+      ];
+  }
 }
 
 class ShippingLabelData {
@@ -209,11 +249,13 @@ class CustomerPreset {
   CustomerPreset({
     required this.name,
     required this.fields,
+    this.kind = LabelKind.shipping,
     this.logoFileNames = const [],
   });
 
   final String name;
   final Map<String, String> fields;
+  final LabelKind kind;
   /// Up to [maxCustomerLogos] filenames under app logo storage.
   final List<String> logoFileNames;
 
@@ -222,15 +264,28 @@ class CustomerPreset {
       logoFileNames.isEmpty ? '' : logoFileNames.first;
 
   Map<String, dynamic> toJson() => {
+        'kind': kind.name,
         ...fields,
         'logos': logoFileNames,
         // Keep legacy key for older app versions
         if (logoFileNames.isNotEmpty) 'logo': logoFileNames.first,
       };
 
-  factory CustomerPreset.fromJson(String name, Map<String, dynamic> json) {
+  factory CustomerPreset.fromJson(
+    String name,
+    Map<String, dynamic> json, {
+    LabelKind defaultKind = LabelKind.shipping,
+  }) {
+    var kind = defaultKind;
+    final rawKind = json['kind'];
+    if (rawKind is String) {
+      kind = LabelKind.values.firstWhere(
+        (k) => k.name == rawKind,
+        orElse: () => defaultKind,
+      );
+    }
     final fields = <String, String>{};
-    for (final key in LabelFields.presetKeys) {
+    for (final key in presetKeysFor(kind)) {
       final v = json[key];
       if (v != null) fields[key] = '$v';
     }
@@ -249,6 +304,7 @@ class CustomerPreset {
     return CustomerPreset(
       name: name,
       fields: fields,
+      kind: kind,
       logoFileNames: logos.take(maxCustomerLogos).toList(),
     );
   }
