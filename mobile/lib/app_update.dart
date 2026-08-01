@@ -279,4 +279,42 @@ class AppUpdateService {
     await _native.invokeMethod<bool>('installApk', {'path': file.path});
     return file;
   }
+
+  /// Download Windows zip into app support and extract beside it.
+  Future<Directory> downloadAndExtractWindows({
+    required AppReleaseInfo release,
+    void Function(double progress)? onProgress,
+  }) async {
+    final url = release.windowsZipUrl;
+    if (url == null || url.isEmpty) {
+      throw Exception('No Windows zip asset on this release.');
+    }
+    final zip = await downloadToAppStorage(
+      url: url,
+      fileName: AppConfig.windowsZipAsset,
+      onProgress: onProgress,
+    );
+    final support = await getApplicationSupportDirectory();
+    final extractRoot = Directory(
+      p.join(support.path, 'updates', 'extracted-${release.tagName}'),
+    );
+    if (await extractRoot.exists()) {
+      await extractRoot.delete(recursive: true);
+    }
+    await extractRoot.create(recursive: true);
+
+    // Prefer PowerShell Expand-Archive (always available on Win10+).
+    final result = await Process.run('powershell', [
+      '-NoProfile',
+      '-Command',
+      "Expand-Archive -LiteralPath '${zip.path.replaceAll("'", "''")}' "
+          "-DestinationPath '${extractRoot.path.replaceAll("'", "''")}' -Force",
+    ]);
+    if (result.exitCode != 0) {
+      throw Exception(
+        'Could not extract update:\n${result.stderr}'.trim(),
+      );
+    }
+    return extractRoot;
+  }
 }

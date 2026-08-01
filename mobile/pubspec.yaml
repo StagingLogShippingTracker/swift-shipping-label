@@ -1,7 +1,7 @@
 name: swift_shipping_label
-description: Swift Oilfield Supply — Shipping Label generator for Android.
+description: Swift Oilfield Supply — Shipping Label generator (Android + Windows).
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.12.2
@@ -16,6 +16,7 @@ dependencies:
   http: ^1.2.2
   package_info_plus: ^8.1.2
   url_launcher: ^6.3.1
+  file_selector: ^1.0.3
 
 dev_dependencies:
   flutter_test:

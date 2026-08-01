@@ -80,12 +80,23 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $assets = @()
 
 if (-not $SkipWindows) {
-    Write-Host "`n=== Windows portable ==="
-    & (Join-Path $root "build_exe.ps1")
+    Write-Host "`n=== Windows portable (Flutter) ==="
+    & (Join-Path $root "scripts\build_windows.ps1")
     $onedir = Join-Path $dist "Swift Shipping Label"
-    if (-not (Test-Path (Join-Path $onedir "Swift Shipping Label.exe"))) {
-        throw "Windows build missing: $onedir"
+    $exe = Join-Path $onedir "swift_shipping_label.exe"
+    if (-not (Test-Path $exe)) {
+        throw "Windows build missing: $exe"
     }
+    @"
+Swift Supply - Shipping Label (portable Flutter)
+
+- Run: swift_shipping_label.exe
+- No install, no admin rights required
+- Do not put this folder in C:\Program Files
+- Data (presets, logos, PDFs): %LOCALAPPDATA%\SwiftShippingLabel\
+
+Copy this entire folder to any work PC (Documents / Desktop / USB) and run.
+"@ | Set-Content -Path (Join-Path $onedir "README-PORTABLE.txt") -Encoding UTF8
     $zip = Join-Path $dist "SwiftShippingLabel-windows.zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path $onedir -DestinationPath $zip -CompressionLevel Optimal
@@ -143,8 +154,12 @@ $title = "Swift Shipping Label $Version"
 $notes = @"
 ## Swift Shipping Label $Version
 
+### What's new
+- Print PDF: bold Calibri entries (18), Ship To 22, Sales Order 36 with orange pill; shrink only when needed
+- Windows UI: tighter category / piece-count field spacing on wide screens
+
 ### Assets
-- ``SwiftShippingLabel-windows.zip`` — portable onedir (no admin). Extract and run ``Swift Shipping Label.exe``.
+- ``SwiftShippingLabel-windows.zip`` — portable Flutter onedir (no admin). Extract and run ``swift_shipping_label.exe``.
 - ``SwiftShippingLabel-android.apk`` — Android install package.
 
 ### In-app Update

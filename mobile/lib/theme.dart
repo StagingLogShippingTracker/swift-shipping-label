@@ -56,7 +56,7 @@ class SwiftTheme {
         filled: true,
         fillColor: const Color(0xFFFAFAF8),
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         labelStyle: const TextStyle(
           fontFamily: 'Oswald',
           fontSize: 12,

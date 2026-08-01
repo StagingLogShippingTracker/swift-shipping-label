@@ -2,16 +2,14 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
 import 'label_data.dart';
 import 'pdf/shipping_label_pdf.dart';
+import 'platform_io.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
-
-const _native = MethodChannel('com.swiftoilfield.swift_shipping_label/native');
 
 const _groups = <(String title, String hint, List<String> keys)>[
   (
@@ -226,12 +224,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<List<String>> _pickImages({required bool multiple}) async {
-    final raw = await _native.invokeMethod<List<dynamic>>('pickImages', {
-      'multiple': multiple,
-    });
-    return (raw ?? const []).map((e) => '$e').where((e) => e.isNotEmpty).toList();
-  }
+  Future<List<String>> _pickImages({required bool multiple}) =>
+      pickImagePaths(multiple: multiple);
 
   Future<void> _importLogos() async {
     final paths = await _pickImages(multiple: true);
@@ -365,15 +359,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final file = await widget.storage.writePdf(name, bytes);
 
-      await _native.invokeMethod<bool>('shareFile', {
-        'path': file.path,
-        'mime': 'application/pdf',
-        'subject': 'Swift Supply Shipping Label',
-      });
+      await shareOrOpenFile(file: file);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved & sharing:\n${file.path}')),
+          SnackBar(content: Text('Saved:\n${file.path}')),
         );
       }
     } catch (e) {
@@ -395,20 +385,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Column(
         children: [
-          _Header(busy: _busy),
+          RepaintBoundary(child: _Header(busy: _busy)),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              cacheExtent: 500,
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               children: [
                 Text(
                   'Pre-fill the label → Generate PDF. Long PO / Project lines wrap and shrink Special Instructions for print.',
                   style: TextStyle(
                     color: SwiftColors.muted,
                     fontSize: 13,
-                    height: 1.35,
+                    height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 _Card(
                   title: 'Customer preset',
                   hint: 'Reuse customer defaults; shipment fields stay per job',
@@ -497,6 +490,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Image.file(
                               File(_activeLogoPath!),
                               height: 52,
+                              cacheWidth: 240,
+                              filterQuality: FilterQuality.medium,
+                              gaplessPlayback: true,
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -540,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   builder: (_) {
                                     final m = _meta(key);
                                     return Padding(
-                                      padding: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.only(bottom: 6),
                                       child: TextField(
                                         controller: _controllers[key],
                                         maxLines: m.$3 ? 3 : 1,
@@ -576,9 +572,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          _BottomBar(
-            busy: _busy,
-            onGenerate: _generateAndShare,
+          RepaintBoundary(
+            child: _BottomBar(
+              busy: _busy,
+              onGenerate: _generateAndShare,
+            ),
           ),
         ],
       ),
@@ -637,12 +635,27 @@ class _Header extends StatelessWidget {
                   ),
                 )
               else
-                IconButton(
-                  tooltip: 'Update',
+                TextButton.icon(
                   onPressed: () => showUpdateFlow(context),
-                  icon: const Icon(
-                    Icons.system_update_alt,
-                    color: Colors.white,
+                  style: TextButton.styleFrom(
+                    foregroundColor: SwiftColors.accent,
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.system_update_alt, size: 18),
+                  label: const Text(
+                    'Update',
+                    style: TextStyle(
+                      fontFamily: 'Oswald',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
             ],
@@ -697,10 +710,10 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -714,7 +727,7 @@ class _Card extends StatelessWidget {
                   letterSpacing: 0.3,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 hint,
                 style: const TextStyle(
@@ -722,7 +735,7 @@ class _Card extends StatelessWidget {
                   color: SwiftColors.muted,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               child,
             ],
           ),
@@ -745,19 +758,34 @@ class _PieceGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 2.4,
+    // Row layout (not GridView): wide Windows windows inflate GridView cell
+    // height via childAspectRatio and leave huge gaps between piece fields.
+    final rows = <List<String>>[];
+    for (var i = 0; i < keys.length; i += 2) {
+      rows.add(keys.sublist(i, i + 2 > keys.length ? keys.length : i + 2));
+    }
+    return Column(
       children: [
-        for (final key in keys)
-          TextField(
-            controller: controllers[key],
-            decoration: InputDecoration(labelText: meta(key).$2.toUpperCase()),
+        for (var r = 0; r < rows.length; r++) ...[
+          if (r > 0) const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var c = 0; c < rows[r].length; c++) ...[
+                if (c > 0) const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: controllers[rows[r][c]],
+                    decoration: InputDecoration(
+                      labelText: meta(rows[r][c]).$2.toUpperCase(),
+                    ),
+                  ),
+                ),
+              ],
+              if (rows[r].length == 1) const Expanded(child: SizedBox.shrink()),
+            ],
           ),
+        ],
       ],
     );
   }

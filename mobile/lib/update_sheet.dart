@@ -8,13 +8,19 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
 import 'app_update.dart';
+import 'platform_io.dart';
 import 'theme.dart';
 
-/// Header / menu Update flow: check GitHub Releases and install APK.
+AppUpdatePlatform get _platform {
+  if (Platform.isAndroid) return AppUpdatePlatform.android;
+  return AppUpdatePlatform.windows;
+}
+
+/// Header Update control — bottom sheet on all supported platforms.
 Future<void> showUpdateFlow(BuildContext context) async {
-  if (kIsWeb || !Platform.isAndroid) {
+  if (kIsWeb) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Update is available on Android builds.')),
+      const SnackBar(content: Text('Updates are not supported on web.')),
     );
     return;
   }
@@ -70,10 +76,11 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     });
     try {
       final info = _info ?? await PackageInfo.fromPlatform();
+      final platform = _platform;
       final result = await _svc.checkForUpdate(
         installedVersion: info.version,
         installedBuild: info.buildNumber,
-        platform: AppUpdatePlatform.android,
+        platform: platform,
       );
       if (!mounted) return;
       setState(() {
@@ -81,10 +88,12 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         _latest = result.latest;
       });
 
+      final assetLabel = result.latest.assetLabelFor(platform) ?? 'release asset';
+
       if (result.missingPlatformAsset) {
         setState(() {
           _status =
-              'Latest ${result.latest.tagName} has no Android APK yet.';
+              'Latest ${result.latest.tagName} has no $assetLabel yet.';
         });
         return;
       }
@@ -103,11 +112,11 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         builder: (ctx) => AlertDialog(
           title: const Text('Update available'),
           content: Text(
-            'A newer Android build is available:\n'
+            'A newer build is available:\n'
             '${result.latest.name.isEmpty ? result.latest.tagName : result.latest.name}\n\n'
-            'Package: ${result.latest.assetLabelFor(AppUpdatePlatform.android)}\n'
+            'Package: $assetLabel\n'
             'Installed: ${info.version}+${info.buildNumber}\n\n'
-            'Download and open the installer?',
+            '${platform == AppUpdatePlatform.android ? 'Download and open the installer?' : 'Download and open the updates folder?'}',
           ),
           actions: [
             TextButton(
@@ -122,7 +131,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         ),
       );
       if (confirm != true || !mounted) return;
-      await _downloadAndInstall(result.latest);
+      await _downloadAndInstall(result.latest, platform);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -131,7 +140,10 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     }
   }
 
-  Future<void> _downloadAndInstall(AppReleaseInfo release) async {
+  Future<void> _downloadAndInstall(
+    AppReleaseInfo release,
+    AppUpdatePlatform platform,
+  ) async {
     setState(() {
       _installing = true;
       _progress = 0;
@@ -139,25 +151,43 @@ class _UpdateSheetState extends State<_UpdateSheet> {
       _status = 'Downloading…';
     });
     try {
-      await _svc.downloadAndInstallAndroid(
-        release: release,
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() {
-            _progress = p;
-            _status = p >= 1.0
-                ? 'Opening package installer…'
-                : 'Downloading… ${(p * 100).round()}%';
-          });
-        },
-      );
-      if (!mounted) return;
-      setState(() => _status = 'Installer opened — follow on-screen prompts.');
+      if (platform == AppUpdatePlatform.android) {
+        await _svc.downloadAndInstallAndroid(
+          release: release,
+          onProgress: (p) {
+            if (!mounted) return;
+            setState(() {
+              _progress = p;
+              _status = p >= 1.0
+                  ? 'Opening package installer…'
+                  : 'Downloading… ${(p * 100).round()}%';
+            });
+          },
+        );
+        if (!mounted) return;
+        setState(() => _status = 'Installer opened — follow on-screen prompts.');
+      } else {
+        final dir = await _svc.downloadAndExtractWindows(
+          release: release,
+          onProgress: (p) {
+            if (!mounted) return;
+            setState(() {
+              _progress = p;
+              _status = p >= 1.0
+                  ? 'Extracting…'
+                  : 'Downloading… ${(p * 100).round()}%';
+            });
+          },
+        );
+        if (!mounted) return;
+        setState(() => _status = 'Update ready — opening folder.');
+        await openFolder(dir.path);
+      }
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message ?? e.toString();
-        _status = 'Could not open installer. Try View releases.';
+        _status = 'Could not finish update. Try View releases.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -187,6 +217,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         ? '…'
         : '${_info!.version}+${_info!.buildNumber}';
     final busy = _checking || _installing;
+    final isAndroid = Platform.isAndroid;
 
     return SafeArea(
       child: Padding(
@@ -230,8 +261,9 @@ class _UpdateSheetState extends State<_UpdateSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Checks GitHub Releases for a newer Android APK and downloads '
-              'it into app-private storage.',
+              isAndroid
+                  ? 'Checks GitHub Releases for a newer APK and installs it.'
+                  : 'Checks GitHub Releases for a newer Windows build and opens the download folder.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: SwiftColors.muted,
                   ),

@@ -63,12 +63,16 @@ FONT_BOLD = "Oswald-Bold"
 # same point size as a stand-in while typing.
 ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
-ENTRY_SIZE = 9
-ENTRY_HERO = 15
-ENTRY_NOTES = 9
-LINE_GAP = 2.5
-# Max wrap lines for PO / Project before Special Instructions absorbs the rest
+ENTRY_SIZE = 18
+ENTRY_HERO = 22
+ENTRY_SO = 36
+ENTRY_NOTES = 18
+ENTRY_MIN = 9
+LINE_GAP = 3.0
+# Max wrap lines for PO / Project before we shrink type instead of growing further
 WRAP_MAX_LINES = 2
+# Faint orange pill behind Sales Order number
+SO_BG = colors.HexColor("#F8EBE7")
 
 
 def _font_candidates(filename: str) -> list[Path]:
@@ -144,17 +148,57 @@ def wrap_lines(text: str, max_w: float, font: str, size: float) -> list[str]:
     return lines
 
 
+def fit_single_line_size(
+    text: str,
+    max_w: float,
+    preferred: float = ENTRY_SIZE,
+    min_size: float = ENTRY_MIN,
+    font: str = ENTRY_BOLD,
+) -> float:
+    """Keep preferred size; shrink only when the line would overflow width."""
+    text = (text or "").strip()
+    if not text:
+        return preferred
+    size = float(preferred)
+    while size > min_size and stringWidth(text, font, size) > max_w:
+        size -= 0.5
+    return size
+
+
+def fit_wrapped_size(
+    text: str,
+    max_w: float,
+    preferred: float = ENTRY_SIZE,
+    max_lines: int = WRAP_MAX_LINES,
+    min_size: float = ENTRY_MIN,
+    font: str = ENTRY_BOLD,
+) -> float:
+    """Wrap up to max_lines at preferred size; shrink only if still overflowing."""
+    text = (text or "").strip()
+    if not text:
+        return preferred
+    size = float(preferred)
+    while size > min_size:
+        lines = wrap_lines(text, max_w, font, size)
+        if len(lines) <= max_lines:
+            return size
+        size -= 0.5
+    return min_size
+
+
 def field_height_for(
     text: str,
     col_w: float,
-    font: str = ENTRY,
-    size: float = ENTRY_SIZE,
+    font: str = ENTRY_BOLD,
+    size: float | None = None,
     max_lines: int = WRAP_MAX_LINES,
     reserve_max: bool = False,
-    pad: float = 7,
-    min_h: float = 16,
+    pad: float = 8,
+    min_h: float = 22,
 ) -> float:
-    """Height for a value field. Blank fillable templates reserve max wrap lines."""
+    """Height for a wrapped value field at the given (already-fitted) size."""
+    if size is None:
+        size = fit_wrapped_size(text, col_w - 4, ENTRY_SIZE, max_lines, font=font)
     if reserve_max:
         n = max_lines
     else:
@@ -264,13 +308,14 @@ def draw_value(
     w: float,
     h: float,
     font_size: float = ENTRY_SIZE,
-    font_name: str = ENTRY,
+    font_name: str = ENTRY_BOLD,
     multiline: bool = False,
+    color=BLACK,
 ) -> None:
-    """Static Calibri entry value (samples / generated fills)."""
+    """Static Calibri Bold entry value (samples / generated fills)."""
     if not text:
         return
-    c.setFillColor(BLACK)
+    c.setFillColor(color)
     c.setFont(font_name, font_size)
     if multiline:
         lines = wrap_lines(str(text), w - 4, font_name, font_size)
@@ -350,74 +395,138 @@ def field_row(
     x: float,
     col_w: float,
     sample: dict,
-    value_h: float = 18,
-    value_size: float = ENTRY_SIZE,
-    value_font: str = ENTRY,
+    value_h: float | None = None,
+    value_size: float | None = None,
+    value_font: str = ENTRY_BOLD,
     multiline: bool = False,
+    preferred_size: float = ENTRY_SIZE,
 ) -> float:
     micro_label(c, x, y, label)
     y -= 3
     val = sample.get(key, "")
+    if multiline:
+        size = (
+            value_size
+            if value_size is not None
+            else fit_wrapped_size(val, col_w - 4, preferred_size)
+        )
+        vh = value_h if value_h is not None else field_height_for(val, col_w, size=size)
+    else:
+        size = (
+            value_size
+            if value_size is not None
+            else fit_single_line_size(val, col_w - 4, preferred_size)
+        )
+        vh = value_h if value_h is not None else max(size + 10, 26)
+
     put_field(
         form,
         key,
         x,
-        y - value_h,
+        y - vh,
         col_w,
-        value_h,
+        vh,
         "",
-        value_size,
-        font_name="Helvetica",
+        size,
+        font_name="Helvetica-Bold",
         multiline=multiline,
+    )
+    if val:
+        draw_value(c, val, x, y - vh, col_w, vh, size, value_font, multiline=multiline)
+    hairline(c, x, y - vh - 1, col_w)
+    return y - vh - 12
+
+
+def draw_sales_order_row(
+    c: canvas.Canvas, form, y: float, x: float, col_w: float, sample: dict
+) -> float:
+    """Sales Order — Calibri Bold 36 in a faint orange rounded pill; shrink only if needed."""
+    micro_label(c, x, y, "Swift Sales Order No.")
+    y -= 4
+    val = (sample.get("sales_order") or "").strip()
+    pad_x, pad_y = 12, 8
+    size = fit_single_line_size(val, col_w - 2 * pad_x, ENTRY_SO, min_size=14)
+    text_w = stringWidth(val, ENTRY_BOLD, size) if val else size * 2
+    pill_w = min(col_w, text_w + 2 * pad_x)
+    pill_h = size + 2 * pad_y
+    row_h = max(pill_h, 44)
+
+    c.setFillColor(SO_BG)
+    c.roundRect(x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
+
+    put_field(
+        form,
+        "sales_order",
+        x + pad_x,
+        y - pill_h + pad_y - 2,
+        max(pill_w - 2 * pad_x, 20),
+        size + 4,
+        "",
+        size,
+        font_name="Helvetica-Bold",
     )
     if val:
         draw_value(
             c,
             val,
-            x,
-            y - value_h,
-            col_w,
-            value_h,
-            value_size,
-            value_font,
-            multiline=multiline,
+            x + pad_x,
+            y - pill_h + pad_y - 2,
+            max(pill_w - 2 * pad_x, 20),
+            size + 4,
+            size,
+            ENTRY_BOLD,
         )
-    hairline(c, x, y - value_h - 1, col_w)
-    return y - value_h - 12
+    hairline(c, x, y - row_h - 1, col_w)
+    return y - row_h - 12
 
 
 def draw_hero(c: canvas.Canvas, form, y: float, sample: dict) -> float:
     rx = MX + COL_W + GUTTER
     micro_label(c, rx, y, "Ship to")
     y -= 5
-    hero_h = 28
+    ship = sample.get("ship_to", "")
+    ship_size = fit_single_line_size(ship, COL_W - 4, ENTRY_HERO, min_size=12)
+    hero_h = max(ship_size + 12, 30)
     put_field(
-        form, "ship_to", rx, y - hero_h, COL_W, hero_h, "", ENTRY_HERO, font_name="Helvetica-Bold"
+        form,
+        "ship_to",
+        rx,
+        y - hero_h,
+        COL_W,
+        hero_h,
+        "",
+        ship_size,
+        font_name="Helvetica-Bold",
     )
-    if sample.get("ship_to"):
-        draw_value(c, sample["ship_to"], rx, y - hero_h, COL_W, hero_h, ENTRY_HERO, ENTRY_BOLD)
+    if ship:
+        draw_value(c, ship, rx, y - hero_h, COL_W, hero_h, ship_size, ENTRY_BOLD)
     c.setStrokeColor(BLACK)
     c.setLineWidth(1.0)
     c.line(rx, y - hero_h - 2, rx + COL_W, y - hero_h - 2)
     y -= hero_h + 12
 
+    loc = sample.get("location", "")
+    loc_size = fit_wrapped_size(loc, COL_W - 4, ENTRY_SIZE, max_lines=2)
+    loc_h = field_height_for(loc, COL_W, size=loc_size)
     micro_label(c, rx, y, "Location")
     y -= 3
-    loc_h = 24
-    put_field(form, "location", rx, y - loc_h, COL_W, loc_h, "", ENTRY_SIZE, multiline=True)
-    if sample.get("location"):
-        draw_value(
-            c, sample["location"], rx, y - loc_h, COL_W, loc_h, ENTRY_SIZE, ENTRY, multiline=True
-        )
+    put_field(
+        form, "location", rx, y - loc_h, COL_W, loc_h, "", loc_size, multiline=True,
+        font_name="Helvetica-Bold",
+    )
+    if loc:
+        draw_value(c, loc, rx, y - loc_h, COL_W, loc_h, loc_size, ENTRY_BOLD, multiline=True)
     hairline(c, rx, y - loc_h - 1, COL_W)
     y -= loc_h + 12
 
+    attn = sample.get("attn", "")
+    attn_size = fit_single_line_size(attn, COL_W - 4, ENTRY_SIZE)
+    attn_h = max(attn_size + 10, 26)
     micro_label(c, rx, y, "Attn")
     y -= 3
-    attn_h = 18
-    put_field(form, "attn", rx, y - attn_h, COL_W, attn_h, "", ENTRY_SIZE)
-    if sample.get("attn"):
-        draw_value(c, sample["attn"], rx, y - attn_h, COL_W, attn_h, ENTRY_SIZE, ENTRY)
+    put_field(form, "attn", rx, y - attn_h, COL_W, attn_h, "", attn_size, font_name="Helvetica-Bold")
+    if attn:
+        draw_value(c, attn, rx, y - attn_h, COL_W, attn_h, attn_size, ENTRY_BOLD)
     hairline(c, rx, y - attn_h - 1, COL_W)
     return y - attn_h - 12
 
@@ -425,46 +534,25 @@ def draw_hero(c: canvas.Canvas, form, y: float, sample: dict) -> float:
 def draw_identity_pair(c: canvas.Canvas, form, y: float, sample: dict) -> tuple[float, float]:
     """
     Left: Customer / PO / Project — PO & Project wrap up to WRAP_MAX_LINES and
-    push Special Instructions down (shrinking its box). Heights follow the
-    actual value text so print layout never scrolls/clips.
+    push Special Instructions down. Shrink type only after wrap limit is hit.
     Right: Ship-to hero / Location / Attn
     """
     lx = MX
 
+    y_l = field_row(c, form, y, "Customer", "customer", lx, COL_W, sample)
+
+    po = sample.get("po_num", "")
+    po_size = fit_wrapped_size(po, COL_W - 4, ENTRY_SIZE)
+    po_h = field_height_for(po, COL_W, size=po_size)
     y_l = field_row(
-        c, form, y, "Customer", "customer", lx, COL_W, sample, 18, ENTRY_SIZE, ENTRY
+        c, form, y_l, "PO No.", "po_num", lx, COL_W, sample, po_h, po_size, multiline=True
     )
 
-    po_h = field_height_for(sample.get("po_num", ""), COL_W)
+    proj = sample.get("project", "")
+    proj_size = fit_wrapped_size(proj, COL_W - 4, ENTRY_SIZE)
+    proj_h = field_height_for(proj, COL_W, size=proj_size)
     y_l = field_row(
-        c,
-        form,
-        y_l,
-        "PO No.",
-        "po_num",
-        lx,
-        COL_W,
-        sample,
-        po_h,
-        ENTRY_SIZE,
-        ENTRY,
-        multiline=True,
-    )
-
-    proj_h = field_height_for(sample.get("project", ""), COL_W)
-    y_l = field_row(
-        c,
-        form,
-        y_l,
-        "Project",
-        "project",
-        lx,
-        COL_W,
-        sample,
-        proj_h,
-        ENTRY_SIZE,
-        ENTRY,
-        multiline=True,
+        c, form, y_l, "Project", "project", lx, COL_W, sample, proj_h, proj_size, multiline=True
     )
 
     y_r = draw_hero(c, form, y, sample)
@@ -476,23 +564,34 @@ def draw_notes_and_meta(
 ) -> float:
     """
     Left notes + right meta share the band down to band_bottom (piece-count ceiling).
-    Right fields are evenly distributed so no dead air above the piece band.
+    Sales Order gets a tall orange pill; other meta rows share the remaining space.
     """
     lx = MX
     rx = MX + COL_W + GUTTER
 
-    meta = [
-        ("Carrier", "carrier", 18, ENTRY_SIZE),
-        ("Swift Packing Slip No.", "packing_slip", 18, ENTRY_SIZE),
-        ("Swift Sales Order No.", "sales_order", 18, ENTRY_SIZE),
-        ("Swift Contact", "swift_contact", 18, ENTRY_SIZE),
-    ]
-    usable = max(y_right - (band_bottom + 20), 90)
-    slot = usable / len(meta)
+    # Reserve space for the large SO pill, then distribute the rest
+    so_reserve = 56
+    usable = max(y_right - (band_bottom + 20), 100)
+    other_slots = 3
+    other_band = max(usable - so_reserve, 72)
+    slot = other_band / other_slots
+
     y = y_right
-    for label, key, vh, vs in meta:
-        field_row(c, form, y, label, key, rx, COL_W, sample, vh, vs)
-        y -= slot
+    y = field_row(c, form, y, "Carrier", "carrier", rx, COL_W, sample)
+    y = min(y, y_right - slot)
+
+    y = field_row(c, form, y, "Swift Packing Slip No.", "packing_slip", rx, COL_W, sample)
+    # Pull packing slip into its slot floor if air remains
+    pack_floor = y_right - 2 * slot
+    if y > pack_floor:
+        y = pack_floor
+
+    y = draw_sales_order_row(c, form, y, rx, COL_W, sample)
+
+    contact_top = band_bottom + 20 + slot
+    if y > contact_top:
+        y = contact_top
+    field_row(c, form, y, "Swift Contact", "swift_contact", rx, COL_W, sample)
 
     # Notes fill leftover left band after PO/Project wrap pushed y_left down
     micro_label(c, lx, y_left, "Special Instructions")
@@ -503,28 +602,41 @@ def draw_notes_and_meta(
     c.rect(lx, notes_top - notes_h, COL_W, notes_h, stroke=0, fill=1)
     c.setFillColor(SWIFT)
     c.rect(lx, notes_top - notes_h, 3.5, notes_h, stroke=0, fill=1)
+
+    notes_val = sample.get("special_instructions", "")
+    notes_box_h = notes_h - 8
+    # Fit notes in the available box: wrap freely, shrink only if needed
+    notes_size = ENTRY_NOTES
+    while notes_size > ENTRY_MIN:
+        lines = wrap_lines(notes_val, COL_W - 18, ENTRY_BOLD, notes_size)
+        need = len(lines) * (notes_size + LINE_GAP) + 4
+        if need <= notes_box_h or not notes_val:
+            break
+        notes_size -= 0.5
+
     put_field(
         form,
         "special_instructions",
         lx + 10,
         notes_top - notes_h + 4,
         COL_W - 14,
-        notes_h - 8,
+        notes_box_h,
         "",
-        ENTRY_NOTES,
+        notes_size,
         fill=CLEAR,
         multiline=True,
+        font_name="Helvetica-Bold",
     )
-    if sample.get("special_instructions"):
+    if notes_val:
         draw_value(
             c,
-            sample["special_instructions"],
+            notes_val,
             lx + 10,
             notes_top - notes_h + 4,
             COL_W - 14,
-            notes_h - 8,
-            ENTRY_NOTES,
-            ENTRY,
+            notes_box_h,
+            notes_size,
+            ENTRY_BOLD,
             multiline=True,
         )
     return band_bottom
@@ -556,10 +668,16 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
         of_w = 28
         fx = x + half - 12 - box * 2 - of_w
 
-        put_field(form, f"{prefix}_num", fx, y - row_h + 7, box, 24, "", ENTRY_SIZE + 2, fill=WHITE)
+        num_sz = fit_single_line_size(
+            sample.get(f"{prefix}_num", ""), box - 4, ENTRY_SIZE, min_size=11
+        )
+        put_field(
+            form, f"{prefix}_num", fx, y - row_h + 7, box, 24, "", num_sz, fill=WHITE,
+            font_name="Helvetica-Bold",
+        )
         if sample.get(f"{prefix}_num"):
             draw_value(
-                c, sample[f"{prefix}_num"], fx, y - row_h + 7, box, 24, ENTRY_SIZE + 2, ENTRY_BOLD
+                c, sample[f"{prefix}_num"], fx, y - row_h + 7, box, 24, num_sz, ENTRY_BOLD
             )
         hairline(c, fx, y - row_h + 6, box, RULE)
 
@@ -567,7 +685,13 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
         c.setFont(FONT_BOLD, 11)
         c.drawCentredString(fx + box + of_w / 2, mid_y, "OF")
 
-        put_field(form, f"{prefix}_of", fx + box + of_w, y - row_h + 7, box, 24, "", ENTRY_SIZE + 2, fill=WHITE)
+        of_sz = fit_single_line_size(
+            sample.get(f"{prefix}_of", ""), box - 4, ENTRY_SIZE, min_size=11
+        )
+        put_field(
+            form, f"{prefix}_of", fx + box + of_w, y - row_h + 7, box, 24, "", of_sz, fill=WHITE,
+            font_name="Helvetica-Bold",
+        )
         if sample.get(f"{prefix}_of"):
             draw_value(
                 c,
@@ -576,7 +700,7 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
                 y - row_h + 7,
                 box,
                 24,
-                ENTRY_SIZE + 2,
+                of_sz,
                 ENTRY_BOLD,
             )
         hairline(c, fx + box + of_w, y - row_h + 6, box, RULE)

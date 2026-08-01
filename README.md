@@ -1,37 +1,38 @@
 # Swift Supply — Shipping Label Generator
 
-Windows portable app + Android Flutter client that pre-fills a shipping label and writes a print-ready PDF. Long PO / Project values wrap and Special Instructions shrinks so nothing is hidden when printing.
+**Same Flutter UI on Windows and Android.** Pre-fill a shipping label → print-ready PDF. Long PO / Project values wrap and Special Instructions shrinks for print.
 
-**Repo:** https://github.com/StagingLogShippingTracker/swift-shipping-label (public — needed so in-app Update can fetch `releases/latest` without a token)  
-**Version:** `1.0.0` (`version.py` / `mobile/pubspec.yaml` `1.0.0+1`)
+**Repo:** https://github.com/StagingLogShippingTracker/swift-shipping-label  
+**Version:** `1.0.1` / Android `1.0.1+2`
 
-## No admin / no install (Windows)
+## Windows (Flutter desktop — no Python UI)
 
 | | |
 |--|--|
-| Install location | **None** — portable folder only |
-| Program Files | **Do not use** |
-| Elevation | **Not required** |
-| Shortcut | Your user Desktop only |
-| Writable data | `%LOCALAPPDATA%\SwiftShippingLabel\` |
+| App | `dist\Swift Shipping Label\swift_shipping_label.exe` |
+| Launch | Double-click **Launch Swift Shipping Label.vbs** or the Desktop shortcut (no console) |
+| Build | `.\scripts\build_windows.ps1` |
+| Update | Header **Update** → GitHub Releases |
+| Writable data | App support under `%LOCALAPPDATA%` (Flutter path_provider) |
 
-## Run (dev)
-
-```bash
-python fill_shipping_label.py
+```powershell
+.\scripts\build_windows.ps1
+.\Launch Swift Shipping Label.vbs
 ```
 
-(Dev mode keeps presets/logos/filled PDFs in this project folder.)
+`fill_shipping_label.py` is only a thin launcher for the Flutter exe (no Tk window).
 
-Android:
+## Android
 
-```bash
+```powershell
 cd mobile
-flutter pub get
-flutter run
+flutter build apk --debug
+adb install -r build\app\outputs\flutter-apk\app-debug.apk
 ```
 
 Prefer building from `%LOCALAPPDATA%\swift-shipping-label-mobile` when that checkout is in use (avoids OneDrive/Gradle lock fights).
+
+Header **Update** only (no body “Check for updates” card).
 
 ## Fonts
 

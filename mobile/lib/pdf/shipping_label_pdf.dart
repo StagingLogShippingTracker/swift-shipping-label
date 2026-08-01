@@ -33,6 +33,7 @@ class ShippingLabelPdf {
   static const ruleSoft = PdfColor.fromInt(0xFFE2E2E2);
   static const notesBg = PdfColor.fromInt(0xFFF7F0D8);
   static const pieceFill = PdfColor.fromInt(0xFFF7F7F7);
+  static const soBg = PdfColor.fromInt(0xFFF8EBE7);
 
   static final pageFormat = PdfPageFormat.letter.landscape;
   static const inch = PdfPageFormat.inch;
@@ -42,10 +43,12 @@ class ShippingLabelPdf {
   static const gutter = 32.0;
   static final colW = (contentW - gutter) / 2;
 
-  static const entrySize = 9.0;
-  static const entryHero = 15.0;
-  static const entryNotes = 9.0;
-  static const lineGap = 2.5;
+  static const entrySize = 18.0;
+  static const entryHero = 22.0;
+  static const entrySo = 36.0;
+  static const entryNotes = 18.0;
+  static const entryMin = 9.0;
+  static const lineGap = 3.0;
   static const wrapMaxLines = 2;
 
   static ShippingLabelPdf? _instance;
@@ -122,19 +125,56 @@ class ShippingLabelPdf {
     return lines;
   }
 
+  double fitSingleLineSize(
+    String text,
+    double maxW,
+    PdfFont font, {
+    double preferred = entrySize,
+    double minSize = entryMin,
+  }) {
+    text = text.trim();
+    if (text.isEmpty) return preferred;
+    var size = preferred;
+    while (size > minSize && stringWidth(font, text, size) > maxW) {
+      size -= 0.5;
+    }
+    return size;
+  }
+
+  double fitWrappedSize(
+    String text,
+    double maxW,
+    PdfFont font, {
+    double preferred = entrySize,
+    int maxLines = wrapMaxLines,
+    double minSize = entryMin,
+  }) {
+    text = text.trim();
+    if (text.isEmpty) return preferred;
+    var size = preferred;
+    while (size > minSize) {
+      final lines = wrapLines(text, maxW, font, size);
+      if (lines.length <= maxLines) return size;
+      size -= 0.5;
+    }
+    return minSize;
+  }
+
   double fieldHeightFor(
     String text,
     PdfFont entryFont, {
     double colWidth = 0,
-    double size = entrySize,
+    double? size,
     int maxLines = wrapMaxLines,
-    double pad = 7,
-    double minH = 16,
+    double pad = 8,
+    double minH = 22,
   }) {
     final w = colWidth <= 0 ? colW : colWidth;
-    final lines = wrapLines(text, w - 4, entryFont, size);
+    final sz = size ??
+        fitWrappedSize(text, w - 4, entryFont, preferred: entrySize);
+    final lines = wrapLines(text, w - 4, entryFont, sz);
     final n = (lines.isEmpty ? 1 : lines.length).clamp(1, maxLines);
-    final h = n * (size + lineGap) + pad;
+    final h = n * (sz + lineGap) + pad;
     return h < minH ? minH : h.toDouble();
   }
 
@@ -302,7 +342,7 @@ class ShippingLabelPdf {
     bool multiline = false,
   }) {
     if (text.isEmpty) return;
-    final f = font ?? fonts.calibri;
+    final f = font ?? fonts.calibriBold;
     c
       ..setFillColor(black)
       ..setFont(f, fontSize);
@@ -410,30 +450,88 @@ class ShippingLabelPdf {
     double x,
     double colWidth,
     ShippingLabelData sample, {
-    double valueH = 18,
-    double valueSize = entrySize,
-    PdfFont? valueFont,
+    double? valueH,
+    double? valueSize,
     bool multiline = false,
+    double preferredSize = entrySize,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
     final val = sample.get(key);
+    final bold = fonts.calibriBold;
+    late final double size;
+    late final double vh;
+    if (multiline) {
+      size = valueSize ??
+          fitWrappedSize(val, colWidth - 4, bold, preferred: preferredSize);
+      vh = valueH ?? fieldHeightFor(val, bold, size: size);
+    } else {
+      size = valueSize ??
+          fitSingleLineSize(val, colWidth - 4, bold, preferred: preferredSize);
+      vh = valueH ?? (size + 10 < 26 ? 26 : size + 10);
+    }
     if (val.isNotEmpty) {
       _drawValue(
         c,
         fonts,
         val,
         x,
-        y - valueH,
+        y - vh,
         colWidth,
-        valueH,
-        fontSize: valueSize,
-        font: valueFont ?? fonts.calibri,
+        vh,
+        fontSize: size,
+        font: bold,
         multiline: multiline,
       );
     }
-    _hairline(c, x, y - valueH - 1, colWidth);
-    return y - valueH - 12;
+    _hairline(c, x, y - vh - 1, colWidth);
+    return y - vh - 12;
+  }
+
+  double _drawSalesOrderRow(
+    PdfGraphics c,
+    _ResolvedFonts fonts,
+    double y,
+    double x,
+    double colWidth,
+    ShippingLabelData sample,
+  ) {
+    _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
+    y -= 4;
+    final val = sample.get(LabelFields.salesOrder);
+    const padX = 12.0;
+    const padY = 8.0;
+    final size = fitSingleLineSize(
+      val,
+      colWidth - 2 * padX,
+      fonts.calibriBold,
+      preferred: entrySo,
+      minSize: 14,
+    );
+    final textW =
+        val.isEmpty ? size * 2 : stringWidth(fonts.calibriBold, val, size);
+    final pillW = textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX;
+    final pillH = size + 2 * padY;
+    final rowH = pillH < 44 ? 44.0 : pillH;
+
+    c.setFillColor(soBg);
+    _fillRRect(c, x, y - pillH, pillW, pillH, 8);
+
+    if (val.isNotEmpty) {
+      _drawValue(
+        c,
+        fonts,
+        val,
+        x + padX,
+        y - pillH + padY - 2,
+        pillW - 2 * padX,
+        size + 4,
+        fontSize: size,
+        font: fonts.calibriBold,
+      );
+    }
+    _hairline(c, x, y - rowH - 1, colWidth);
+    return y - rowH - 12;
   }
 
   double _drawHero(
@@ -445,8 +543,15 @@ class ShippingLabelPdf {
     final rx = mx + colW + gutter;
     _microLabel(c, fonts, rx, y, 'Ship to');
     y -= 5;
-    const heroH = 28.0;
     final ship = sample.get(LabelFields.shipTo);
+    final shipSize = fitSingleLineSize(
+      ship,
+      colW - 4,
+      fonts.calibriBold,
+      preferred: entryHero,
+      minSize: 12,
+    );
+    final heroH = shipSize + 12 < 30 ? 30.0 : shipSize + 12;
     if (ship.isNotEmpty) {
       _drawValue(
         c,
@@ -456,7 +561,7 @@ class ShippingLabelPdf {
         y - heroH,
         colW,
         heroH,
-        fontSize: entryHero,
+        fontSize: shipSize,
         font: fonts.calibriBold,
       );
     }
@@ -467,22 +572,45 @@ class ShippingLabelPdf {
       ..strokePath();
     y -= heroH + 12;
 
+    final loc = sample.get(LabelFields.location);
+    final locSize = fitWrappedSize(loc, colW - 4, fonts.calibriBold);
+    final locH = fieldHeightFor(loc, fonts.calibriBold, size: locSize);
     _microLabel(c, fonts, rx, y, 'Location');
     y -= 3;
-    const locH = 24.0;
-    final loc = sample.get(LabelFields.location);
     if (loc.isNotEmpty) {
-      _drawValue(c, fonts, loc, rx, y - locH, colW, locH, multiline: true);
+      _drawValue(
+        c,
+        fonts,
+        loc,
+        rx,
+        y - locH,
+        colW,
+        locH,
+        fontSize: locSize,
+        font: fonts.calibriBold,
+        multiline: true,
+      );
     }
     _hairline(c, rx, y - locH - 1, colW);
     y -= locH + 12;
 
+    final attn = sample.get(LabelFields.attn);
+    final attnSize = fitSingleLineSize(attn, colW - 4, fonts.calibriBold);
+    final attnH = attnSize + 10 < 26 ? 26.0 : attnSize + 10;
     _microLabel(c, fonts, rx, y, 'Attn');
     y -= 3;
-    const attnH = 18.0;
-    final attn = sample.get(LabelFields.attn);
     if (attn.isNotEmpty) {
-      _drawValue(c, fonts, attn, rx, y - attnH, colW, attnH);
+      _drawValue(
+        c,
+        fonts,
+        attn,
+        rx,
+        y - attnH,
+        colW,
+        attnH,
+        fontSize: attnSize,
+        font: fonts.calibriBold,
+      );
     }
     _hairline(c, rx, y - attnH - 1, colW);
     return y - attnH - 12;
@@ -495,6 +623,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample,
   ) {
     final lx = mx;
+    final bold = fonts.calibriBold;
 
     var yL = _fieldRow(
       c,
@@ -505,10 +634,11 @@ class ShippingLabelPdf {
       lx,
       colW,
       sample,
-      valueH: 18,
     );
 
-    final poH = fieldHeightFor(sample.get(LabelFields.poNum), fonts.calibri);
+    final po = sample.get(LabelFields.poNum);
+    final poSize = fitWrappedSize(po, colW - 4, bold);
+    final poH = fieldHeightFor(po, bold, size: poSize);
     yL = _fieldRow(
       c,
       fonts,
@@ -519,10 +649,13 @@ class ShippingLabelPdf {
       colW,
       sample,
       valueH: poH,
+      valueSize: poSize,
       multiline: true,
     );
 
-    final projH = fieldHeightFor(sample.get(LabelFields.project), fonts.calibri);
+    final proj = sample.get(LabelFields.project);
+    final projSize = fitWrappedSize(proj, colW - 4, bold);
+    final projH = fieldHeightFor(proj, bold, size: projSize);
     yL = _fieldRow(
       c,
       fonts,
@@ -533,6 +666,7 @@ class ShippingLabelPdf {
       colW,
       sample,
       valueH: projH,
+      valueSize: projSize,
       multiline: true,
     );
 
@@ -551,30 +685,41 @@ class ShippingLabelPdf {
     final lx = mx;
     final rx = mx + colW + gutter;
 
-    final meta = <(String, String, double, double)>[
-      ('Carrier', LabelFields.carrier, 18, entrySize),
-      ('Swift Packing Slip No.', LabelFields.packingSlip, 18, entrySize),
-      ('Swift Sales Order No.', LabelFields.salesOrder, 18, entrySize),
-      ('Swift Contact', LabelFields.swiftContact, 18, entrySize),
-    ];
-    final usable = (yRight - (bandBottom + 20)).clamp(90.0, 10000.0);
-    final slot = usable / meta.length;
+    const soReserve = 56.0;
+    final usable = (yRight - (bandBottom + 20)).clamp(100.0, 10000.0);
+    final otherBand = (usable - soReserve).clamp(72.0, 10000.0);
+    final slot = otherBand / 3;
+
     var y = yRight;
-    for (final m in meta) {
-      _fieldRow(
-        c,
-        fonts,
-        y,
-        m.$1,
-        m.$2,
-        rx,
-        colW,
-        sample,
-        valueH: m.$3,
-        valueSize: m.$4,
-      );
-      y -= slot;
-    }
+    y = _fieldRow(c, fonts, y, 'Carrier', LabelFields.carrier, rx, colW, sample);
+    final packFloor = yRight - 2 * slot;
+    if (y > packFloor) y = packFloor;
+
+    y = _fieldRow(
+      c,
+      fonts,
+      y,
+      'Swift Packing Slip No.',
+      LabelFields.packingSlip,
+      rx,
+      colW,
+      sample,
+    );
+
+    y = _drawSalesOrderRow(c, fonts, y, rx, colW, sample);
+
+    final contactTop = bandBottom + 20 + slot;
+    if (y > contactTop) y = contactTop;
+    _fieldRow(
+      c,
+      fonts,
+      y,
+      'Swift Contact',
+      LabelFields.swiftContact,
+      rx,
+      colW,
+      sample,
+    );
 
     _microLabel(c, fonts, lx, yLeft, 'Special Instructions');
     final notesTop = yLeft - 4;
@@ -586,6 +731,14 @@ class ShippingLabelPdf {
     _fillRect(c, lx, notesTop - notesH, 3.5, notesH);
 
     final notes = sample.get(LabelFields.specialInstructions);
+    final notesBoxH = notesH - 8;
+    var notesSize = entryNotes;
+    while (notesSize > entryMin && notes.isNotEmpty) {
+      final lines = wrapLines(notes, colW - 18, fonts.calibriBold, notesSize);
+      final need = lines.length * (notesSize + lineGap) + 4;
+      if (need <= notesBoxH) break;
+      notesSize -= 0.5;
+    }
     if (notes.isNotEmpty) {
       _drawValue(
         c,
@@ -594,8 +747,9 @@ class ShippingLabelPdf {
         lx + 10,
         notesTop - notesH + 4,
         colW - 14,
-        notesH - 8,
-        fontSize: entryNotes,
+        notesBoxH,
+        fontSize: notesSize,
+        font: fonts.calibriBold,
         multiline: true,
       );
     }
@@ -636,6 +790,13 @@ class ShippingLabelPdf {
       final numVal = sample.get('${prefix}_num');
       final ofVal = sample.get('${prefix}_of');
 
+      final numSz = fitSingleLineSize(
+        numVal,
+        box - 4,
+        fonts.calibriBold,
+        preferred: entrySize,
+        minSize: 11,
+      );
       if (numVal.isNotEmpty) {
         _drawValue(
           c,
@@ -645,7 +806,7 @@ class ShippingLabelPdf {
           y - rowH + 7,
           box,
           24,
-          fontSize: entrySize + 2,
+          fontSize: numSz,
           font: fonts.calibriBold,
         );
       }
@@ -664,6 +825,13 @@ class ShippingLabelPdf {
         midY,
       );
 
+      final ofSz = fitSingleLineSize(
+        ofVal,
+        box - 4,
+        fonts.calibriBold,
+        preferred: entrySize,
+        minSize: 11,
+      );
       if (ofVal.isNotEmpty) {
         _drawValue(
           c,
@@ -673,7 +841,7 @@ class ShippingLabelPdf {
           y - rowH + 7,
           box,
           24,
-          fontSize: entrySize + 2,
+          fontSize: ofSz,
           font: fonts.calibriBold,
         );
       }
