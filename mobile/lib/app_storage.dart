@@ -126,10 +126,24 @@ class AppStorage {
     return dest;
   }
 
+  /// Write PDF under [filledDir], uniquifying with `(1)`, `(2)`, … if needed
+  /// (no space before the parentheses — e.g. `SL-StrikeSO1223344(1).pdf`).
   Future<File> writePdf(String fileName, List<int> bytes) async {
     await filledDir.create(recursive: true);
-    final safe = fileName.replaceAll(RegExp(r'[^\w\- .]+'), '').trim();
-    final out = File(p.join(filledDir.path, safe.isEmpty ? 'label.pdf' : safe));
+    var base = p.basename(fileName.trim());
+    if (!base.toLowerCase().endsWith('.pdf')) base = '$base.pdf';
+    // Allow letters, digits, dash, underscore, parentheses; strip other junk.
+    base = base.replaceAll(RegExp(r'[^\w.\-()]+'), '');
+    if (base.isEmpty || base == '.pdf') base = 'label.pdf';
+
+    final stem = p.basenameWithoutExtension(base);
+    const ext = '.pdf';
+    var out = File(p.join(filledDir.path, '$stem$ext'));
+    var n = 1;
+    while (await out.exists()) {
+      out = File(p.join(filledDir.path, '$stem($n)$ext'));
+      n++;
+    }
     await out.writeAsBytes(bytes, flush: true);
     return out;
   }
@@ -138,5 +152,25 @@ class AppStorage {
     final t = text.trim().isEmpty ? 'customer' : text.trim();
     final cleaned = t.replaceAll(RegExp(r'[^\w\- ]+'), '').trim();
     return cleaned.isEmpty ? 'customer' : cleaned;
+  }
+
+  /// Compact token for `SL-` / `RL-` filenames (alphanumeric only).
+  String compactFileToken(String text) {
+    final cleaned = text.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '');
+    return cleaned;
+  }
+
+  /// e.g. `SL-StrikeSO1223344.pdf` or `RL-StrikeSO1223344.pdf`
+  String labelPdfBaseName({
+    required bool receiving,
+    required String customer,
+    required String salesOrder,
+  }) {
+    final prefix = receiving ? 'RL-' : 'SL-';
+    final cust = compactFileToken(customer);
+    final so = compactFileToken(salesOrder);
+    final body = '$cust$so';
+    if (body.isEmpty) return '${prefix}label.pdf';
+    return '$prefix$body.pdf';
   }
 }

@@ -159,9 +159,10 @@ $notes = @"
 ## Swift Shipping Label $Version
 
 ### What's new
-- Shipping: ask pallet/crate and box counts, then print one page per unit (1 of N)
+- Auto-save PDFs as SL-/RL- + customer + sales order (with (1), (2) if needed)
+- Shipping: ask pallet/crate and box counts, then one page per unit (1 of N)
 - Up to 2 customer logos per label (primary + C/O)
-- Shipping / Receiving selector, Receiving Special Instructions, new app icon
+
 
 ### Assets
 - SwiftShippingLabel-windows.zip - portable Flutter onedir (no admin). Extract and run swift_shipping_label.exe.

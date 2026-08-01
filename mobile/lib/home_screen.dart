@@ -481,17 +481,11 @@ class _HomeScreenState extends State<HomeScreen> {
               piecePlan: piecePlan!,
             );
 
-      final customer = data.get(LabelFields.customer);
-      final stamp = DateTime.now()
-          .toIso8601String()
-          .replaceAll(':', '')
-          .replaceAll('.', '')
-          .substring(0, 15);
-      final kindLabel =
-          _kind == LabelKind.receiving ? 'Receiving Label' : 'Shipping Label';
-      final name = customer.isEmpty
-          ? 'Swift Supply $kindLabel $stamp.pdf'
-          : 'Swift Supply $kindLabel - ${widget.storage.safeCustomerName(customer)} $stamp.pdf';
+      final name = widget.storage.labelPdfBaseName(
+        receiving: _kind == LabelKind.receiving,
+        customer: data.get(LabelFields.customer),
+        salesOrder: data.get(LabelFields.salesOrder),
+      );
 
       final file = await widget.storage.writePdf(name, bytes);
 
