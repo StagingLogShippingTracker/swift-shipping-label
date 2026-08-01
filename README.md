@@ -2,7 +2,7 @@
 
 Windows portable app + Android Flutter client that pre-fills a shipping label and writes a print-ready PDF. Long PO / Project values wrap and Special Instructions shrinks so nothing is hidden when printing.
 
-**Repo:** https://github.com/StagingLogShippingTracker/swift-shipping-label  
+**Repo:** https://github.com/StagingLogShippingTracker/swift-shipping-label (public — needed so in-app Update can fetch `releases/latest` without a token)  
 **Version:** `1.0.0` (`version.py` / `mobile/pubspec.yaml` `1.0.0+1`)
 
 ## No admin / no install (Windows)
