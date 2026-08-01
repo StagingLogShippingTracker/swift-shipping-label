@@ -1,0 +1,13 @@
+{
+  "logo_folder": "C:\\Users\\Brice\\OneDrive\\Documents\\swift-shipping-label\\customer_logos",
+  "customers": {
+    "Pacific Canbriam": {
+      "customer": "PACIFIC CANBRIAM",
+      "logo": "Pacific Canbriam.png",
+      "ship_to": "STRAIT PROJECTS",
+      "location": "12341 271 RD, FORT ST. JOHN, BC",
+      "attn": "RICK SHUMAN / JEREMY PLATZ",
+      "carrier": "WILLYS"
+    }
+  }
+}

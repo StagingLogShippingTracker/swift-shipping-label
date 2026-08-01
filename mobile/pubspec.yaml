@@ -1,0 +1,44 @@
+name: swift_shipping_label
+description: Swift Oilfield Supply — Shipping Label generator for Android.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  pdf: ^3.11.3
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  http: ^1.2.2
+  package_info_plus: ^8.1.2
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/swift_supply_logo.png
+    - assets/images/sample_customer_logo.png
+  fonts:
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/Oswald-Regular.ttf
+        - asset: assets/fonts/Oswald-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Oswald-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Oswald-Bold.ttf
+          weight: 700
+    - family: Calibri
+      fonts:
+        - asset: assets/fonts/Calibri.ttf
+        - asset: assets/fonts/Calibri-Bold.ttf
+          weight: 700

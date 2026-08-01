@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Secrets / local credentials
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Build / dist (PyInstaller, Flutter)
+build/
+dist/
+*.spec.bak
+
+# Generated / working outputs
+filled/
+*.pdf
+!mobile/**/*.pdf
+_preview_*.png
+_excel_preview.*
+_flag_test.pdf
+_logo_*.png
+_extracted_*.png
+_template_*.png
+
+# Local presets may contain customer data — keep sample-free copy optional
+# presets.json is small defaults; commit OK. Uncomment to keep local-only:
+# presets.json
+
+# OneDrive / Windows junk
+desktop.ini
+Thumbs.db
+~$*
+*.tmp
+.DS_Store
+
+# Calibri is Microsoft-proprietary — keep local (copy via scripts/sync_calibri_fonts.ps1).
+# Oswald (SIL OFL) is committed under fonts/ and mobile/assets/fonts/.
+fonts/Calibri.ttf
+fonts/Calibri-Bold.ttf
+mobile/assets/fonts/Calibri.ttf
+mobile/assets/fonts/Calibri-Bold.ttf
+
+# IDE / tooling
+.idea/
+.vscode/
+*.iml
+.cursor/
+
+# Flutter (mobile/)
+mobile/.dart_tool/
+mobile/.flutter-plugins-dependencies
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/coverage/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/**/GeneratedPluginRegistrant.*
+
+# Large accidental dumps
+*.apk
+*.aab
+*.zip
+!scripts/**
