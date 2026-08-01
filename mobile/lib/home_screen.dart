@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
+import 'bol_document_number.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'pdf/bol_label_pdf.dart';
@@ -67,9 +68,8 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
 final _bolGroups = <(String title, String hint, List<String> keys)>[
   (
     'Document',
-    'BOL header meta',
+    'Document number (SW-####) is assigned automatically from the shared company counter when you Generate',
     [
-      BolFields.documentNumber,
       BolFields.documentDate,
       BolFields.bookingRef,
       BolFields.probillNumber,
@@ -703,6 +703,20 @@ class _HomeScreenState extends State<HomeScreen> {
         if (data.get(BolFields.packingList).isEmpty) {
           data.set(BolFields.packingList, data.get(LabelFields.packingSlip));
         }
+        // Shared cloud serial — every Windows/Android generate bumps SW-####.
+        final docNo = await BolDocumentNumber.allocate(
+          source: 'swift_document_generator',
+          note: data.get(BolFields.consigneeName).isEmpty
+              ? data.get(LabelFields.customer)
+              : data.get(BolFields.consigneeName),
+        );
+        data.set(BolFields.documentNumber, docNo);
+        _setField(BolFields.documentNumber, docNo);
+        if (data.get(BolFields.documentDate).isEmpty) {
+          final today = BolDocumentNumber.todayStamp();
+          data.set(BolFields.documentDate, today);
+          _setField(BolFields.documentDate, today);
+        }
       }
 
       final Uint8List bytes;
@@ -743,7 +757,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         final pages = switch (_kind) {
           LabelKind.shipping => ' (${piecePlan!.totalPages} pages)',
-          LabelKind.bol => ' (3 copies)',
+          LabelKind.bol =>
+            ' (3 copies · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
         };
         ScaffoldMessenger.of(context).showSnackBar(
@@ -821,7 +836,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     LabelKind.receiving =>
                       'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.',
                     LabelKind.bol =>
-                      'Straight Bill of Lading (3 copies: store, driver, customer). Ported from the Swift BOL generator.',
+                      'Straight Bill of Lading (3 copies). Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
                     LabelKind.shipping =>
                       'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
                   },
