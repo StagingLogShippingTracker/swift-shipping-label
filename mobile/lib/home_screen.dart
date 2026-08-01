@@ -453,8 +453,8 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'We’ll look up a high-quality brand mark (Clearbit, Wikipedia, etc.). '
-              'A website domain helps a lot.',
+              'We’ll search Google & Bing Images, Brands of the World, Logo.dev, '
+              'Brandfetch, TinEye, and Clearbit for a logo. A website domain helps.',
               style: TextStyle(fontSize: 13, color: SwiftColors.muted),
             ),
             const SizedBox(height: 14),
@@ -490,17 +490,17 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _findingLogo = true);
     try {
       final finder = LogoFinder();
-      final result = await finder.find(
+      final candidates = await finder.findDownloadedCandidates(
         companyName: nameCtrl.text,
         domain: domainCtrl.text,
       );
       if (!mounted) return;
-      if (!result.ok || result.bytes == null) {
+      if (candidates.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-              result.error ??
-                  'No logo found. Use Upload manually below.',
+              'No logo found across Google, Bing, Brands of the World, and other sources. '
+              'Try a website domain or upload manually.',
             ),
           ),
         );
@@ -508,12 +508,76 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
+      LogoDownloadedCandidate chosen = candidates.first;
+      if (candidates.length > 1) {
+        final picked = await showDialog<LogoDownloadedCandidate>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Pick a logo'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final c in candidates.take(6))
+                      InkWell(
+                        onTap: () => Navigator.pop(ctx, c),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 120,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: SwiftColors.muted),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.memory(
+                                c.bytes,
+                                height: 72,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 48,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                c.source,
+                                style: const TextStyle(fontSize: 11),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        );
+        if (picked == null || !mounted) return;
+        chosen = picked;
+      }
+
       final base = widget.storage.safeCustomerName(
         nameCtrl.text.trim().isEmpty ? 'logo' : nameCtrl.text.trim(),
       );
-      final ext = LogoFinder.extensionForBytes(result.bytes!);
+      final ext = LogoFinder.extensionForBytes(chosen.bytes);
       final file = await widget.storage.importLogoBytes(
-        result.bytes!,
+        chosen.bytes,
         preferredName: '$base$ext',
       );
       if (!mounted) return;
@@ -523,9 +587,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _logoPaths.add(file.path);
         }
       });
-      final hint = result.hint.isEmpty ? '' : '\n${result.hint}';
+      final hint = chosen.hint.isEmpty ? '' : '\n${chosen.hint}';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logo from ${result.source}.$hint')),
+        SnackBar(content: Text('Logo from ${chosen.source}.$hint')),
       );
     } catch (e) {
       if (mounted) {
