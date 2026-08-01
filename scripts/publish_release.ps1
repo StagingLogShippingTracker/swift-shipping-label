@@ -159,9 +159,9 @@ $notes = @"
 ## Swift Shipping Label $Version
 
 ### What's new
+- Find customer logo on the web (or upload manually); up to 2 logos (C/O)
 - Auto-save PDFs as SL-/RL- + customer + sales order (with (1), (2) if needed)
 - Shipping: ask pallet/crate and box counts, then one page per unit (1 of N)
-- Up to 2 customer logos per label (primary + C/O)
 
 
 ### Assets

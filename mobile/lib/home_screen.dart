@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
 import 'label_data.dart';
+import 'logo_finder.dart';
 import 'pdf/shipping_label_pdf.dart';
 import 'platform_io.dart';
 import 'theme.dart';
@@ -78,6 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Selected customer logo paths (primary first, optional C/O second).
   final List<String> _logoPaths = [];
   bool _busy = false;
+  bool _findingLogo = false;
+  bool _showManualLogoUpload = false;
   LabelKind _kind = LabelKind.shipping;
 
   @override
@@ -309,6 +312,118 @@ class _HomeScreenState extends State<HomeScreen> {
         _logoPaths.add(imported.path);
       }
     });
+  }
+
+  Future<void> _findLogoOnWeb() async {
+    if (_findingLogo) return;
+    if (_logoPaths.length >= maxCustomerLogos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Already have 2 logos. Remove one to find another.'),
+        ),
+      );
+      return;
+    }
+
+    final nameCtrl = TextEditingController(
+      text: _controllers[LabelFields.customer]?.text.trim() ?? '',
+    );
+    final domainCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Find logo on the web'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'We’ll look up a high-quality brand mark (Clearbit, Wikipedia, etc.). '
+              'A website domain helps a lot.',
+              style: TextStyle(fontSize: 13, color: SwiftColors.muted),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'CUSTOMER / COMPANY'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: domainCtrl,
+              decoration: const InputDecoration(
+                labelText: 'WEBSITE DOMAIN (OPTIONAL)',
+                hintText: 'e.g. conocophillips.com',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _findingLogo = true);
+    try {
+      final finder = LogoFinder();
+      final result = await finder.find(
+        companyName: nameCtrl.text,
+        domain: domainCtrl.text,
+      );
+      if (!mounted) return;
+      if (!result.ok || result.bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.error ??
+                  'No logo found. Use Upload manually below.',
+            ),
+          ),
+        );
+        setState(() => _showManualLogoUpload = true);
+        return;
+      }
+
+      final base = widget.storage.safeCustomerName(
+        nameCtrl.text.trim().isEmpty ? 'logo' : nameCtrl.text.trim(),
+      );
+      final ext = LogoFinder.extensionForBytes(result.bytes!);
+      final file = await widget.storage.importLogoBytes(
+        result.bytes!,
+        preferredName: '$base$ext',
+      );
+      if (!mounted) return;
+      setState(() {
+        if (_logoPaths.length < maxCustomerLogos &&
+            !_logoPaths.contains(file.path)) {
+          _logoPaths.add(file.path);
+        }
+      });
+      final hint = result.hint.isEmpty ? '' : '\n${result.hint}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logo from ${result.source}.$hint')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Web find failed: $e. Upload manually instead.'),
+          ),
+        );
+        setState(() => _showManualLogoUpload = true);
+      }
+    } finally {
+      if (mounted) setState(() => _findingLogo = false);
+    }
   }
 
   void _removeLogoAt(int index) {
@@ -616,15 +731,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (_logoPaths.isEmpty)
-                        Text(
-                          'No logos selected. Add a customer logo'
-                          '${maxCustomerLogos > 1 ? ' (and optional C/O)' : ''}.',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: SwiftColors.muted,
-                          ),
-                        ),
                       for (var i = 0; i < _logoPaths.length; i++) ...[
                         if (i > 0) const SizedBox(height: 8),
                         Container(
@@ -682,58 +788,107 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ],
-                      if (_logoPaths.length < maxCustomerLogos &&
-                          logos.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('logo-pick-${_logoPaths.length}-${logos.length}'),
-                          initialValue: null,
-                          decoration: InputDecoration(
-                            labelText: _logoPaths.isEmpty
-                                ? 'ADD FROM STORAGE'
-                                : 'ADD C/O FROM STORAGE',
-                          ),
-                          items: [
-                            for (final f in logos)
-                              if (!_logoPaths.contains(f.path))
-                                DropdownMenuItem(
-                                  value: f.path,
-                                  child: Text(p.basename(f.path)),
-                                ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() {
-                              if (_logoPaths.length < maxCustomerLogos &&
-                                  !_logoPaths.contains(v)) {
-                                _logoPaths.add(v);
-                              }
-                            });
-                          },
-                        ),
-                      ],
-                      const SizedBox(height: 10),
+                      if (_logoPaths.isNotEmpty) const SizedBox(height: 12),
+                      // Two clear choices (tagger-style): web find vs manual upload
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: _importLogos,
-                              child: const Text('Import…'),
+                            child: FilledButton.tonalIcon(
+                              onPressed: (_findingLogo ||
+                                      _logoPaths.length >= maxCustomerLogos)
+                                  ? null
+                                  : _findLogoOnWeb,
+                              icon: _findingLogo
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.travel_explore, size: 18),
+                              label: Text(
+                                _findingLogo
+                                    ? 'Searching…'
+                                    : 'Find logo on the web',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: OutlinedButton(
+                            child: OutlinedButton.icon(
                               onPressed: _logoPaths.length >= maxCustomerLogos
                                   ? null
-                                  : _addLogoSlot,
-                              child: Text(
-                                _logoPaths.isEmpty ? 'Browse…' : 'Add C/O…',
+                                  : () => setState(
+                                        () => _showManualLogoUpload =
+                                            !_showManualLogoUpload,
+                                      ),
+                              icon: const Icon(Icons.upload_file, size: 18),
+                              label: Text(
+                                _showManualLogoUpload
+                                    ? 'Hide upload'
+                                    : 'Upload manually',
                               ),
                             ),
                           ),
                         ],
                       ),
+                      if (_showManualLogoUpload) ...[
+                        const SizedBox(height: 12),
+                        if (_logoPaths.length < maxCustomerLogos &&
+                            logos.isNotEmpty)
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'logo-pick-${_logoPaths.length}-${logos.length}',
+                            ),
+                            initialValue: null,
+                            decoration: InputDecoration(
+                              labelText: _logoPaths.isEmpty
+                                  ? 'ADD FROM STORAGE'
+                                  : 'ADD C/O FROM STORAGE',
+                            ),
+                            items: [
+                              for (final f in logos)
+                                if (!_logoPaths.contains(f.path))
+                                  DropdownMenuItem(
+                                    value: f.path,
+                                    child: Text(p.basename(f.path)),
+                                  ),
+                            ],
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                if (_logoPaths.length < maxCustomerLogos &&
+                                    !_logoPaths.contains(v)) {
+                                  _logoPaths.add(v);
+                                }
+                              });
+                            },
+                          ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _importLogos,
+                                child: const Text('Import…'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed:
+                                    _logoPaths.length >= maxCustomerLogos
+                                        ? null
+                                        : _addLogoSlot,
+                                child: Text(
+                                  _logoPaths.isEmpty ? 'Browse…' : 'Add C/O…',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

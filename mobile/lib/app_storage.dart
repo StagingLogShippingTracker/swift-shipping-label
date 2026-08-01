@@ -126,6 +126,29 @@ class AppStorage {
     return dest;
   }
 
+  /// Save downloaded logo bytes into [logosDir] (unique filename).
+  Future<File> importLogoBytes(
+    List<int> bytes, {
+    required String preferredName,
+  }) async {
+    await logosDir.create(recursive: true);
+    var name = preferredName.trim();
+    if (name.isEmpty) name = 'logo.png';
+    name = name.replaceAll(RegExp(r'[^\w\- .]+'), '_');
+    var dest = File(p.join(logosDir.path, name));
+    if (await dest.exists()) {
+      final stem = p.basenameWithoutExtension(name);
+      final suf = p.extension(name);
+      var n = 2;
+      while (await dest.exists()) {
+        dest = File(p.join(logosDir.path, '$stem ($n)$suf'));
+        n++;
+      }
+    }
+    await dest.writeAsBytes(bytes, flush: true);
+    return dest;
+  }
+
   /// Write PDF under [filledDir], uniquifying with `(1)`, `(2)`, … if needed
   /// (no space before the parentheses — e.g. `SL-StrikeSO1223344(1).pdf`).
   Future<File> writePdf(String fileName, List<int> bytes) async {
