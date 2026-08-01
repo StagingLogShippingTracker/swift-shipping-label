@@ -18,6 +18,17 @@ class BolFields {
   static const consigneeContactNumber = 'consignee_contact_number';
   static const thirdPartyBilling = 'third_party_billing';
   static const freightCharges = 'freight_charges';
+
+  /// Stored values for [freightCharges] (PDF radio group).
+  static const freightPrepaid = 'prepaid';
+  static const freightCollect = 'collect';
+  static const freightThirdParty = 'third_party';
+
+  static const freightChargeOptions = <(String value, String label)>[
+    (freightPrepaid, 'Prepaid'),
+    (freightCollect, 'Collect'),
+    (freightThirdParty, 'Third Party'),
+  ];
   static const packingList = 'packing_list';
   static const orderNum = 'order_num';
   static const totalPieces = 'total_pieces';
@@ -50,7 +61,6 @@ class BolFields {
     (consigneeContactName, 'Contact Name', false),
     (consigneeContactNumber, 'Contact Number', false),
     (thirdPartyBilling, '3rd Party Billing', true),
-    (freightCharges, 'Freight (prepaid/collect/third_party)', false),
     (packingList, 'Packing List #', false),
     (orderNum, 'Order #', false),
     (shipperCertName, 'Shipper Cert Name', false),

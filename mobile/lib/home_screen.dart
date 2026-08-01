@@ -90,8 +90,8 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Billing & freight',
-    'Collect / prepaid',
-    [BolFields.thirdPartyBilling, BolFields.freightCharges],
+    'Prepaid, collect, or third party',
+    [BolFields.thirdPartyBilling],
   ),
   (
     'Tracking & references',
@@ -171,6 +171,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _controllers = {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
+      BolFields.freightCharges: TextEditingController(
+        text: BolFields.freightPrepaid,
+      ),
     };
     _syncPresetsOnLaunch();
   }
@@ -251,7 +254,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _setField(String key, String value) {
+    if (key == BolFields.freightCharges) {
+      _controllers[key]?.text = _normalizeFreightCharges(value);
+      return;
+    }
     _controllers[key]?.text = value;
+  }
+
+  String _normalizeFreightCharges(String raw) {
+    final f = raw.toLowerCase().trim();
+    if (f == BolFields.freightCollect) return BolFields.freightCollect;
+    if (f == BolFields.freightThirdParty ||
+        f == '3rd party' ||
+        f == 'third party') {
+      return BolFields.freightThirdParty;
+    }
+    if (f == BolFields.freightPrepaid) return BolFields.freightPrepaid;
+    return '';
+  }
+
+  Set<String> _selectedFreightCharges() {
+    final v = _normalizeFreightCharges(
+      _controllers[BolFields.freightCharges]?.text ?? '',
+    );
+    return v.isEmpty ? {} : {v};
   }
 
   int _detectBolLineCount() {
@@ -810,6 +836,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       LabelKind.bol => {
           for (final d in BolFields.formDefs) d.$1,
+          BolFields.freightCharges,
           LabelFields.poNum,
           LabelFields.project,
           LabelFields.salesOrder,
@@ -886,6 +913,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (data.get(BolFields.packingList).isEmpty) {
           data.set(BolFields.packingList, data.get(LabelFields.packingSlip));
+        }
+        if (data.get(BolFields.freightCharges).isEmpty) {
+          data.set(BolFields.freightCharges, BolFields.freightPrepaid);
         }
         // Shared cloud serial — every Windows/Android generate bumps SW-####.
         final docNo = await BolDocumentNumber.allocate(
@@ -977,6 +1007,56 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: InputDecoration(
           labelText: m.$2.toUpperCase(),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFreightChargesSelector() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'FREIGHT CHARGES',
+            style: TextStyle(
+              fontFamily: 'Oswald',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: SwiftColors.muted,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            emptySelectionAllowed: true,
+            segments: [
+              for (final o in BolFields.freightChargeOptions)
+                ButtonSegment<String>(
+                  value: o.$1,
+                  label: Text(o.$2),
+                ),
+            ],
+            selected: _selectedFreightCharges(),
+            onSelectionChanged: (selection) {
+              _setField(
+                BolFields.freightCharges,
+                selection.isEmpty ? '' : selection.first,
+              );
+              setState(() {});
+            },
+            style: ButtonStyle(
+              textStyle: WidgetStatePropertyAll(
+                TextStyle(
+                  fontFamily: 'Oswald',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1324,6 +1404,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         for (final key in group.$3)
                           _buildFormField(key),
+                        if (_kind == LabelKind.bol &&
+                            group.$1 == 'Billing & freight')
+                          _buildFreightChargesSelector(),
                       ],
                     ),
                   ),
