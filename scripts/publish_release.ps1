@@ -159,10 +159,11 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Shared BOL document numbers (SW-####) across Windows and Android
-- BOL: carrier Company field; Departure|Date; sharper freight radios
-- Customer logos keep aspect ratio in left header (no squish)
-- High-res multi-size Windows app icon (+ Android mipmaps)
+- Blank preset selector on launch (no auto-loaded Pacific Canbriam)
+- BOL: start with one goods line; tap Add line for up to seven rows
+- Multi-source logo search (Google, Bing, Brands of the World, and more)
+- BOL freight radio circles aligned with Windows/Python PDF output
+- Presets scoped per document type (Shipping, Receiving, BOL)
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.

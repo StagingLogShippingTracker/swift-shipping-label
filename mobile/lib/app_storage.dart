@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -66,7 +65,6 @@ class AppStorage {
     final store = AppStorage._(root);
     await store.ensureDirs();
     await store.loadPresets();
-    await store.seedSample();
     return store;
   }
 
@@ -125,14 +123,6 @@ class AppStorage {
     await presetsFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert({'customers': customers}),
     );
-  }
-
-  Future<void> seedSample() async {
-    final dest = File(p.join(logosDir.path, 'Pacific Canbriam.png'));
-    if (!await dest.exists()) {
-      final bytes = await rootBundle.load('assets/images/sample_customer_logo.png');
-      await dest.writeAsBytes(bytes.buffer.asUint8List());
-    }
   }
 
   List<File> listLogos() {

@@ -1,6 +1,6 @@
 """Embedded app version for Windows Update checks (semver)."""
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 APP_NAME = "Swift Document Generator"
 GITHUB_OWNER = "StagingLogShippingTracker"
 GITHUB_REPO = "swift-shipping-label"

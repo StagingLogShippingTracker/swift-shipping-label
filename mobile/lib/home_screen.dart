@@ -1031,21 +1031,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Presets are saved per document type; shipment fields stay per job',
                   child: Column(
                     children: [
-                      DropdownButtonFormField<String>(
-                        key: ValueKey(
-                          'preset-$_kind-$_presetName-${presetNames.length}',
-                        ),
-                        initialValue: _presetName != null &&
+                      DropdownButtonFormField<String?>(
+                        key: ValueKey('preset-$_kind-${presetNames.length}'),
+                        value: _presetName != null &&
                                 presetNames.contains(_presetName)
                             ? _presetName
                             : null,
+                        hint: const Text('Select preset'),
                         decoration: const InputDecoration(
                           labelText: 'PRESET',
-                          hintText: 'Select preset',
                         ),
+                        isExpanded: true,
                         items: [
                           for (final n in presetNames)
-                            DropdownMenuItem(value: n, child: Text(n)),
+                            DropdownMenuItem<String?>(
+                              value: n,
+                              child: Text(n),
+                            ),
                         ],
                         onChanged: (v) {
                           if (v != null) _applyPreset(v);
