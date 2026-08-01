@@ -361,7 +361,15 @@ def draw_header(c: canvas.Canvas, customer_logo: Path | None) -> float:
     logo_bottom = y_top - band_h
 
     if customer_logo and customer_logo.exists():
-        draw_image_fit(c, customer_logo, MX, logo_bottom + 10, COL_W * 0.7, band_h - 18)
+        pad = 4
+        draw_image_fit(
+            c,
+            customer_logo,
+            MX + pad,
+            logo_bottom + pad,
+            COL_W * 0.95 - pad * 2,
+            band_h - pad * 2,
+        )
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)

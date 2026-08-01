@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
 import 'bol_document_number.dart';
+import 'preset_sync.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'pdf/bol_label_pdf.dart';
@@ -161,14 +162,76 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _bolCustomerCopy = true;
   /// Visible BOL goods lines (1..7); start with line 1 only.
   int _bolLineCount = 1;
+  late final PresetSync _presetSync;
 
   @override
   void initState() {
     super.initState();
+    _presetSync = PresetSync(widget.storage);
     _controllers = {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
     };
+    _syncPresetsOnLaunch();
+  }
+
+  Future<void> _syncPresetsOnLaunch() async {
+    try {
+      await _presetSync.syncOnLaunch();
+      if (mounted) setState(() {});
+    } on PresetSyncException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Preset sync: ${e.message}')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preset sync failed — using local presets.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pushPresetQuietly(LabelKind kind, String displayName) async {
+    try {
+      await _presetSync.pushPreset(kind, displayName);
+    } on PresetSyncException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cloud sync: ${e.message}')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cloud sync failed — saved locally.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deletePresetQuietly(LabelKind kind, String displayName) async {
+    try {
+      await _presetSync.deletePreset(kind, displayName);
+    } on PresetSyncException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cloud sync: ${e.message}')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cloud sync failed — deleted locally only.'),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -292,6 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     await widget.storage.savePresets();
     setState(() => _presetName = displayName);
+    await _pushPresetQuietly(_kind, displayName);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Saved preset “$displayName”.')),
@@ -323,6 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.storage.presets.remove(_presetStorageKey(name));
     await widget.storage.savePresets();
     setState(() => _presetName = null);
+    await _deletePresetQuietly(_kind, name);
   }
 
   Future<String?> _askString(String title, String label, String initial) async {
@@ -403,6 +468,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     await widget.storage.savePresets();
+    if (createPresets) {
+      for (final path in importedPaths) {
+        final name = widget.storage.safeCustomerName(
+          p.basenameWithoutExtension(path),
+        );
+        await _pushPresetQuietly(_kind, name);
+      }
+    }
     setState(() {
       for (final path in importedPaths) {
         if (_logoPaths.length >= maxCustomerLogos) break;
@@ -1028,7 +1101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _Card(
                   title: 'Customer preset',
                   hint:
-                      'Presets are saved per document type; shipment fields stay per job',
+                      'Shared across all devices — per document type; shipment fields stay per job',
                   child: Column(
                     children: [
                       DropdownButtonFormField<String?>(

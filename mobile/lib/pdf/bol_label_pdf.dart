@@ -975,8 +975,8 @@ class BolLabelPdf {
   ) {
     final logos = customerLogos.take(maxCustomerLogos).toList();
     if (logos.isEmpty) return;
-    // Cap the left band so wide Swift wordmarks don't crush customer marks.
-    final maxFrameW = 1.65 * inch;
+    // Single logo: wider left band; dual logos: side-by-side or stacked.
+    final maxFrameW = logos.length == 1 ? 2.25 * inch : 1.85 * inch;
     final frameLeft = margin;
     final frameRight = (swiftLogoX - 14).clamp(frameLeft + 40, frameLeft + maxFrameW);
     final frameW = frameRight - frameLeft;

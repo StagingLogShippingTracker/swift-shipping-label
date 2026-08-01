@@ -448,21 +448,34 @@ class ShippingLabelPdf {
     final logos = customerLogos.take(maxCustomerLogos).toList();
 
     if (logos.isNotEmpty) {
-      // Primary + optional C/O logo side-by-side in the left column band.
-      final gap = logos.length > 1 ? 10.0 : 0.0;
-      final slotW = (colW * 0.95 - gap) / logos.length;
-      for (var i = 0; i < logos.length; i++) {
-        final x = mx + i * (slotW + gap);
+      final areaW = colW * 0.95;
+      if (logos.length == 1) {
+        const pad = 4.0;
         _drawImageFit(
           c,
-          logos[i],
-          x,
-          logoBottom + 10,
-          slotW,
-          bandH - 18,
+          logos[0],
+          mx + pad,
+          logoBottom + pad,
+          areaW - pad * 2,
+          bandH - pad * 2,
         );
-        if (i == 1) {
-          _microLabel(c, fonts, x, logoBottom + 2, 'C/O');
+      } else {
+        const gap = 8.0;
+        const padY = 5.0;
+        final slotW = (areaW - gap) / logos.length;
+        for (var i = 0; i < logos.length; i++) {
+          final x = mx + i * (slotW + gap);
+          _drawImageFit(
+            c,
+            logos[i],
+            x,
+            logoBottom + padY,
+            slotW,
+            bandH - padY * 2,
+          );
+          if (i == 1) {
+            _microLabel(c, fonts, x, logoBottom + 2, 'C/O');
+          }
         }
       }
     } else {
