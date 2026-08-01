@@ -81,7 +81,7 @@ class AppStorage {
     if (!presets.containsKey('Pacific Canbriam')) {
       presets['Pacific Canbriam'] = CustomerPreset(
         name: 'Pacific Canbriam',
-        logoFileName: 'Pacific Canbriam.png',
+        logoFileNames: const ['Pacific Canbriam.png'],
         fields: {
           LabelFields.customer: 'PACIFIC CANBRIAM',
           LabelFields.shipTo: 'STRAIT PROJECTS',

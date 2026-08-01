@@ -178,13 +178,35 @@ class ShippingLabelPdf {
     return h < minH ? minH : h.toDouble();
   }
 
+  /// One page per pallet/crate and per box (e.g. 8 skids + 2 boxes → 10 pages).
   Future<Uint8List> build({
     required ShippingLabelData data,
-    Uint8List? customerLogoBytes,
+    List<Uint8List> customerLogoBytes = const [],
+    PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
   }) async {
+    final pages = <ShippingLabelData>[];
+    for (var i = 1; i <= piecePlan.palletCrates; i++) {
+      final page = data.copy();
+      page.set(LabelFields.palletNum, '$i');
+      page.set(LabelFields.palletOf, '${piecePlan.palletCrates}');
+      page.set(LabelFields.boxNum, '');
+      page.set(LabelFields.boxOf, '');
+      pages.add(page);
+    }
+    for (var i = 1; i <= piecePlan.boxes; i++) {
+      final page = data.copy();
+      page.set(LabelFields.boxNum, '$i');
+      page.set(LabelFields.boxOf, '${piecePlan.boxes}');
+      page.set(LabelFields.palletNum, '');
+      page.set(LabelFields.palletOf, '');
+      pages.add(page);
+    }
+    if (pages.isEmpty) {
+      pages.add(data.copy());
+    }
     return _buildDoc(
       title: 'Swift Oilfield Supply — Shipping Label',
-      data: data,
+      pages: pages,
       customerLogoBytes: customerLogoBytes,
       painter: _drawPage,
     );
@@ -192,11 +214,11 @@ class ShippingLabelPdf {
 
   Future<Uint8List> buildReceiving({
     required ShippingLabelData data,
-    Uint8List? customerLogoBytes,
+    List<Uint8List> customerLogoBytes = const [],
   }) async {
     return _buildDoc(
       title: 'Swift Oilfield Supply — Receiving Label',
-      data: data,
+      pages: [data],
       customerLogoBytes: customerLogoBytes,
       painter: _drawReceivingPage,
     );
@@ -204,52 +226,56 @@ class ShippingLabelPdf {
 
   Future<Uint8List> _buildDoc({
     required String title,
-    required ShippingLabelData data,
-    Uint8List? customerLogoBytes,
+    required List<ShippingLabelData> pages,
+    required List<Uint8List> customerLogoBytes,
     required void Function(
       PdfGraphics c,
       _ResolvedFonts fonts,
       ShippingLabelData data,
-      PdfImage? customerLogo,
+      List<PdfImage> customerLogos,
       PdfImage? swiftLogo,
     ) painter,
   }) async {
     final doc = pw.Document(title: title, author: 'Swift Oilfield Supply');
 
-    doc.addPage(
-      pw.Page(
-        pageFormat: pageFormat,
-        margin: pw.EdgeInsets.zero,
-        build: (context) {
-          final fonts = _ResolvedFonts(
-            oswald: oswald.getFont(context),
-            oswaldMedium: oswaldMedium.getFont(context),
-            oswaldBold: oswaldBold.getFont(context),
-            calibri: calibri.getFont(context),
-            calibriBold: calibriBold.getFont(context),
-          );
-
-          PdfImage? customerLogo;
-          if (customerLogoBytes != null && customerLogoBytes.isNotEmpty) {
-            customerLogo = PdfImage.file(
-              context.document,
-              bytes: customerLogoBytes,
+    for (final pageData in pages) {
+      doc.addPage(
+        pw.Page(
+          pageFormat: pageFormat,
+          margin: pw.EdgeInsets.zero,
+          build: (context) {
+            final fonts = _ResolvedFonts(
+              oswald: oswald.getFont(context),
+              oswaldMedium: oswaldMedium.getFont(context),
+              oswaldBold: oswaldBold.getFont(context),
+              calibri: calibri.getFont(context),
+              calibriBold: calibriBold.getFont(context),
             );
-          }
-          PdfImage? swiftLogo;
-          if (swiftLogoBytes != null) {
-            swiftLogo = PdfImage.file(context.document, bytes: swiftLogoBytes!);
-          }
 
-          return pw.CustomPaint(
-            size: PdfPoint(pageFormat.width, pageFormat.height),
-            painter: (PdfGraphics canvas, PdfPoint size) {
-              painter(canvas, fonts, data, customerLogo, swiftLogo);
-            },
-          );
-        },
-      ),
-    );
+            final customerLogos = <PdfImage>[];
+            for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
+              if (bytes.isNotEmpty) {
+                customerLogos.add(
+                  PdfImage.file(context.document, bytes: bytes),
+                );
+              }
+            }
+            PdfImage? swiftLogo;
+            if (swiftLogoBytes != null) {
+              swiftLogo =
+                  PdfImage.file(context.document, bytes: swiftLogoBytes!);
+            }
+
+            return pw.CustomPaint(
+              size: PdfPoint(pageFormat.width, pageFormat.height),
+              painter: (PdfGraphics canvas, PdfPoint size) {
+                painter(canvas, fonts, pageData, customerLogos, swiftLogo);
+              },
+            );
+          },
+        ),
+      );
+    }
 
     return doc.save();
   }
@@ -287,7 +313,7 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     ShippingLabelData sample,
-    PdfImage? customerLogo,
+    List<PdfImage> customerLogos,
     PdfImage? swiftLogo,
   ) {
     final pageH = pageFormat.height;
@@ -297,7 +323,7 @@ class ShippingLabelPdf {
     final footY = my + 6;
     final pieceTop = footY + 70;
 
-    var y = _drawHeader(c, fonts, customerLogo, swiftLogo);
+    var y = _drawHeader(c, fonts, customerLogos, swiftLogo);
     final pair = _drawIdentityPair(c, fonts, y, sample);
     _drawNotesAndMeta(c, fonts, pair.$1, pair.$2, sample, pieceTop + 4);
 
@@ -411,7 +437,7 @@ class ShippingLabelPdf {
   double _drawHeader(
     PdfGraphics c,
     _ResolvedFonts fonts,
-    PdfImage? customerLogo,
+    List<PdfImage> customerLogos,
     PdfImage? swiftLogo, {
     bool receivingChip = false,
   }) {
@@ -419,16 +445,26 @@ class ShippingLabelPdf {
     final yTop = pageH - my - 14;
     final bandH = 0.92 * inch;
     final logoBottom = yTop - bandH;
+    final logos = customerLogos.take(maxCustomerLogos).toList();
 
-    if (customerLogo != null) {
-      _drawImageFit(
-        c,
-        customerLogo,
-        mx,
-        logoBottom + 10,
-        colW * 0.7,
-        bandH - 18,
-      );
+    if (logos.isNotEmpty) {
+      // Primary + optional C/O logo side-by-side in the left column band.
+      final gap = logos.length > 1 ? 10.0 : 0.0;
+      final slotW = (colW * 0.95 - gap) / logos.length;
+      for (var i = 0; i < logos.length; i++) {
+        final x = mx + i * (slotW + gap);
+        _drawImageFit(
+          c,
+          logos[i],
+          x,
+          logoBottom + 10,
+          slotW,
+          bandH - 18,
+        );
+        if (i == 1) {
+          _microLabel(c, fonts, x, logoBottom + 2, 'C/O');
+        }
+      }
     } else {
       c
         ..setStrokeColor(ruleSoft)
@@ -568,7 +604,7 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     ShippingLabelData sample,
-    PdfImage? customerLogo,
+    List<PdfImage> customerLogos,
     PdfImage? swiftLogo,
   ) {
     final pageH = pageFormat.height;
@@ -579,7 +615,7 @@ class ShippingLabelPdf {
     var y = _drawHeader(
       c,
       fonts,
-      customerLogo,
+      customerLogos,
       swiftLogo,
       receivingChip: true,
     );

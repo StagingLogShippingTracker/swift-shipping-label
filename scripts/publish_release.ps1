@@ -159,9 +159,9 @@ $notes = @"
 ## Swift Shipping Label $Version
 
 ### What's new
-- Shipping or Receiving label selector (defaults to Shipping)
-- Receiving label PDF with full-width Special Instructions (2 lines)
-- New app icon on Windows and Android
+- Shipping: ask pallet/crate and box counts, then print one page per unit (1 of N)
+- Up to 2 customer logos per label (primary + C/O)
+- Shipping / Receiving selector, Receiving Special Instructions, new app icon
 
 ### Assets
 - SwiftShippingLabel-windows.zip - portable Flutter onedir (no admin). Extract and run swift_shipping_label.exe.

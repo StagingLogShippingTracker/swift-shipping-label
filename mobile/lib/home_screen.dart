@@ -37,16 +37,6 @@ const _shippingGroups = <(String title, String hint, List<String> keys)>[
       LabelFields.swiftContact,
     ],
   ),
-  (
-    'Piece count',
-    'Match the BOL',
-    [
-      LabelFields.palletNum,
-      LabelFields.palletOf,
-      LabelFields.boxNum,
-      LabelFields.boxOf,
-    ],
-  ),
 ];
 
 const _receivingGroups = <(String title, String hint, List<String> keys)>[
@@ -85,8 +75,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final Map<String, TextEditingController> _controllers;
   String? _presetName;
-  String? _activeLogoPath;
-  String? _pickedLogoName;
+  /// Selected customer logo paths (primary first, optional C/O second).
+  final List<String> _logoPaths = [];
   bool _busy = false;
   LabelKind _kind = LabelKind.shipping;
 
@@ -103,8 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
         (f) => p.basename(f.path).contains('Pacific'),
         orElse: () => logos.first,
       );
-      _activeLogoPath = sample.path;
-      _pickedLogoName = p.basename(sample.path);
+      _logoPaths.add(sample.path);
     }
     if (widget.storage.presets.containsKey('Pacific Canbriam')) {
       _presetName = 'Pacific Canbriam';
@@ -144,13 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _setField(key, preset.fields[key] ?? '');
       }
     }
-    if (preset.logoFileName.isNotEmpty) {
-      final path = p.join(widget.storage.logosDir.path, preset.logoFileName);
-      if (File(path).existsSync()) {
-        _activeLogoPath = path;
-        _pickedLogoName = preset.logoFileName;
-      }
-    }
+    _logoPaths
+      ..clear()
+      ..addAll(
+        preset.logoFileNames
+            .map((n) => p.join(widget.storage.logosDir.path, n))
+            .where((path) => File(path).existsSync())
+            .take(maxCustomerLogos),
+      );
     _presetName = name;
     if (notify) setState(() {});
   }
@@ -167,26 +157,22 @@ class _HomeScreenState extends State<HomeScreen> {
       fields[key] = _controllers[key]?.text.trim() ?? '';
     }
 
-    var logoName = '';
-    final logoPath = _activeLogoPath;
-    if (logoPath != null && logoPath.isNotEmpty) {
+    final logoNames = <String>[];
+    for (final logoPath in _logoPaths.take(maxCustomerLogos)) {
       final lp = File(logoPath);
-      if (await lp.exists()) {
-        if (p.dirname(lp.path) == widget.storage.logosDir.path) {
-          logoName = p.basename(lp.path);
-        } else {
-          final imported = await widget.storage.importLogo(lp);
-          logoName = p.basename(imported.path);
-          _activeLogoPath = imported.path;
-          _pickedLogoName = logoName;
-        }
+      if (!await lp.exists()) continue;
+      if (p.dirname(lp.path) == widget.storage.logosDir.path) {
+        logoNames.add(p.basename(lp.path));
+      } else {
+        final imported = await widget.storage.importLogo(lp);
+        logoNames.add(p.basename(imported.path));
       }
     }
 
     widget.storage.presets[name.trim()] = CustomerPreset(
       name: name.trim(),
       fields: fields,
-      logoFileName: logoName,
+      logoFileNames: logoNames,
     );
     await widget.storage.savePresets();
     setState(() => _presetName = name.trim());
@@ -280,10 +266,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    String? first;
+    final importedPaths = <String>[];
     for (final path in paths) {
       final imported = await widget.storage.importLogo(File(path));
-      first ??= imported.path;
+      importedPaths.add(imported.path);
       if (createPresets) {
         final name = widget.storage.safeCustomerName(
           p.basenameWithoutExtension(imported.path),
@@ -292,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
           name,
           () => CustomerPreset(
             name: name,
-            logoFileName: p.basename(imported.path),
+            logoFileNames: [p.basename(imported.path)],
             fields: {LabelFields.customer: name.toUpperCase()},
           ),
         );
@@ -300,9 +286,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     await widget.storage.savePresets();
     setState(() {
-      if (first != null) {
-        _activeLogoPath = first;
-        _pickedLogoName = p.basename(first);
+      for (final path in importedPaths) {
+        if (_logoPaths.length >= maxCustomerLogos) break;
+        if (!_logoPaths.contains(path)) _logoPaths.add(path);
       }
     });
     if (mounted) {
@@ -312,14 +298,118 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _pickActiveLogo() async {
+  Future<void> _addLogoSlot() async {
+    if (_logoPaths.length >= maxCustomerLogos) return;
     final paths = await _pickImages(multiple: false);
     if (paths.isEmpty) return;
     final imported = await widget.storage.importLogo(File(paths.first));
     setState(() {
-      _activeLogoPath = imported.path;
-      _pickedLogoName = p.basename(imported.path);
+      if (_logoPaths.length < maxCustomerLogos &&
+          !_logoPaths.contains(imported.path)) {
+        _logoPaths.add(imported.path);
+      }
     });
+  }
+
+  void _removeLogoAt(int index) {
+    if (index < 0 || index >= _logoPaths.length) return;
+    setState(() => _logoPaths.removeAt(index));
+  }
+
+  Future<void> _replaceLogoAt(int index) async {
+    final paths = await _pickImages(multiple: false);
+    if (paths.isEmpty) return;
+    final imported = await widget.storage.importLogo(File(paths.first));
+    setState(() {
+      if (index >= 0 && index < _logoPaths.length) {
+        _logoPaths[index] = imported.path;
+      }
+    });
+  }
+
+  Future<List<Uint8List>> _loadSelectedLogoBytes() async {
+    final out = <Uint8List>[];
+    for (final path in _logoPaths.take(maxCustomerLogos)) {
+      final f = File(path);
+      if (await f.exists()) out.add(await f.readAsBytes());
+    }
+    return out;
+  }
+
+  Future<PieceCountPlan?> _askPieceCounts() async {
+    final palletCtrl = TextEditingController(text: '1');
+    final boxCtrl = TextEditingController(text: '0');
+    var error = '';
+    return showDialog<PieceCountPlan>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('How many labels?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Enter how many Pallet/Crate and Box labels to print. '
+                'Each unit gets its own page (1 of N, 2 of N, …).',
+                style: TextStyle(fontSize: 13, color: SwiftColors.muted),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: palletCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'PALLET / CRATE LABELS',
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: boxCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'BOX LABELS',
+                ),
+              ),
+              if (error.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  error,
+                  style: const TextStyle(color: SwiftColors.accent, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final pallets = int.tryParse(palletCtrl.text.trim()) ?? -1;
+                final boxes = int.tryParse(boxCtrl.text.trim()) ?? -1;
+                if (pallets < 0 || boxes < 0 || pallets + boxes <= 0) {
+                  setLocal(
+                    () => error = 'Enter at least one pallet/crate or box.',
+                  );
+                  return;
+                }
+                if (pallets + boxes > 200) {
+                  setLocal(() => error = 'Keep total labels at 200 or fewer.');
+                  return;
+                }
+                Navigator.pop(
+                  ctx,
+                  PieceCountPlan(palletCrates: pallets, boxes: boxes),
+                );
+              },
+              child: const Text('Generate'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _loadSample() {
@@ -369,14 +459,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _generateAndShare() async {
     if (_busy) return;
+
+    PieceCountPlan? piecePlan;
+    if (_kind == LabelKind.shipping) {
+      piecePlan = await _askPieceCounts();
+      if (piecePlan == null || piecePlan.isEmpty) return;
+    }
+
     setState(() => _busy = true);
     try {
-      Uint8List? logoBytes;
-      final logoPath = _activeLogoPath;
-      if (logoPath != null && File(logoPath).existsSync()) {
-        logoBytes = await File(logoPath).readAsBytes();
-      }
-
+      final logoBytes = await _loadSelectedLogoBytes();
       final data = _collect();
       final bytes = _kind == LabelKind.receiving
           ? await widget.pdf.buildReceiving(
@@ -386,6 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : await widget.pdf.build(
               data: data,
               customerLogoBytes: logoBytes,
+              piecePlan: piecePlan!,
             );
 
       final customer = data.get(LabelFields.customer);
@@ -405,8 +498,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await shareOrOpenFile(file: file);
 
       if (mounted) {
+        final pages = _kind == LabelKind.shipping
+            ? ' (${piecePlan!.totalPages} pages)'
+            : '';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved:\n${file.path}')),
+          SnackBar(content: Text('Saved$pages:\n${file.path}')),
         );
       }
     } catch (e) {
@@ -470,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   _kind == LabelKind.receiving
                       ? 'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.'
-                      : 'Pre-fill the label → Generate PDF. Long PO / Project lines wrap and shrink Special Instructions for print.',
+                      : 'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
                   style: TextStyle(
                     color: SwiftColors.muted,
                     fontSize: 13,
@@ -521,57 +617,105 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _Card(
                   title: 'Customer logos',
-                  hint: 'Import once, pick per job',
+                  hint:
+                      'Up to $maxCustomerLogos per label — second logo is C/O',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('logo-$_pickedLogoName-${logos.length}'),
-                        initialValue: logos.any(
-                              (f) => p.basename(f.path) == _pickedLogoName,
-                            )
-                            ? _pickedLogoName
-                            : null,
-                        decoration: const InputDecoration(
-                          labelText: 'LOGOS IN APP STORAGE',
+                      if (_logoPaths.isEmpty)
+                        Text(
+                          'No logos selected. Add a customer logo'
+                          '${maxCustomerLogos > 1 ? ' (and optional C/O)' : ''}.',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: SwiftColors.muted,
+                          ),
                         ),
-                        items: [
-                          for (final f in logos)
-                            DropdownMenuItem(
-                              value: p.basename(f.path),
-                              child: Text(p.basename(f.path)),
-                            ),
-                        ],
-                        onChanged: (v) {
-                          if (v == null) return;
-                          setState(() {
-                            _pickedLogoName = v;
-                            _activeLogoPath =
-                                p.join(widget.storage.logosDir.path, v);
-                          });
-                        },
-                      ),
-                      if (_activeLogoPath != null &&
-                          File(_activeLogoPath!).existsSync()) ...[
-                        const SizedBox(height: 12),
+                      for (var i = 0; i < _logoPaths.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: SwiftColors.bg,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: SwiftColors.border),
                           ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Image.file(
-                              File(_activeLogoPath!),
-                              height: 52,
-                              cacheWidth: 240,
-                              filterQuality: FilterQuality.medium,
-                              gaplessPlayback: true,
-                              fit: BoxFit.contain,
-                            ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      i == 0 ? 'CUSTOMER' : 'C/O',
+                                      style: const TextStyle(
+                                        fontFamily: 'Oswald',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: SwiftColors.muted,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if (File(_logoPaths[i]).existsSync())
+                                      Image.file(
+                                        File(_logoPaths[i]),
+                                        height: 44,
+                                        cacheWidth: 220,
+                                        filterQuality: FilterQuality.medium,
+                                        gaplessPlayback: true,
+                                        fit: BoxFit.contain,
+                                      )
+                                    else
+                                      Text(
+                                        p.basename(_logoPaths[i]),
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Replace',
+                                onPressed: () => _replaceLogoAt(i),
+                                icon: const Icon(Icons.swap_horiz, size: 20),
+                              ),
+                              IconButton(
+                                tooltip: 'Remove',
+                                onPressed: () => _removeLogoAt(i),
+                                icon: const Icon(Icons.close, size: 20),
+                              ),
+                            ],
                           ),
+                        ),
+                      ],
+                      if (_logoPaths.length < maxCustomerLogos &&
+                          logos.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey('logo-pick-${_logoPaths.length}-${logos.length}'),
+                          initialValue: null,
+                          decoration: InputDecoration(
+                            labelText: _logoPaths.isEmpty
+                                ? 'ADD FROM STORAGE'
+                                : 'ADD C/O FROM STORAGE',
+                          ),
+                          items: [
+                            for (final f in logos)
+                              if (!_logoPaths.contains(f.path))
+                                DropdownMenuItem(
+                                  value: f.path,
+                                  child: Text(p.basename(f.path)),
+                                ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              if (_logoPaths.length < maxCustomerLogos &&
+                                  !_logoPaths.contains(v)) {
+                                _logoPaths.add(v);
+                              }
+                            });
+                          },
                         ),
                       ],
                       const SizedBox(height: 10),
@@ -586,8 +730,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _pickActiveLogo,
-                              child: const Text('Browse…'),
+                              onPressed: _logoPaths.length >= maxCustomerLogos
+                                  ? null
+                                  : _addLogoSlot,
+                              child: Text(
+                                _logoPaths.isEmpty ? 'Browse…' : 'Add C/O…',
+                              ),
                             ),
                           ),
                         ],
@@ -599,41 +747,33 @@ class _HomeScreenState extends State<HomeScreen> {
                   _Card(
                     title: group.$1,
                     hint: group.$2,
-                    child: group.$1 == 'Piece count'
-                        ? _PieceGrid(
-                            keys: group.$3,
-                            controllers: _controllers,
-                            meta: _meta,
-                          )
-                        : Column(
-                            children: [
-                              for (final key in group.$3) ...[
-                                Builder(
-                                  builder: (_) {
-                                    final m = _meta(key);
-                                    final lines = !m.$3
-                                        ? 1
-                                        : (key ==
-                                                    LabelFields
-                                                        .specialInstructions &&
-                                                _kind == LabelKind.receiving)
-                                            ? 2
-                                            : 3;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 6),
-                                      child: TextField(
-                                        controller: _controllers[key],
-                                        maxLines: lines,
-                                        decoration: InputDecoration(
-                                          labelText: m.$2.toUpperCase(),
-                                        ),
-                                      ),
-                                    );
-                                  },
+                    child: Column(
+                      children: [
+                        for (final key in group.$3) ...[
+                          Builder(
+                            builder: (_) {
+                              final m = _meta(key);
+                              final lines = !m.$3
+                                  ? 1
+                                  : (key == LabelFields.specialInstructions &&
+                                          _kind == LabelKind.receiving)
+                                      ? 2
+                                      : 3;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: TextField(
+                                  controller: _controllers[key],
+                                  maxLines: lines,
+                                  decoration: InputDecoration(
+                                    labelText: m.$2.toUpperCase(),
+                                  ),
                                 ),
-                              ],
-                            ],
+                              );
+                            },
                           ),
+                        ],
+                      ],
+                    ),
                   ),
                 Wrap(
                   spacing: 8,
@@ -825,52 +965,6 @@ class _Card extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _PieceGrid extends StatelessWidget {
-  const _PieceGrid({
-    required this.keys,
-    required this.controllers,
-    required this.meta,
-  });
-
-  final List<String> keys;
-  final Map<String, TextEditingController> controllers;
-  final (String, String, bool) Function(String key) meta;
-
-  @override
-  Widget build(BuildContext context) {
-    // Row layout (not GridView): wide Windows windows inflate GridView cell
-    // height via childAspectRatio and leave huge gaps between piece fields.
-    final rows = <List<String>>[];
-    for (var i = 0; i < keys.length; i += 2) {
-      rows.add(keys.sublist(i, i + 2 > keys.length ? keys.length : i + 2));
-    }
-    return Column(
-      children: [
-        for (var r = 0; r < rows.length; r++) ...[
-          if (r > 0) const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var c = 0; c < rows[r].length; c++) ...[
-                if (c > 0) const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: controllers[rows[r][c]],
-                    decoration: InputDecoration(
-                      labelText: meta(rows[r][c]).$2.toUpperCase(),
-                    ),
-                  ),
-                ),
-              ],
-              if (rows[r].length == 1) const Expanded(child: SizedBox.shrink()),
-            ],
-          ),
-        ],
-      ],
     );
   }
 }

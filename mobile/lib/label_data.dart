@@ -3,6 +3,9 @@ import 'dart:typed_data';
 /// Which print template the generator is targeting.
 enum LabelKind { shipping, receiving }
 
+/// Max customer logos per label (primary + care-of / C/O).
+const int maxCustomerLogos = 2;
+
 /// Field keys shared by the form UI and PDF generators.
 class LabelFields {
   static const customer = 'customer';
@@ -110,16 +113,23 @@ class CustomerPreset {
   CustomerPreset({
     required this.name,
     required this.fields,
-    this.logoFileName = '',
+    this.logoFileNames = const [],
   });
 
   final String name;
   final Map<String, String> fields;
-  final String logoFileName;
+  /// Up to [maxCustomerLogos] filenames under app logo storage.
+  final List<String> logoFileNames;
+
+  /// First logo (legacy helpers / single-logo callers).
+  String get logoFileName =>
+      logoFileNames.isEmpty ? '' : logoFileNames.first;
 
   Map<String, dynamic> toJson() => {
         ...fields,
-        'logo': logoFileName,
+        'logos': logoFileNames,
+        // Keep legacy key for older app versions
+        if (logoFileNames.isNotEmpty) 'logo': logoFileNames.first,
       };
 
   factory CustomerPreset.fromJson(String name, Map<String, dynamic> json) {
@@ -128,12 +138,36 @@ class CustomerPreset {
       final v = json[key];
       if (v != null) fields[key] = '$v';
     }
+    final logos = <String>[];
+    final rawList = json['logos'];
+    if (rawList is List) {
+      for (final item in rawList) {
+        final s = '$item'.trim();
+        if (s.isNotEmpty) logos.add(s);
+      }
+    }
+    if (logos.isEmpty) {
+      final legacy = '${json['logo'] ?? ''}'.trim();
+      if (legacy.isNotEmpty) logos.add(legacy);
+    }
     return CustomerPreset(
       name: name,
       fields: fields,
-      logoFileName: '${json['logo'] ?? ''}',
+      logoFileNames: logos.take(maxCustomerLogos).toList(),
     );
   }
+}
+
+/// Counts entered before generating a multi-page shipping PDF.
+class PieceCountPlan {
+  const PieceCountPlan({this.palletCrates = 0, this.boxes = 0});
+
+  final int palletCrates;
+  final int boxes;
+
+  int get totalPages => palletCrates + boxes;
+
+  bool get isEmpty => totalPages <= 0;
 }
 
 class LabelFonts {
