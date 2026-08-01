@@ -1,7 +1,7 @@
 """Embedded app version for Windows Update checks (semver)."""
 
-__version__ = "1.0.5"
-APP_NAME = "Swift Shipping Label"
+__version__ = "1.1.0"
+APP_NAME = "Swift Document Generator"
 GITHUB_OWNER = "StagingLogShippingTracker"
 GITHUB_REPO = "swift-shipping-label"
 GITHUB_RELEASES_API = (
@@ -12,5 +12,5 @@ GITHUB_RELEASES_PAGE = (
 )
 
 # Release asset names (must match scripts/publish_release.ps1)
-WINDOWS_ZIP_ASSET = "SwiftShippingLabel-windows.zip"
-ANDROID_APK_ASSET = "SwiftShippingLabel-android.apk"
+WINDOWS_ZIP_ASSET = "SwiftDocumentGenerator-windows.zip"
+ANDROID_APK_ASSET = "SwiftDocumentGenerator-android.apk"

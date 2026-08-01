@@ -1,16 +1,12 @@
 # Build Windows portable zip + Android APK and publish a GitHub Release.
 #
 # Usage:
-#   .\scripts\publish_release.ps1              # uses version.py / pubspec 1.0.0
-#   .\scripts\publish_release.ps1 -Version 1.0.1
-#   .\scripts\publish_release.ps1 -SkipAndroid  # Windows asset only
-#   .\scripts\publish_release.ps1 -SkipWindows
+#   .\scripts\publish_release.ps1
+#   .\scripts\publish_release.ps1 -Version 1.1.0
 #
-# Assets uploaded:
-#   SwiftShippingLabel-windows.zip
-#   SwiftShippingLabel-android.apk
-#
-# Requires: gh auth, Python, Flutter (for Android), network.
+# Assets:
+#   SwiftDocumentGenerator-windows.zip
+#   SwiftDocumentGenerator-android.apk
 param(
     [string]$Version = "",
     [switch]$SkipWindows,
@@ -49,20 +45,20 @@ function Set-VersionEverywhere([string]$ver) {
         throw "Could not parse mobile/pubspec.yaml version"
     }
 
-    $appDataPub = Join-Path $env:LOCALAPPDATA "swift-shipping-label-mobile\pubspec.yaml"
-    if (Test-Path $appDataPub) {
-        $ad = Get-Content $appDataPub -Raw
-        if ($ad -match 'version:\s*([\d.]+)\+(\d+)') {
-            $b = [int]$Matches[2] + 1
-            $ad = $ad -replace 'version:\s*[\d.]+\+\d+', "version: $ver+$b"
-            Set-Content -Path $appDataPub -Value $ad -Encoding UTF8 -NoNewline
+    foreach ($name in @("swift-document-generator-mobile", "swift-shipping-label-mobile")) {
+        $appDataPub = Join-Path $env:LOCALAPPDATA "$name\pubspec.yaml"
+        if (Test-Path $appDataPub) {
+            $ad = Get-Content $appDataPub -Raw
+            if ($ad -match 'version:\s*([\d.]+)\+(\d+)') {
+                $b = [int]$Matches[2] + 1
+                $ad = $ad -replace 'version:\s*[\d.]+\+\d+', "version: $ver+$b"
+                Set-Content -Path $appDataPub -Value $ad -Encoding UTF8 -NoNewline
+            }
         }
     }
 }
 
 if (-not $Version) { $Version = Get-VersionFromPy }
-# When publishing the same version already in version.py, do not auto-bump pubspec
-# unless -Version was explicitly passed. First release keeps 1.0.0+1.
 $explicitVersion = $PSBoundParameters.ContainsKey("Version") -and $Version
 if ($explicitVersion) {
     Set-VersionEverywhere $Version
@@ -82,22 +78,23 @@ $assets = @()
 if (-not $SkipWindows) {
     Write-Host "`n=== Windows portable (Flutter) ==="
     & (Join-Path $root "scripts\build_windows.ps1")
-    $onedir = Join-Path $dist "Swift Shipping Label"
+    $onedir = Join-Path $dist "Swift Document Generator"
     $exe = Join-Path $onedir "swift_shipping_label.exe"
     if (-not (Test-Path $exe)) {
         throw "Windows build missing: $exe"
     }
     @"
-Swift Supply - Shipping Label (portable Flutter)
+Swift Document Generator (portable Flutter)
 
 - Run: swift_shipping_label.exe
+- Generators: Shipping Label, Receiving Label, Bill of Lading
 - No install, no admin rights required
 - Do not put this folder in C:\Program Files
-- Data (presets, logos, PDFs): %LOCALAPPDATA%\SwiftShippingLabel\
+- Data (presets, logos, PDFs): app documents\swift_document_generator\
 
 Copy this entire folder to any work PC (Documents / Desktop / USB) and run.
 "@ | Set-Content -Path (Join-Path $onedir "README-PORTABLE.txt") -Encoding UTF8
-    $zip = Join-Path $dist "SwiftShippingLabel-windows.zip"
+    $zip = Join-Path $dist "SwiftDocumentGenerator-windows.zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path $onedir -DestinationPath $zip -CompressionLevel Optimal
     $assets += $zip
@@ -106,7 +103,10 @@ Copy this entire folder to any work PC (Documents / Desktop / USB) and run.
 
 if (-not $SkipAndroid) {
     Write-Host "`n=== Android APK ==="
-    $mobileRoot = Join-Path $env:LOCALAPPDATA "swift-shipping-label-mobile"
+    $mobileRoot = Join-Path $env:LOCALAPPDATA "swift-document-generator-mobile"
+    if (-not (Test-Path (Join-Path $mobileRoot "pubspec.yaml"))) {
+        $mobileRoot = Join-Path $env:LOCALAPPDATA "swift-shipping-label-mobile"
+    }
     if (-not (Test-Path (Join-Path $mobileRoot "pubspec.yaml"))) {
         $mobileRoot = Join-Path $root "mobile"
     }
@@ -134,7 +134,7 @@ if (-not $SkipAndroid) {
             $apkSrc = Join-Path $mobileRoot "build\app\outputs\flutter-apk\app-debug.apk"
         }
         if (-not (Test-Path $apkSrc)) { throw "APK not found under build/app/outputs/flutter-apk" }
-        $apkDest = Join-Path $dist "SwiftShippingLabel-android.apk"
+        $apkDest = Join-Path $dist "SwiftDocumentGenerator-android.apk"
         Copy-Item -Force $apkSrc $apkDest
         $assets += $apkDest
         Write-Host "Android asset: $apkDest"
@@ -154,22 +154,24 @@ try {
     $releaseExists = $false
 }
 
-$title = "Swift Shipping Label $Version"
+$title = "Swift Document Generator $Version"
 $notes = @"
-## Swift Shipping Label $Version
+## Swift Document Generator $Version
 
 ### What's new
-- Find customer logo on the web (or upload manually); up to 2 logos (C/O)
-- Auto-save PDFs as SL-/RL- + customer + sales order (with (1), (2) if needed)
-- Shipping: ask pallet/crate and box counts, then one page per unit (1 of N)
-
+- Renamed app to Swift Document Generator
+- Bill of Lading fused as a third generator (Shipping | Receiving | BOL)
+- BOL PDF from Documents/generate_swift_bol_pdf.py layout (3 copies)
+- Web logo find + manual upload; dual C/O logos
+- Auto-save SL-/RL-/BOL- + customer + SO (with (1), (2) collisions)
+- Shipping multi-page piece counts
 
 ### Assets
-- SwiftShippingLabel-windows.zip - portable Flutter onedir (no admin). Extract and run swift_shipping_label.exe.
-- SwiftShippingLabel-android.apk - Android install package.
+- SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.
+- SwiftDocumentGenerator-android.apk - Android install package.
 
 ### In-app Update
-Windows and Android Update buttons check releases/latest and download the host-platform asset.
+Update checks releases/latest for the host-platform asset names above.
 "@
 
 if ($releaseExists) {

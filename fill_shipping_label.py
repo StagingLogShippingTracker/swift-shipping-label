@@ -1,5 +1,5 @@
 """
-Launch the Swift Shipping Label Windows app (Flutter desktop).
+Launch the Swift Document Generator Windows app (Flutter desktop).
 
 No Tk UI, no console window. Falls back to building if the Release exe
 is missing.
@@ -13,10 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 MOBILE = ROOT / "mobile"
 EXE_CANDIDATES = [
-    ROOT
-    / "dist"
-    / "Swift Shipping Label"
-    / "swift_shipping_label.exe",
+    ROOT / "dist" / "Swift Document Generator" / "swift_shipping_label.exe",
+    ROOT / "dist" / "Swift Shipping Label" / "swift_shipping_label.exe",
     MOBILE
     / "build"
     / "windows"
@@ -48,7 +46,7 @@ def main() -> int:
             / "flutter.bat"
         )
         if not flutter.is_file():
-            print("Swift Shipping Label.exe not found. Build with:")
+            print("Swift Document Generator exe not found. Build with:")
             print("  cd mobile && flutter build windows --release")
             return 1
         return subprocess.call(

@@ -151,7 +151,7 @@ class AppUpdateService {
       Uri.parse(AppConfig.githubLatestReleaseApi),
       headers: const {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'SwiftShippingLabel',
+        'User-Agent': 'SwiftDocumentGenerator',
         'X-GitHub-Api-Version': '2022-11-28',
       },
     );
@@ -233,7 +233,7 @@ class AppUpdateService {
     final client = http.Client();
     try {
       final req = http.Request('GET', Uri.parse(url));
-      req.headers['User-Agent'] = 'SwiftShippingLabel';
+      req.headers['User-Agent'] = 'SwiftDocumentGenerator';
       final res = await client.send(req);
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception('Download failed (HTTP ${res.statusCode}).');

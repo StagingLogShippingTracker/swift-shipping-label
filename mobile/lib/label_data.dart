@@ -1,10 +1,67 @@
 import 'dart:typed_data';
 
 /// Which print template the generator is targeting.
-enum LabelKind { shipping, receiving }
+enum LabelKind { shipping, receiving, bol }
 
 /// Max customer logos per label (primary + care-of / C/O).
 const int maxCustomerLogos = 2;
+
+/// Bill of Lading field keys (flat print PDF).
+class BolFields {
+  static const documentNumber = 'document_number';
+  static const documentDate = 'document_date';
+  static const bookingRef = 'booking_ref';
+  static const probillNumber = 'probill_number';
+  static const consigneeName = 'consignee_name';
+  static const consigneeAddress = 'consignee_address';
+  static const consigneeContactName = 'consignee_contact_name';
+  static const consigneeContactNumber = 'consignee_contact_number';
+  static const thirdPartyBilling = 'third_party_billing';
+  static const freightCharges = 'freight_charges';
+  static const packingList = 'packing_list';
+  static const orderNum = 'order_num';
+  static const totalPieces = 'total_pieces';
+  static const totalWeight = 'total_weight';
+  static const shipperCertName = 'shipper_cert_name';
+  static const shipperCertDate = 'shipper_cert_date';
+  static const driverPrint = 'driver_print';
+  static const driverDate = 'driver_date';
+  static const vehicleId = 'vehicle_id';
+  static const consigneePrint = 'consignee_print';
+  static const consigneeDate = 'consignee_date';
+
+  static String lineKey(int row, String suffix) => 'line_${row}_$suffix';
+
+  /// BOL-only keys (PO / Project reuse [LabelFields]).
+  static final formDefs = <(String key, String label, bool multiline)>[
+    (documentNumber, 'Document Number', false),
+    (documentDate, 'Date', false),
+    (bookingRef, 'Booking Ref', false),
+    (probillNumber, 'Probill #', false),
+    (consigneeName, 'Ship To Name', false),
+    (consigneeAddress, 'Delivery Address', true),
+    (consigneeContactName, 'Contact Name', false),
+    (consigneeContactNumber, 'Contact Number', false),
+    (thirdPartyBilling, '3rd Party Billing', true),
+    (freightCharges, 'Freight (prepaid/collect/third_party)', false),
+    (packingList, 'Packing List #', false),
+    (orderNum, 'Order #', false),
+    (shipperCertName, 'Shipper Cert Name', false),
+    (shipperCertDate, 'Shipper Cert Date', false),
+    (driverPrint, 'Driver Name', false),
+    (driverDate, 'Driver Date', false),
+    (vehicleId, 'Vehicle ID', false),
+    (consigneePrint, 'Consignee Print Name', false),
+    (consigneeDate, 'Consignee Date', false),
+    for (var i = 1; i <= 7; i++) ...[
+      (lineKey(i, 'pieces'), 'Line $i Qty', false),
+      (lineKey(i, 'item_type'), 'Line $i Item Type', false),
+      (lineKey(i, 'dimensions'), 'Line $i Dimensions', false),
+      (lineKey(i, 'description'), 'Line $i Description', false),
+      (lineKey(i, 'weight'), 'Line $i Weight', false),
+    ],
+  ];
+}
 
 /// Field keys shared by the form UI and PDF generators.
 class LabelFields {
@@ -27,7 +84,7 @@ class LabelFields {
   static const dateReceived = 'date_received';
   static const receivedBy = 'received_by';
 
-  static const formDefs = <(String key, String label, bool multiline)>[
+  static final formDefs = <(String key, String label, bool multiline)>[
     (customer, 'Customer', false),
     (poNum, 'PO No.', true),
     (project, 'Project', true),
@@ -46,6 +103,7 @@ class LabelFields {
     (pm, 'PM', false),
     (dateReceived, 'Date Received', false),
     (receivedBy, 'Received By', false),
+    ...BolFields.formDefs,
   ];
 
   /// Fields stored on a customer preset (shipment-specific stay blank).
@@ -106,6 +164,35 @@ class ShippingLabelData {
     LabelFields.receivedBy: 'Keith Blackman',
     LabelFields.specialInstructions:
         'Hold on dock until ship confirm. Do not break skid.',
+  });
+
+  static final bolSample = ShippingLabelData({
+    LabelFields.customer: 'PACIFIC CANBRIAM',
+    LabelFields.specialInstructions: 'Call before delivery. Staging bay 3.',
+    LabelFields.poNum: 'PCE-112124-03690',
+    LabelFields.project: 'B35 PIPE AND FITTINGS',
+    LabelFields.salesOrder: 'SO-88421',
+    BolFields.documentNumber: 'SW-0024',
+    BolFields.documentDate: 'Aug 1, 2026',
+    BolFields.bookingRef: 'BK-4412',
+    BolFields.consigneeName: 'STRAIT PROJECTS',
+    BolFields.consigneeAddress: '12341 271 RD, FORT ST. JOHN, BC',
+    BolFields.consigneeContactName: 'RICK SHUMAN',
+    BolFields.consigneeContactNumber: '250-555-0199',
+    BolFields.freightCharges: 'prepaid',
+    BolFields.packingList: '1224618',
+    BolFields.orderNum: 'SO-88421',
+    BolFields.lineKey(1, 'pieces'): '2',
+    BolFields.lineKey(1, 'item_type'): 'Pallets',
+    BolFields.lineKey(1, 'dimensions'): '48x40x48',
+    BolFields.lineKey(1, 'description'): 'Pipe fittings — north pad staging',
+    BolFields.lineKey(1, 'weight'): '1800',
+    BolFields.lineKey(2, 'pieces'): '1',
+    BolFields.lineKey(2, 'item_type'): 'Boxes',
+    BolFields.lineKey(2, 'description'): 'Gasket kit',
+    BolFields.lineKey(2, 'weight'): '40',
+    BolFields.shipperCertName: 'J. SMITH',
+    BolFields.shipperCertDate: 'Aug 1, 2026',
   });
 }
 

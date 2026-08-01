@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'app_storage.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
+import 'pdf/bol_label_pdf.dart';
 import 'pdf/shipping_label_pdf.dart';
 import 'platform_io.dart';
 import 'theme.dart';
@@ -60,6 +61,91 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
     'Received',
     'Dock stamp — date and who signed',
     [LabelFields.dateReceived, LabelFields.receivedBy],
+  ),
+];
+
+final _bolGroups = <(String title, String hint, List<String> keys)>[
+  (
+    'Document',
+    'BOL header meta',
+    [
+      BolFields.documentNumber,
+      BolFields.documentDate,
+      BolFields.bookingRef,
+      BolFields.probillNumber,
+    ],
+  ),
+  (
+    'Ship to (consignee)',
+    'Delivery party',
+    [
+      BolFields.consigneeName,
+      BolFields.consigneeAddress,
+      BolFields.consigneeContactName,
+      BolFields.consigneeContactNumber,
+    ],
+  ),
+  (
+    'Billing & freight',
+    'Collect / prepaid',
+    [BolFields.thirdPartyBilling, BolFields.freightCharges],
+  ),
+  (
+    'Tracking & references',
+    'PO, packing list, order, project',
+    [
+      LabelFields.poNum,
+      BolFields.packingList,
+      BolFields.orderNum,
+      LabelFields.project,
+      LabelFields.salesOrder,
+      LabelFields.specialInstructions,
+    ],
+  ),
+  (
+    'Line 1',
+    'First goods row',
+    [
+      BolFields.lineKey(1, 'pieces'),
+      BolFields.lineKey(1, 'item_type'),
+      BolFields.lineKey(1, 'dimensions'),
+      BolFields.lineKey(1, 'description'),
+      BolFields.lineKey(1, 'weight'),
+    ],
+  ),
+  (
+    'Line 2',
+    'Second goods row',
+    [
+      BolFields.lineKey(2, 'pieces'),
+      BolFields.lineKey(2, 'item_type'),
+      BolFields.lineKey(2, 'dimensions'),
+      BolFields.lineKey(2, 'description'),
+      BolFields.lineKey(2, 'weight'),
+    ],
+  ),
+  (
+    'Line 3',
+    'Third goods row (optional)',
+    [
+      BolFields.lineKey(3, 'pieces'),
+      BolFields.lineKey(3, 'item_type'),
+      BolFields.lineKey(3, 'description'),
+      BolFields.lineKey(3, 'weight'),
+    ],
+  ),
+  (
+    'Signatures',
+    'Shipper / driver / consignee',
+    [
+      BolFields.shipperCertName,
+      BolFields.shipperCertDate,
+      BolFields.driverPrint,
+      BolFields.driverDate,
+      BolFields.vehicleId,
+      BolFields.consigneePrint,
+      BolFields.consigneeDate,
+    ],
   ),
 ];
 
@@ -125,7 +211,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   (String, String, bool) _meta(String key) {
-    return LabelFields.formDefs.firstWhere((d) => d.$1 == key);
+    return LabelFields.formDefs.firstWhere(
+      (d) => d.$1 == key,
+      orElse: () => (key, key, false),
+    );
   }
 
   void _applyPreset(String name, {bool notify = true}) {
@@ -528,37 +617,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadSample() {
-    final s = _kind == LabelKind.receiving
-        ? ShippingLabelData.receivingSample
-        : ShippingLabelData.sample;
+    final s = switch (_kind) {
+      LabelKind.receiving => ShippingLabelData.receivingSample,
+      LabelKind.bol => ShippingLabelData.bolSample,
+      LabelKind.shipping => ShippingLabelData.sample,
+    };
     for (final e in s.values.entries) {
       _setField(e.key, e.value);
+    }
+    // Mirror ship-to into BOL consignee when loading BOL sample
+    if (_kind == LabelKind.bol) {
+      final name = _controllers[BolFields.consigneeName]?.text ?? '';
+      if (name.isNotEmpty) _setField(LabelFields.shipTo, name);
     }
     setState(() {});
   }
 
   void _clearShipment() {
-    final clear = _kind == LabelKind.receiving
-        ? {
-            LabelFields.poNum,
-            LabelFields.project,
-            LabelFields.salesOrder,
-            LabelFields.pm,
-            LabelFields.dateReceived,
-            LabelFields.receivedBy,
-            LabelFields.specialInstructions,
-          }
-        : {
-            LabelFields.poNum,
-            LabelFields.project,
-            LabelFields.packingSlip,
-            LabelFields.salesOrder,
-            LabelFields.palletNum,
-            LabelFields.palletOf,
-            LabelFields.boxNum,
-            LabelFields.boxOf,
-            LabelFields.specialInstructions,
-          };
+    final clear = switch (_kind) {
+      LabelKind.receiving => {
+          LabelFields.poNum,
+          LabelFields.project,
+          LabelFields.salesOrder,
+          LabelFields.pm,
+          LabelFields.dateReceived,
+          LabelFields.receivedBy,
+          LabelFields.specialInstructions,
+        },
+      LabelKind.bol => {
+          for (final d in BolFields.formDefs) d.$1,
+          LabelFields.poNum,
+          LabelFields.project,
+          LabelFields.salesOrder,
+          LabelFields.specialInstructions,
+        },
+      LabelKind.shipping => {
+          LabelFields.poNum,
+          LabelFields.project,
+          LabelFields.packingSlip,
+          LabelFields.salesOrder,
+          LabelFields.palletNum,
+          LabelFields.palletOf,
+          LabelFields.boxNum,
+          LabelFields.boxOf,
+          LabelFields.specialInstructions,
+        },
+    };
     for (final key in clear) {
       _controllers[key]?.clear();
     }
@@ -585,21 +689,51 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final logoBytes = await _loadSelectedLogoBytes();
       final data = _collect();
-      final bytes = _kind == LabelKind.receiving
-          ? await widget.pdf.buildReceiving(
-              data: data,
-              customerLogoBytes: logoBytes,
-            )
-          : await widget.pdf.build(
-              data: data,
-              customerLogoBytes: logoBytes,
-              piecePlan: piecePlan!,
-            );
+      // Keep BOL consignee in sync with shared ship-to when empty
+      if (_kind == LabelKind.bol) {
+        if (data.get(BolFields.consigneeName).isEmpty) {
+          data.set(BolFields.consigneeName, data.get(LabelFields.shipTo));
+        }
+        if (data.get(BolFields.consigneeAddress).isEmpty) {
+          data.set(BolFields.consigneeAddress, data.get(LabelFields.location));
+        }
+        if (data.get(BolFields.orderNum).isEmpty) {
+          data.set(BolFields.orderNum, data.get(LabelFields.salesOrder));
+        }
+        if (data.get(BolFields.packingList).isEmpty) {
+          data.set(BolFields.packingList, data.get(LabelFields.packingSlip));
+        }
+      }
 
+      final Uint8List bytes;
+      switch (_kind) {
+        case LabelKind.receiving:
+          bytes = await widget.pdf.buildReceiving(
+            data: data,
+            customerLogoBytes: logoBytes,
+          );
+        case LabelKind.bol:
+          bytes = await BolLabelPdf(widget.pdf).build(
+            data: data,
+            customerLogoBytes: logoBytes,
+          );
+        case LabelKind.shipping:
+          bytes = await widget.pdf.build(
+            data: data,
+            customerLogoBytes: logoBytes,
+            piecePlan: piecePlan!,
+          );
+      }
+
+      final so = data.get(LabelFields.salesOrder).isNotEmpty
+          ? data.get(LabelFields.salesOrder)
+          : data.get(BolFields.orderNum);
       final name = widget.storage.labelPdfBaseName(
-        receiving: _kind == LabelKind.receiving,
-        customer: data.get(LabelFields.customer),
-        salesOrder: data.get(LabelFields.salesOrder),
+        kind: _kind,
+        customer: data.get(LabelFields.customer).isNotEmpty
+            ? data.get(LabelFields.customer)
+            : data.get(BolFields.consigneeName),
+        salesOrder: so,
       );
 
       final file = await widget.storage.writePdf(name, bytes);
@@ -607,9 +741,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await shareOrOpenFile(file: file);
 
       if (mounted) {
-        final pages = _kind == LabelKind.shipping
-            ? ' (${piecePlan!.totalPages} pages)'
-            : '';
+        final pages = switch (_kind) {
+          LabelKind.shipping => ' (${piecePlan!.totalPages} pages)',
+          LabelKind.bol => ' (3 copies)',
+          LabelKind.receiving => '',
+        };
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved$pages:\n${file.path}')),
         );
@@ -629,8 +765,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final logos = widget.storage.listLogos();
     final presetNames = widget.storage.presets.keys.toList()..sort();
-    final groups =
-        _kind == LabelKind.receiving ? _receivingGroups : _shippingGroups;
+    final groups = switch (_kind) {
+      LabelKind.receiving => _receivingGroups,
+      LabelKind.bol => _bolGroups,
+      LabelKind.shipping => _shippingGroups,
+    };
 
     return Scaffold(
       body: Column(
@@ -647,13 +786,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   segments: const [
                     ButtonSegment(
                       value: LabelKind.shipping,
-                      label: Text('Shipping Label'),
+                      label: Text('Shipping'),
                       icon: Icon(Icons.local_shipping_outlined, size: 18),
                     ),
                     ButtonSegment(
                       value: LabelKind.receiving,
-                      label: Text('Receiving Label'),
+                      label: Text('Receiving'),
                       icon: Icon(Icons.inventory_2_outlined, size: 18),
+                    ),
+                    ButtonSegment(
+                      value: LabelKind.bol,
+                      label: Text('Bill of Lading'),
+                      icon: Icon(Icons.description_outlined, size: 18),
                     ),
                   ],
                   selected: {_kind},
@@ -665,7 +809,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       TextStyle(
                         fontFamily: 'Oswald',
                         fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        fontSize: 12,
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -673,9 +817,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  _kind == LabelKind.receiving
-                      ? 'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.'
-                      : 'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
+                  switch (_kind) {
+                    LabelKind.receiving =>
+                      'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.',
+                    LabelKind.bol =>
+                      'Straight Bill of Lading (3 copies: store, driver, customer). Ported from the Swift BOL generator.',
+                    LabelKind.shipping =>
+                      'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
+                  },
                   style: TextStyle(
                     color: SwiftColors.muted,
                     fontSize: 13,
@@ -988,7 +1137,7 @@ class _Header extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Shipping Label Generator',
+                      'Document Generator',
                       style: TextStyle(
                         fontFamily: 'Calibri',
                         fontSize: 13,

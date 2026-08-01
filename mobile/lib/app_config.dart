@@ -9,6 +9,6 @@ class AppConfig {
   static const githubReleasesPage =
       'https://github.com/$githubOwner/$githubRepo/releases';
 
-  static const windowsZipAsset = 'SwiftShippingLabel-windows.zip';
-  static const androidApkAsset = 'SwiftShippingLabel-android.apk';
+  static const windowsZipAsset = 'SwiftDocumentGenerator-windows.zip';
+  static const androidApkAsset = 'SwiftDocumentGenerator-android.apk';
 }

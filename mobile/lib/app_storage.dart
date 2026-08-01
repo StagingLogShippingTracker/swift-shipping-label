@@ -21,7 +21,16 @@ class AppStorage {
 
   static Future<AppStorage> open() async {
     final docs = await getApplicationDocumentsDirectory();
-    final root = Directory(p.join(docs.path, 'swift_shipping_label'));
+    final root = Directory(p.join(docs.path, 'swift_document_generator'));
+    final legacy = Directory(p.join(docs.path, 'swift_shipping_label'));
+    // One-time migrate presets/logos from the old app folder name.
+    if (!await root.exists() && await legacy.exists()) {
+      try {
+        await legacy.rename(root.path);
+      } catch (_) {
+        await root.create(recursive: true);
+      }
+    }
     final store = AppStorage._(root);
     await store.ensureDirs();
     await store.loadPresets();
@@ -183,13 +192,17 @@ class AppStorage {
     return cleaned;
   }
 
-  /// e.g. `SL-StrikeSO1223344.pdf` or `RL-StrikeSO1223344.pdf`
+  /// e.g. `SL-StrikeSO1223344.pdf`, `RL-…`, or `BOL-…`
   String labelPdfBaseName({
-    required bool receiving,
+    required LabelKind kind,
     required String customer,
     required String salesOrder,
   }) {
-    final prefix = receiving ? 'RL-' : 'SL-';
+    final prefix = switch (kind) {
+      LabelKind.receiving => 'RL-',
+      LabelKind.bol => 'BOL-',
+      LabelKind.shipping => 'SL-',
+    };
     final cust = compactFileToken(customer);
     final so = compactFileToken(salesOrder);
     final body = '$cust$so';
