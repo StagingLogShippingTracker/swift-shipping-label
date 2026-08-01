@@ -140,8 +140,10 @@ final _bolGroups = <(String title, String hint, List<String> keys)>[
     [
       BolFields.shipperCertName,
       BolFields.shipperCertDate,
+      BolFields.driverCompany,
       BolFields.driverPrint,
       BolFields.driverDate,
+      BolFields.departureTime,
       BolFields.vehicleId,
       BolFields.consigneePrint,
       BolFields.consigneeDate,

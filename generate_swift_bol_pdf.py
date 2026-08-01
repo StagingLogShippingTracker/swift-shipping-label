@@ -1370,10 +1370,11 @@ def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
     section_title(c, sx, y, sw, "CARRIER / DRIVER ACCEPTANCE", hdr)
     rect_stroke(c, sx, body_bot, sw, sh, 0.75)
     sig_fields(c, form, sx, body_top, body_bot, sw, [
+        [("driver_company", "Company", 1.0)],
         [("driver_print", "Driver Print Name", 1.0)],
-        [("driver_sign", "Signature", 0.62), ("driver_date", "Date", 0.38)],
+        [("driver_sign", "Signature", 1.0)],
         [("vehicle_id", "Vehicle ID", 1.0)],
-        [("arrival_time", "Arrival", 0.62), ("departure_time", "Departure", 0.38)],
+        [("departure_time", "Departure", 0.62), ("driver_date", "Date", 0.38)],
     ], top_inset=BODY_INSET)
     sx += sw + GAP
 

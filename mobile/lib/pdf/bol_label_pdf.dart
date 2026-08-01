@@ -142,20 +142,8 @@ class BolLabelPdf {
       }
     }
 
-    if (customerLogos.isNotEmpty) {
-      final slot = 0.9 * inch;
-      for (var i = 0; i < customerLogos.length; i++) {
-        final img = customerLogos[i];
-        final iw = img.width.toDouble();
-        final ih = img.height.toDouble();
-        if (iw <= 0 || ih <= 0) continue;
-        final h = logoH * 0.85;
-        var w = h * iw / ih;
-        final x = margin + i * slot;
-        if (w > slot - 4) w = slot - 4;
-        c.drawImage(img, x, y - h, w, h);
-      }
-    }
+    // Customer logos: left frame only, aspect preserved — never move Swift/probill.
+    _drawCustomerLogosLeft(c, customerLogos, logoX, y, logoH);
 
     _probillCutout(c, fonts, d, logoX, logoW, y, logoH);
     y -= logoH + 6;
@@ -280,33 +268,38 @@ class BolLabelPdf {
     _rect(c, rx, y - freightH, colW, freightH, lw: 0.75);
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
     final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
-    const radioSize = 11.0;
+    const radioSize = 10.0;
+    const labelSize = 7.0;
     final freightBodyBot = y - freightH;
     final freightBodyTop = y - hdrH;
-    final ry = freightBodyBot + (freightBodyTop - freightBodyBot - radioSize) / 2;
+    final bodyMid = (freightBodyBot + freightBodyTop) / 2;
+    final ry = bodyMid - radioSize / 2;
+    final labelY = bodyMid - labelSize * 0.35;
     final options = [
       ('prepaid', 'Prepaid'),
       ('collect', 'Collect'),
       ('third_party', '3rd Party'),
     ];
-    final innerLeft = rx + pad;
-    final innerRight = rx + colW - pad;
+    final innerLeft = rx + pad + 2;
+    final innerRight = rx + colW - pad - 2;
     final widths = [
-      for (final o in options) radioSize + 4 + _sw(fonts.regular, 6.5, o.$2),
+      for (final o in options) radioSize + 5 + _sw(fonts.regular, labelSize, o.$2),
     ];
     final totalW = widths.fold<double>(0, (a, b) => a + b);
     final free = (innerRight - innerLeft - totalW).clamp(0.0, double.infinity);
-    final radioGap = free / 2;
+    final radioGap = free / (options.length - 1);
     var ox = innerLeft;
     for (var i = 0; i < options.length; i++) {
       final key = options[i].$1;
       final label = options[i].$2;
-      final on = freight == key || freight == label.toLowerCase();
+      final on = freight == key ||
+          freight == label.toLowerCase() ||
+          (key == 'third_party' && (freight == '3rd party' || freight == 'third party'));
       _radio(c, ox, ry, radioSize, on);
       c
-        ..setFillColor(secondary)
-        ..setFont(fonts.regular, 6.5)
-        ..drawString(fonts.regular, 6.5, label, ox + radioSize + 4, ry + 1.5);
+        ..setFillColor(black)
+        ..setFont(fonts.regular, labelSize)
+        ..drawString(fonts.regular, labelSize, label, ox + radioSize + 5, labelY);
       ox += widths[i] + radioGap;
     }
     y -= freightH + gap;
@@ -508,15 +501,13 @@ class BolLabelPdf {
       bodyBot,
       sw,
       [
+        [(BolFields.driverCompany, 'Company', 1.0)],
         [(BolFields.driverPrint, 'Driver Print Name', 1.0)],
-        [
-          (BolFields.driverSign, 'Signature', 0.62),
-          (BolFields.driverDate, 'Date', 0.38),
-        ],
+        [(BolFields.driverSign, 'Signature', 1.0)],
         [(BolFields.vehicleId, 'Vehicle ID', 1.0)],
         [
-          (BolFields.arrivalTime, 'Arrival', 0.62),
-          (BolFields.departureTime, 'Departure', 0.38),
+          (BolFields.departureTime, 'Departure', 0.62),
+          (BolFields.driverDate, 'Date', 0.38),
         ],
       ],
       topInset: bodyInset,
@@ -933,22 +924,93 @@ class BolLabelPdf {
       ..drawString(fonts.bold, 5.5, text.toUpperCase(), x, y);
   }
 
+  /// Fit [img] inside [maxW]×[maxH] at (x,y) bottom-left, preserving aspect ratio.
+  void _drawImageInBox(
+    PdfGraphics c,
+    PdfImage img,
+    double x,
+    double y,
+    double maxW,
+    double maxH,
+  ) {
+    final iw = img.width.toDouble();
+    final ih = img.height.toDouble();
+    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) return;
+    final scale = maxW / iw < maxH / ih ? maxW / iw : maxH / ih;
+    final w = iw * scale;
+    final h = ih * scale;
+    final dx = x + (maxW - w) / 2;
+    final dy = y + (maxH - h) / 2;
+    c.drawImage(img, dx, dy, w, h);
+  }
+
+  /// Up to 2 customer logos in the left header frame only (no Swift/probill shift).
+  void _drawCustomerLogosLeft(
+    PdfGraphics c,
+    List<PdfImage> customerLogos,
+    double swiftLogoX,
+    double logoTop,
+    double logoH,
+  ) {
+    final logos = customerLogos.take(maxCustomerLogos).toList();
+    if (logos.isEmpty) return;
+    final frameRight = swiftLogoX - 12;
+    final frameLeft = margin;
+    final frameW = frameRight - frameLeft;
+    if (frameW < 28) return;
+    final frameBot = logoTop - logoH;
+    const gap = 6.0;
+
+    if (logos.length == 1) {
+      _drawImageInBox(c, logos.first, frameLeft, frameBot, frameW, logoH);
+      return;
+    }
+
+    // Prefer side-by-side when the left frame is wide enough; else stack.
+    final sideBySide = frameW >= logoH * 1.15;
+    if (sideBySide) {
+      final slotW = (frameW - gap) / 2;
+      for (var i = 0; i < logos.length; i++) {
+        _drawImageInBox(
+          c,
+          logos[i],
+          frameLeft + i * (slotW + gap),
+          frameBot,
+          slotW,
+          logoH,
+        );
+      }
+    } else {
+      final slotH = (logoH - gap) / 2;
+      for (var i = 0; i < logos.length; i++) {
+        _drawImageInBox(
+          c,
+          logos[i],
+          frameLeft,
+          frameBot + (1 - i) * (slotH + gap),
+          frameW,
+          slotH,
+        );
+      }
+    }
+  }
+
   void _radio(PdfGraphics c, double x, double y, double size, bool on) {
-    final r = size / 2 - 1.25;
     final cx = x + size / 2;
     final cy = y + size / 2;
+    final r = size / 2 - 0.6;
     c
       ..setFillColor(white)
       ..drawEllipse(x, y, size, size)
       ..fillPath()
-      ..setStrokeColor(black)
-      ..setLineWidth(1.1)
+      ..setStrokeColor(on ? swift : black)
+      ..setLineWidth(on ? 1.35 : 1.0)
       ..drawEllipse(cx - r, cy - r, r * 2, r * 2)
       ..strokePath();
     if (on) {
-      final dr = r * 0.42;
+      final dr = r * 0.48;
       c
-        ..setFillColor(black)
+        ..setFillColor(swift)
         ..drawEllipse(cx - dr, cy - dr, dr * 2, dr * 2)
         ..fillPath();
     }

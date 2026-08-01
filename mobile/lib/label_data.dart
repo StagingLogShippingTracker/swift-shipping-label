@@ -25,10 +25,12 @@ class BolFields {
   static const shipperCertName = 'shipper_cert_name';
   static const shipperCertSign = 'shipper_cert_sign';
   static const shipperCertDate = 'shipper_cert_date';
+  static const driverCompany = 'driver_company';
   static const driverPrint = 'driver_print';
   static const driverSign = 'driver_sign';
   static const driverDate = 'driver_date';
   static const vehicleId = 'vehicle_id';
+  /// Kept for older fills; no longer drawn on the BOL.
   static const arrivalTime = 'arrival_time';
   static const departureTime = 'departure_time';
   static const consigneeSign = 'consignee_sign';
@@ -53,8 +55,10 @@ class BolFields {
     (orderNum, 'Order #', false),
     (shipperCertName, 'Shipper Cert Name', false),
     (shipperCertDate, 'Shipper Cert Date', false),
+    (driverCompany, 'Carrier Company', false),
     (driverPrint, 'Driver Name', false),
     (driverDate, 'Driver Date', false),
+    (departureTime, 'Departure', false),
     (vehicleId, 'Vehicle ID', false),
     (consigneePrint, 'Consignee Print Name', false),
     (consigneeDate, 'Consignee Date', false),

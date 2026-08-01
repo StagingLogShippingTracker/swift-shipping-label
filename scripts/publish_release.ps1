@@ -159,12 +159,10 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Renamed app to Swift Document Generator
-- Bill of Lading fused as a third generator (Shipping | Receiving | BOL)
-- BOL PDF from Documents/generate_swift_bol_pdf.py layout (3 copies)
-- Web logo find + manual upload; dual C/O logos
-- Auto-save SL-/RL-/BOL- + customer + SO (with (1), (2) collisions)
-- Shipping multi-page piece counts
+- Shared BOL document numbers (SW-####) across Windows and Android
+- BOL: carrier Company field; Departure|Date; sharper freight radios
+- Customer logos keep aspect ratio in left header (no squish)
+- High-res multi-size Windows app icon (+ Android mipmaps)
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.
