@@ -147,8 +147,12 @@ if ($assets.Count -eq 0) { throw "No assets to publish" }
 
 Write-Host "`n=== GitHub Release $tag ==="
 $releaseExists = $false
-gh release view $tag 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+try {
+    gh release view $tag 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+} catch {
+    $releaseExists = $false
+}
 
 $title = "Swift Shipping Label $Version"
 $notes = @"
@@ -159,15 +163,15 @@ $notes = @"
 - Windows UI: tighter category / piece-count field spacing on wide screens
 
 ### Assets
-- ``SwiftShippingLabel-windows.zip`` — portable Flutter onedir (no admin). Extract and run ``swift_shipping_label.exe``.
-- ``SwiftShippingLabel-android.apk`` — Android install package.
+- SwiftShippingLabel-windows.zip - portable Flutter onedir (no admin). Extract and run swift_shipping_label.exe.
+- SwiftShippingLabel-android.apk - Android install package.
 
 ### In-app Update
-Windows and Android **Update** buttons check ``releases/latest`` and download the host-platform asset.
+Windows and Android Update buttons check releases/latest and download the host-platform asset.
 "@
 
 if ($releaseExists) {
-    Write-Host "Release $tag exists — uploading/replacing assets…"
+    Write-Host "Release $tag exists - uploading/replacing assets..."
     foreach ($a in $assets) {
         gh release upload $tag $a --clobber
     }
