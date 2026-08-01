@@ -274,7 +274,8 @@ class BolLabelPdf {
     final freightBodyTop = y - hdrH;
     final bodyMid = (freightBodyBot + freightBodyTop) / 2;
     final ry = bodyMid - radioSize / 2;
-    final labelY = bodyMid - labelSize * 0.35;
+    // PDF text baseline sits below the glyph center — nudge up to optical mid.
+    final labelY = ry + (radioSize - labelSize) / 2 + 0.8;
     final options = [
       ('prepaid', 'Prepaid'),
       ('collect', 'Collect'),
@@ -954,10 +955,12 @@ class BolLabelPdf {
   ) {
     final logos = customerLogos.take(maxCustomerLogos).toList();
     if (logos.isEmpty) return;
-    final frameRight = swiftLogoX - 12;
+    // Cap the left band so wide Swift wordmarks don't crush customer marks.
+    final maxFrameW = 1.65 * inch;
     final frameLeft = margin;
+    final frameRight = (swiftLogoX - 14).clamp(frameLeft + 40, frameLeft + maxFrameW);
     final frameW = frameRight - frameLeft;
-    if (frameW < 28) return;
+    if (frameW < 36) return;
     final frameBot = logoTop - logoH;
     const gap = 6.0;
 
@@ -967,7 +970,7 @@ class BolLabelPdf {
     }
 
     // Prefer side-by-side when the left frame is wide enough; else stack.
-    final sideBySide = frameW >= logoH * 1.15;
+    final sideBySide = frameW >= logoH * 1.2;
     if (sideBySide) {
       final slotW = (frameW - gap) / 2;
       for (var i = 0; i < logos.length; i++) {
@@ -983,11 +986,12 @@ class BolLabelPdf {
     } else {
       final slotH = (logoH - gap) / 2;
       for (var i = 0; i < logos.length; i++) {
+        // i=0 on top of the stack (higher y in PDF = higher on page)
         _drawImageInBox(
           c,
           logos[i],
           frameLeft,
-          frameBot + (1 - i) * (slotH + gap),
+          frameBot + (logos.length - 1 - i) * (slotH + gap),
           frameW,
           slotH,
         );
