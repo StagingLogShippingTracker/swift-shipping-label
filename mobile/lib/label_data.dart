@@ -185,7 +185,7 @@ class ShippingLabelData {
     BolFields.lineKey(1, 'pieces'): '2',
     BolFields.lineKey(1, 'item_type'): 'Pallets',
     BolFields.lineKey(1, 'dimensions'): '48x40x48',
-    BolFields.lineKey(1, 'description'): 'Pipe fittings — north pad staging',
+    BolFields.lineKey(1, 'description'): 'Pipe fittings - north pad staging',
     BolFields.lineKey(1, 'weight'): '1800',
     BolFields.lineKey(2, 'pieces'): '1',
     BolFields.lineKey(2, 'item_type'): 'Boxes',

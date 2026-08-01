@@ -560,6 +560,16 @@ class BolLabelPdf {
       ..drawString(fonts.regular, 5.5, text.toUpperCase(), x, y);
   }
 
+  String _latin1(String text) => text
+      .replaceAll('\u2014', '-')
+      .replaceAll('\u2013', '-')
+      .replaceAll('\u2018', "'")
+      .replaceAll('\u2019', "'")
+      .replaceAll('\u201c', '"')
+      .replaceAll('\u201d', '"')
+      .replaceAll('\u2026', '...')
+      .replaceAllMapped(RegExp(r'[^\x00-\xff]'), (_) => '?');
+
   void _drawText(
     PdfGraphics c,
     _Fonts fonts,
@@ -570,7 +580,7 @@ class BolLabelPdf {
     double size, {
     int maxLines = 2,
   }) {
-    text = text.trim();
+    text = _latin1(text).trim();
     if (text.isEmpty) return;
     c
       ..setFillColor(black)
