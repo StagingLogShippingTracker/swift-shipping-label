@@ -666,84 +666,80 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      LogoDownloadedCandidate chosen = candidates.first;
-      if (candidates.length > 1) {
-        final picked = await showDialog<LogoDownloadedCandidate>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Choose a logo'),
-            content: SizedBox(
-              width: 520,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Top ${candidates.length} result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
-                    style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
-                  ),
-                  const SizedBox(height: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 440),
-                    child: SingleChildScrollView(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final c in candidates)
-                            InkWell(
-                              onTap: () => Navigator.pop(ctx, c),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                width: 96,
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: SwiftColors.muted),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.memory(
-                                      c.bytes,
-                                      height: 56,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) =>
-                                          const Icon(
-                                        Icons.broken_image_outlined,
-                                        size: 40,
-                                      ),
+      final picked = await showDialog<LogoDownloadedCandidate>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Choose a logo'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Top ${candidates.length} result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
+                  style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 440),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final c in candidates)
+                          InkWell(
+                            onTap: () => Navigator.pop(ctx, c),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              width: 96,
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: SwiftColors.muted),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image.memory(
+                                    c.bytes,
+                                    height: 56,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.broken_image_outlined,
+                                      size: 40,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      c.source,
-                                      style: const TextStyle(fontSize: 10),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c.source,
+                                    style: const TextStyle(fontSize: 10),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-            ],
           ),
-        );
-        if (picked == null || !mounted) return;
-        chosen = picked;
-      }
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+      if (picked == null || !mounted) return;
+      final chosen = picked;
 
       final base = widget.storage.safeCustomerName(
         nameCtrl.text.trim().isEmpty ? 'logo' : nameCtrl.text.trim(),

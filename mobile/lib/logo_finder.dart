@@ -159,7 +159,7 @@ class LogoFinder {
       };
 
   /// Ranked list for the picker UI — top [pickerMaxResults] by score, with light
-  /// junk filtering. Callers skip the grid only when this returns exactly one item.
+  /// junk filtering. Callers must always show the grid when this is non-empty.
   static List<LogoDownloadedCandidate> filterForPicker(
     List<LogoDownloadedCandidate> candidates,
   ) {
@@ -297,11 +297,8 @@ class LogoFinder {
       );
     }
 
-    final best = candidates.first;
-    return LogoFindResult.ok(
-      best.bytes,
-      source: best.source,
-      hint: best.hint,
+    return const LogoFindResult.fail(
+      'Logo candidates found — show the picker and let the user choose.',
     );
   }
 
