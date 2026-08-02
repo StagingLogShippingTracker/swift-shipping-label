@@ -20,8 +20,10 @@ OUT = ROOT / "mobile" / "assets" / "images" / "swift_supply_header_white.png"
 # 3× the original 743 px header asset — crisp when scaled down in Flutter.
 TARGET_WIDTH = 2229
 
-SHADOW_DX = (2, 14)
+SHADOW_DX = (3, 14)
 SHADOW_DY = (2, 14)
+# Minimum horizontal offset — SUPPLY sits vertically under SWIFT (dx≈0).
+MIN_SHADOW_DX = 3
 
 
 def _pick_source(explicit: Path | None) -> Path:
@@ -55,6 +57,10 @@ def _logo_strength(r: int, g: int, b: int, a: int) -> float:
         sat = min(1.0, (r - max(g, b)) / 100.0)
         lum = min(1.0, max(r, g, b) / 255.0)
         return 0.55 + 0.45 * sat * lum
+    if _is_dark(r, g, b):
+        # SUPPLY wordmark and SWIFT outlines — solid black letterforms.
+        lum = 1.0 - max(r, g, b) / 110.0
+        return 0.75 + 0.25 * lum
     # Anti-aliased fringe between orange letterform and white background.
     if r > g and r > b and max(r, g, b) > 90:
         edge = (r - max(g, b)) / 140.0
@@ -63,9 +69,55 @@ def _logo_strength(r: int, g: int, b: int, a: int) -> float:
     return 0.0
 
 
-def _is_shadow_pixel(x: int, y: int, letter: list[list[bool]], w: int, h: int) -> bool:
+def _find_supply_rows(
+    px, w: int, h: int, letter: list[list[bool]]
+) -> tuple[int, int] | None:
+    """Rows where SUPPLY lives: mostly dark, little orange (not SWIFT/shadow)."""
+    best_start = best_end = 0
+    best_score = 0
+    run_start: int | None = None
+    for y in range(h):
+        dark = orange = 0
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a < 16 or _is_background(r, g, b):
+                continue
+            if _is_dark(r, g, b):
+                dark += 1
+            elif letter[y][x]:
+                orange += 1
+        is_supply_row = dark >= 120 and orange <= dark // 4
+        if is_supply_row:
+            if run_start is None:
+                run_start = y
+        elif run_start is not None:
+            run_len = y - run_start
+            if run_len > best_score and run_start > h // 5:
+                best_score = run_len
+                best_start, best_end = run_start, y - 1
+            run_start = None
+    if run_start is not None:
+        run_len = h - run_start
+        if run_len > best_score and run_start > h // 5:
+            best_start, best_end = run_start, h - 1
+            best_score = run_len
+    if best_score < 8:
+        return None
+    return best_start, best_end
+
+
+def _is_shadow_pixel(
+    x: int,
+    y: int,
+    letter: list[list[bool]],
+    w: int,
+    h: int,
+    supply_rows: tuple[int, int] | None,
+) -> bool:
+    if supply_rows and supply_rows[0] <= y <= supply_rows[1]:
+        return False
     for dy in range(SHADOW_DY[0], SHADOW_DY[1] + 1):
-        for dx in range(SHADOW_DX[0], SHADOW_DX[1] + 1):
+        for dx in range(max(MIN_SHADOW_DX, SHADOW_DX[0]), SHADOW_DX[1] + 1):
             ox, oy = x - dx, y - dy
             if 0 <= ox < w and 0 <= oy < h and letter[oy][ox]:
                 return True
@@ -106,6 +158,10 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
             if _is_orange(r, g, b):
                 letter[y][x] = True
 
+    supply_rows = _find_supply_rows(px, w, h, letter)
+    if supply_rows:
+        print(f"SUPPLY band: rows {supply_rows[0]}-{supply_rows[1]}")
+
     out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     out_px = out.load()
 
@@ -116,8 +172,10 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
             if strength <= 0:
                 continue
 
-            # Drop shadow pixels (dark offset from orange letter cores).
-            if _is_dark(r, g, b) and _is_shadow_pixel(x, y, letter, w, h):
+            # Drop shadow pixels (dark offset down-right from orange SWIFT cores).
+            if _is_dark(r, g, b) and _is_shadow_pixel(
+                x, y, letter, w, h, supply_rows
+            ):
                 continue
 
             alpha = min(255, max(0, round(strength * 255)))
