@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
@@ -20,10 +21,9 @@ OUT = ROOT / "mobile" / "assets" / "images" / "swift_supply_header_white.png"
 # 3× the original 743 px header asset — crisp when scaled down in Flutter.
 TARGET_WIDTH = 2229
 
-SHADOW_DX = (3, 14)
-SHADOW_DY = (2, 14)
-# Minimum horizontal offset — SUPPLY sits vertically under SWIFT (dx≈0).
-MIN_SHADOW_DX = 3
+# SWIFT drop shadow sits down-right of the orange letter cores.
+SHADOW_DX = (2, 18)
+SHADOW_DY = (2, 18)
 
 
 def _pick_source(explicit: Path | None) -> Path:
@@ -106,22 +106,123 @@ def _find_supply_rows(
     return best_start, best_end
 
 
-def _is_shadow_pixel(
+def _build_outline_mask(
+    px, w: int, h: int, letter: list[list[bool]], supply_rows: tuple[int, int] | None
+) -> list[list[bool]]:
+    """Thin black stroke around orange SWIFT cores (not the drop shadow)."""
+    outline = [[False] * w for _ in range(h)]
+    for y in range(h):
+        if _in_supply(y, supply_rows):
+            continue
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a < 16 or not _is_dark(r, g, b):
+                continue
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h and letter[ny][nx]:
+                        outline[y][x] = True
+                        break
+                else:
+                    continue
+                break
+    return outline
+
+
+def _has_orange_offset(
     x: int,
     y: int,
     letter: list[list[bool]],
     w: int,
     h: int,
-    supply_rows: tuple[int, int] | None,
 ) -> bool:
-    if supply_rows and supply_rows[0] <= y <= supply_rows[1]:
-        return False
+    """True when an orange letter core sits up-left (shadow cast direction)."""
     for dy in range(SHADOW_DY[0], SHADOW_DY[1] + 1):
-        for dx in range(max(MIN_SHADOW_DX, SHADOW_DX[0]), SHADOW_DX[1] + 1):
+        for dx in range(SHADOW_DX[0], SHADOW_DX[1] + 1):
             ox, oy = x - dx, y - dy
             if 0 <= ox < w and 0 <= oy < h and letter[oy][ox]:
                 return True
     return False
+
+
+def _in_supply(y: int, supply_rows: tuple[int, int] | None) -> bool:
+    return bool(supply_rows and supply_rows[0] <= y <= supply_rows[1])
+
+
+def _build_shadow_mask(
+    px,
+    w: int,
+    h: int,
+    letter: list[list[bool]],
+    outline: list[list[bool]],
+    supply_rows: tuple[int, int] | None,
+) -> list[list[bool]]:
+    """Morphological shadow mask: dark CCs offset from SWIFT, not letter outlines."""
+    shadow = [[False] * w for _ in range(h)]
+    seeds: list[tuple[int, int]] = []
+
+    for y in range(h):
+        if _in_supply(y, supply_rows):
+            continue
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a < 16 or not _is_dark(r, g, b):
+                continue
+            if outline[y][x]:
+                continue
+            if _has_orange_offset(x, y, letter, w, h):
+                seeds.append((x, y))
+
+    # Flood-fill through dark pixels that are not letter outlines or SUPPLY.
+    for sx, sy in seeds:
+        if shadow[sy][sx]:
+            continue
+        q: deque[tuple[int, int]] = deque([(sx, sy)])
+        shadow[sy][sx] = True
+        while q:
+            x, y = q.popleft()
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if not (0 <= nx < w and 0 <= ny < h):
+                    continue
+                if _in_supply(ny, supply_rows) or outline[ny][nx] or shadow[ny][nx]:
+                    continue
+                r, g, b, a = px[nx, ny]
+                if a < 16 or not _is_dark(r, g, b):
+                    continue
+                shadow[ny][nx] = True
+                q.append((nx, ny))
+
+    # Absorb anti-aliased fringe and a thin halo — never swallow orange letter cores.
+    for _pass in range(3):
+        changed = False
+        for y in range(h):
+            if _in_supply(y, supply_rows):
+                continue
+            for x in range(w):
+                if shadow[y][x] or outline[y][x]:
+                    continue
+                r, g, b, a = px[x, y]
+                if a < 16 or _is_background(r, g, b) or _is_orange(r, g, b):
+                    continue
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        if dx == 0 and dy == 0:
+                            continue
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < w and 0 <= ny < h and shadow[ny][nx]:
+                            shadow[y][x] = True
+                            changed = True
+                            break
+                    else:
+                        continue
+                    break
+        if not changed:
+            break
+
+    return shadow
 
 
 def _trim_transparent(img: Image.Image, pad: int = 3) -> Image.Image:
@@ -162,6 +263,11 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
     if supply_rows:
         print(f"SUPPLY band: rows {supply_rows[0]}-{supply_rows[1]}")
 
+    outline = _build_outline_mask(px, w, h, letter, supply_rows)
+    shadow = _build_shadow_mask(px, w, h, letter, outline, supply_rows)
+    shadow_count = sum(sum(row) for row in shadow)
+    print(f"Shadow pixels removed: {shadow_count}")
+
     out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     out_px = out.load()
 
@@ -171,11 +277,7 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
             strength = _logo_strength(r, g, b, a)
             if strength <= 0:
                 continue
-
-            # Drop shadow pixels (dark offset down-right from orange SWIFT cores).
-            if _is_dark(r, g, b) and _is_shadow_pixel(
-                x, y, letter, w, h, supply_rows
-            ):
+            if shadow[y][x]:
                 continue
 
             alpha = min(255, max(0, round(strength * 255)))
