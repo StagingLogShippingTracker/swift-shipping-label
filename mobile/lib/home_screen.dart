@@ -1905,22 +1905,19 @@ class _Header extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 14, 16, 16),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'SWIFT SUPPLY',
-                      style: TextStyle(
-                        fontFamily: 'Oswald',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
-                        color: Colors.white,
-                        letterSpacing: 0.8,
-                      ),
+                    Image.asset(
+                      'assets/images/swift_supply_header_white.png',
+                      height: 28,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.centerLeft,
+                      filterQuality: FilterQuality.high,
                     ),
-                    SizedBox(height: 2),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       'Document Generator',
                       style: TextStyle(
                         fontFamily: 'Calibri',

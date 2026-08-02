@@ -1,8 +1,17 @@
 # Build Flutter Windows release into dist\Swift Document Generator\
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$Flutter = Join-Path $env:USERPROFILE "Downloads\swift-staging-tracker\.tools\flutter\bin\flutter.bat"
-if (-not (Test-Path $Flutter)) { $Flutter = "flutter" }
+$Flutter = $null
+foreach ($c in @(
+    (Join-Path $Root ".tools\flutter\bin\flutter.bat"),
+    (Join-Path $env:LOCALAPPDATA "swift-staging-tracker\.tools\flutter\bin\flutter.bat"),
+    (Join-Path $env:USERPROFILE "Downloads\swift-staging-tracker\.tools\flutter\bin\flutter.bat"),
+    "flutter"
+)) {
+    if ($c -eq "flutter") { $Flutter = "flutter"; break }
+    if (Test-Path $c) { $Flutter = $c; break }
+}
+if (-not $Flutter) { throw "Flutter SDK not found (install to $Root\.tools\flutter or PATH)" }
 
 Set-Location (Join-Path $Root "mobile")
 & $Flutter pub get

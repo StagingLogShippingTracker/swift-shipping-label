@@ -156,6 +156,7 @@ if (-not $SkipAndroid) {
 
     $flutter = $null
     foreach ($c in @(
+        (Join-Path $root ".tools\flutter\bin\flutter.bat"),
         (Join-Path $env:LOCALAPPDATA "swift-staging-tracker\.tools\flutter\bin\flutter.bat"),
         (Join-Path $env:USERPROFILE "Downloads\swift-staging-tracker\.tools\flutter\bin\flutter.bat"),
         "flutter"
