@@ -13,23 +13,54 @@ DEFAULT_SRC = (
     / ".cursor/projects/c-Users-Brice-OneDrive-Documents-swift-document-generator/assets"
     / "c__Users_Brice_AppData_Roaming_Cursor_User_workspaceStorage_empty-window_images_Picture1-8286020e-676c-4f45-9b4c-ebf312b31051.png"
 )
+HI_RES_SRC = ROOT / "mobile" / "assets" / "images" / "swift_supply_logo.png"
 FALLBACK_SRC = ROOT / "customer_logos" / "swift_supply_logo_opt.png"
 OUT = ROOT / "mobile" / "assets" / "images" / "swift_supply_header_white.png"
 
-SHADOW_DX = (2, 12)
-SHADOW_DY = (2, 12)
+# 3× the original 743 px header asset — crisp when scaled down in Flutter.
+TARGET_WIDTH = 2229
+
+SHADOW_DX = (2, 14)
+SHADOW_DY = (2, 14)
+
+
+def _pick_source(explicit: Path | None) -> Path:
+    if explicit and explicit.is_file():
+        return explicit
+    candidates = [DEFAULT_SRC, HI_RES_SRC, FALLBACK_SRC]
+    return max(
+        (p for p in candidates if p.is_file()),
+        key=lambda p: Image.open(p).size[0],
+        default=DEFAULT_SRC,
+    )
 
 
 def _is_background(r: int, g: int, b: int) -> bool:
-    return r > 235 and g > 235 and b > 235
+    return r > 232 and g > 232 and b > 232
 
 
 def _is_orange(r: int, g: int, b: int) -> bool:
-    return r > 140 and g > 45 and b < 140 and r > g and r > b + 30
+    return r > 130 and g > 40 and b < 150 and r > g and r > b + 25
 
 
 def _is_dark(r: int, g: int, b: int) -> bool:
-    return max(r, g, b) < 100
+    return max(r, g, b) < 110
+
+
+def _logo_strength(r: int, g: int, b: int, a: int) -> float:
+    """0–1 score: how strongly this pixel belongs to the logo mark."""
+    if a < 8 or _is_background(r, g, b):
+        return 0.0
+    if _is_orange(r, g, b):
+        sat = min(1.0, (r - max(g, b)) / 100.0)
+        lum = min(1.0, max(r, g, b) / 255.0)
+        return 0.55 + 0.45 * sat * lum
+    # Anti-aliased fringe between orange letterform and white background.
+    if r > g and r > b and max(r, g, b) > 90:
+        edge = (r - max(g, b)) / 140.0
+        if edge > 0.08:
+            return min(0.85, edge)
+    return 0.0
 
 
 def _is_shadow_pixel(x: int, y: int, letter: list[list[bool]], w: int, h: int) -> bool:
@@ -41,7 +72,7 @@ def _is_shadow_pixel(x: int, y: int, letter: list[list[bool]], w: int, h: int) -
     return False
 
 
-def _trim_transparent(img: Image.Image, pad: int = 2) -> Image.Image:
+def _trim_transparent(img: Image.Image, pad: int = 3) -> Image.Image:
     bbox = img.getbbox()
     if not bbox:
         return img
@@ -53,8 +84,16 @@ def _trim_transparent(img: Image.Image, pad: int = 2) -> Image.Image:
     return img.crop((x0, y0, x1, y1))
 
 
-def process_logo(src: Path, dest: Path) -> None:
-    img = Image.open(src).convert("RGBA")
+def _upscale_to_target(img: Image.Image, target_width: int) -> Image.Image:
+    if img.width >= target_width:
+        return img
+    scale = target_width / img.width
+    new_h = max(1, round(img.height * scale))
+    return img.resize((target_width, new_h), Image.Resampling.LANCZOS)
+
+
+def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> None:
+    img = _upscale_to_target(Image.open(src).convert("RGBA"), target_width)
     w, h = img.size
     px = img.load()
 
@@ -73,14 +112,18 @@ def process_logo(src: Path, dest: Path) -> None:
     for y in range(h):
         for x in range(w):
             r, g, b, a = px[x, y]
-            if a < 16 or _is_background(r, g, b):
+            strength = _logo_strength(r, g, b, a)
+            if strength <= 0:
                 continue
 
             # Drop shadow pixels (dark offset from orange letter cores).
             if _is_dark(r, g, b) and _is_shadow_pixel(x, y, letter, w, h):
                 continue
 
-            out_px[x, y] = (255, 255, 255, 255)
+            alpha = min(255, max(0, round(strength * 255)))
+            if alpha < 12:
+                continue
+            out_px[x, y] = (255, 255, 255, alpha)
 
     out = _trim_transparent(out)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -89,9 +132,12 @@ def process_logo(src: Path, dest: Path) -> None:
 
 
 def main() -> int:
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
-    if not src.is_file():
-        src = FALLBACK_SRC
+    explicit = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+    try:
+        src = _pick_source(explicit)
+    except ValueError:
+        print("Source logo not found.", file=sys.stderr)
+        return 1
     if not src.is_file():
         print(f"Source logo not found: {src}", file=sys.stderr)
         return 1

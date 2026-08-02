@@ -1911,7 +1911,7 @@ class _Header extends StatelessWidget {
                   children: [
                     Image.asset(
                       'assets/images/swift_supply_header_white.png',
-                      height: 28,
+                      height: 44,
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
                       filterQuality: FilterQuality.high,
