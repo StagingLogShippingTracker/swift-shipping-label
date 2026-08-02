@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// Lightweight signature capture (mouse / touch) without extra packages.
+/// Signature capture for mouse, touch, and stylus (S Pen) without extra packages.
 class SignaturePad extends StatefulWidget {
-  const SignaturePad({super.key, this.height = 140});
+  const SignaturePad({super.key, this.height = 220});
 
   final double height;
 
@@ -16,6 +16,7 @@ class SignaturePad extends StatefulWidget {
 class SignaturePadState extends State<SignaturePad> {
   final List<List<Offset>> _strokes = [];
   List<Offset>? _current;
+  int? _activePointer;
 
   bool get isEmpty =>
       _strokes.isEmpty && (_current == null || _current!.length < 2);
@@ -24,6 +25,7 @@ class SignaturePadState extends State<SignaturePad> {
     setState(() {
       _strokes.clear();
       _current = null;
+      _activePointer = null;
     });
   }
 
@@ -52,41 +54,59 @@ class SignaturePadState extends State<SignaturePad> {
     return data?.buffer.asUint8List();
   }
 
-  void _start(Offset pos) {
-    setState(() => _current = [pos]);
+  void _start(PointerDownEvent event) {
+    if (_activePointer != null) return;
+    _activePointer = event.pointer;
+    setState(() => _current = [event.localPosition]);
   }
 
-  void _move(Offset pos) {
-    setState(() => _current?.add(pos));
+  void _move(PointerMoveEvent event) {
+    if (event.pointer != _activePointer) return;
+    setState(() {
+      _current = [...?_current, event.localPosition];
+    });
   }
 
-  void _end() {
+  void _end(int pointer) {
+    if (pointer != _activePointer) return;
     setState(() {
       if (_current != null && _current!.length >= 2) {
         _strokes.add(List.of(_current!));
       }
       _current = null;
+      _activePointer = null;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (e) => _start(e.localPosition),
-      onPointerMove: (e) => _move(e.localPosition),
-      onPointerUp: (_) => _end(),
-      onPointerCancel: (_) => _end(),
-      child: CustomPaint(
-        size: Size(double.infinity, widget.height),
-        painter: _SignaturePainter(
-          strokes: _strokes,
-          current: _current,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).dividerColor),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
+    final borderColor = Theme.of(context).dividerColor;
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (_) => true,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _start,
+        onPointerMove: _move,
+        onPointerUp: (event) => _end(event.pointer),
+        onPointerCancel: (event) => _end(event.pointer),
+        child: RepaintBoundary(
+          child: SizedBox(
+            width: double.infinity,
+            height: widget.height,
+            child: CustomPaint(
+              painter: _SignaturePainter(
+                strokes: _strokes,
+                current: _current,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.white,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -117,5 +137,7 @@ class _SignaturePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SignaturePainter old) =>
-      old.strokes != strokes || old.current != current;
+      old.strokes.length != strokes.length ||
+      old.current?.length != current?.length ||
+      old.current != current;
 }
