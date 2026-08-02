@@ -17,6 +17,7 @@ class AppStorage {
   Directory get filledDir => Directory(p.join(root.path, 'filled'));
   File get presetsFile => File(p.join(root.path, 'presets.json'));
   File get signaturesFile => File(p.join(root.path, 'signatures.json'));
+  File get updateScheduleFile => File(p.join(root.path, 'update_schedule.json'));
 
   Map<String, CustomerPreset> presets = {};
   List<SavedSignature> signatures = [];

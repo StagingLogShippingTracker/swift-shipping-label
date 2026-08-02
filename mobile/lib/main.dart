@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_storage.dart';
+import 'auto_update_scheduler.dart';
 import 'home_screen.dart';
 import 'pdf/shipping_label_pdf.dart';
 import 'theme.dart';
@@ -28,7 +29,10 @@ class SwiftShippingLabelApp extends StatelessWidget {
       title: 'Swift Document Generator',
       debugShowCheckedModeBanner: false,
       theme: SwiftTheme.light(),
-      home: HomeScreen(storage: storage, pdf: pdf),
+      home: AutoUpdateHost(
+        storage: storage,
+        child: HomeScreen(storage: storage, pdf: pdf),
+      ),
     );
   }
 }

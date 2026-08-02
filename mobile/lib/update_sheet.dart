@@ -11,9 +11,137 @@ import 'app_update.dart';
 import 'platform_io.dart';
 import 'theme.dart';
 
-AppUpdatePlatform get _platform {
+AppUpdatePlatform get updatePlatform {
   if (Platform.isAndroid) return AppUpdatePlatform.android;
   return AppUpdatePlatform.windows;
+}
+
+/// Download and install the given release (used by manual and auto prompts).
+Future<void> installReleaseUpdate(
+  BuildContext context,
+  AppReleaseInfo release, {
+  AppUpdatePlatform? platform,
+}) async {
+  final plat = platform ?? updatePlatform;
+  if (!context.mounted) return;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => _InstallProgressDialog(release: release, platform: plat),
+  );
+}
+
+class _InstallProgressDialog extends StatefulWidget {
+  const _InstallProgressDialog({
+    required this.release,
+    required this.platform,
+  });
+
+  final AppReleaseInfo release;
+  final AppUpdatePlatform platform;
+
+  @override
+  State<_InstallProgressDialog> createState() => _InstallProgressDialogState();
+}
+
+class _InstallProgressDialogState extends State<_InstallProgressDialog> {
+  static const _svc = AppUpdateService();
+
+  double? _progress;
+  String _status = 'Downloading…';
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _run();
+  }
+
+  Future<void> _run() async {
+    try {
+      if (widget.platform == AppUpdatePlatform.android) {
+        await _svc.downloadAndInstallAndroid(
+          release: widget.release,
+          onProgress: (p) {
+            if (!mounted) return;
+            setState(() {
+              _progress = p;
+              _status = p >= 1.0
+                  ? 'Opening package installer…'
+                  : 'Downloading… ${(p * 100).round()}%';
+            });
+          },
+        );
+        if (!mounted) return;
+        setState(() => _status = 'Installer opened — follow on-screen prompts.');
+      } else {
+        final dir = await _svc.downloadAndExtractWindows(
+          release: widget.release,
+          onProgress: (p) {
+            if (!mounted) return;
+            setState(() {
+              _progress = p;
+              _status = p >= 1.0
+                  ? 'Extracting…'
+                  : 'Downloading… ${(p * 100).round()}%';
+            });
+          },
+        );
+        if (!mounted) return;
+        setState(() => _status = 'Update ready — opening folder.');
+        await openFolder(dir.path);
+      }
+      if (mounted) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        if (mounted) Navigator.of(context).pop();
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message ?? e.toString();
+        _status = 'Could not finish update.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Updating…'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(_status),
+          if (_progress != null) ...[
+            const SizedBox(height: 12),
+            LinearProgressIndicator(
+              value: _progress,
+              color: SwiftColors.accent,
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        if (_error != null)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+      ],
+    );
+  }
 }
 
 /// Header Update control — bottom sheet on all supported platforms.
@@ -49,8 +177,6 @@ class _UpdateSheetState extends State<_UpdateSheet> {
   PackageInfo? _info;
   AppReleaseInfo? _latest;
   bool _checking = false;
-  bool _installing = false;
-  double? _progress;
   String? _error;
   String? _status;
 
@@ -76,7 +202,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     });
     try {
       final info = _info ?? await PackageInfo.fromPlatform();
-      final platform = _platform;
+      final platform = updatePlatform;
       final result = await _svc.checkForUpdate(
         installedVersion: info.version,
         installedBuild: info.buildNumber,
@@ -131,74 +257,12 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         ),
       );
       if (confirm != true || !mounted) return;
-      await _downloadAndInstall(result.latest, platform);
+      await installReleaseUpdate(context, result.latest, platform: platform);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _checking = false);
-    }
-  }
-
-  Future<void> _downloadAndInstall(
-    AppReleaseInfo release,
-    AppUpdatePlatform platform,
-  ) async {
-    setState(() {
-      _installing = true;
-      _progress = 0;
-      _error = null;
-      _status = 'Downloading…';
-    });
-    try {
-      if (platform == AppUpdatePlatform.android) {
-        await _svc.downloadAndInstallAndroid(
-          release: release,
-          onProgress: (p) {
-            if (!mounted) return;
-            setState(() {
-              _progress = p;
-              _status = p >= 1.0
-                  ? 'Opening package installer…'
-                  : 'Downloading… ${(p * 100).round()}%';
-            });
-          },
-        );
-        if (!mounted) return;
-        setState(() => _status = 'Installer opened — follow on-screen prompts.');
-      } else {
-        final dir = await _svc.downloadAndExtractWindows(
-          release: release,
-          onProgress: (p) {
-            if (!mounted) return;
-            setState(() {
-              _progress = p;
-              _status = p >= 1.0
-                  ? 'Extracting…'
-                  : 'Downloading… ${(p * 100).round()}%';
-            });
-          },
-        );
-        if (!mounted) return;
-        setState(() => _status = 'Update ready — opening folder.');
-        await openFolder(dir.path);
-      }
-    } on PlatformException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message ?? e.toString();
-        _status = 'Could not finish update. Try View releases.';
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) {
-        setState(() {
-          _installing = false;
-          _progress = null;
-        });
-      }
     }
   }
 
@@ -216,7 +280,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     final installed = _info == null
         ? '…'
         : '${_info!.version}+${_info!.buildNumber}';
-    final busy = _checking || _installing;
+    final busy = _checking;
     final isAndroid = Platform.isAndroid;
 
     return SafeArea(
@@ -291,13 +355,6 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                 ),
               ),
             ],
-            if (_progress != null) ...[
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: _progress,
-                color: SwiftColors.accent,
-              ),
-            ],
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(
@@ -321,13 +378,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                       ),
                     )
                   : const Icon(Icons.system_update_alt, size: 18),
-              label: Text(
-                _installing
-                    ? 'Installing…'
-                    : _checking
-                        ? 'Checking…'
-                        : 'Check for updates',
-              ),
+              label: Text(_checking ? 'Checking…' : 'Check for updates'),
             ),
             const SizedBox(height: 8),
             TextButton.icon(

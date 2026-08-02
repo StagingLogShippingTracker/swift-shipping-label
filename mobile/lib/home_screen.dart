@@ -1096,33 +1096,48 @@ class _HomeScreenState extends State<HomeScreen> {
     Uint8List? captured;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Shipper signature'),
-        content: SizedBox(
-          width: 420,
-          child: SignaturePad(key: padKey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => padKey.currentState?.clear(),
-            child: const Text('Clear'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final state = padKey.currentState;
-              if (state == null || state.isEmpty) return;
-              captured = await state.exportPng();
-              if (ctx.mounted && captured != null) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Use'),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final pad = padKey.currentState;
+          final canUse = pad != null && !pad.isEmpty;
+
+          return AlertDialog(
+            title: const Text('Shipper signature'),
+            content: SizedBox(
+              width: 420,
+              child: SignaturePad(
+                key: padKey,
+                onChanged: () => setDialogState(() {}),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  padKey.currentState?.clear();
+                  setDialogState(() {});
+                },
+                child: const Text('Clear'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: canUse
+                    ? () async {
+                        final state = padKey.currentState;
+                        if (state == null || state.isEmpty) return;
+                        captured = await state.exportPng();
+                        if (ctx.mounted && captured != null) {
+                          Navigator.pop(ctx, true);
+                        }
+                      }
+                    : null,
+                child: const Text('Use'),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (ok != true || captured == null || !mounted) return;

@@ -5,18 +5,21 @@ import 'package:flutter/material.dart';
 
 /// Signature capture for mouse, touch, and stylus (S Pen) without extra packages.
 class SignaturePad extends StatefulWidget {
-  const SignaturePad({super.key, this.height = 220});
+  const SignaturePad({super.key, this.height = 220, this.onChanged});
 
   final double height;
+  final VoidCallback? onChanged;
 
   @override
   State<SignaturePad> createState() => SignaturePadState();
 }
 
 class SignaturePadState extends State<SignaturePad> {
+  final GlobalKey _boardKey = GlobalKey();
   final List<List<Offset>> _strokes = [];
   List<Offset>? _current;
   int? _activePointer;
+  int _revision = 0;
 
   bool get isEmpty =>
       _strokes.isEmpty && (_current == null || _current!.length < 2);
@@ -26,11 +29,21 @@ class SignaturePadState extends State<SignaturePad> {
       _strokes.clear();
       _current = null;
       _activePointer = null;
+      _revision++;
     });
+    widget.onChanged?.call();
   }
 
   Future<Uint8List?> exportPng({int width = 480, int height = 140}) async {
     if (isEmpty) return null;
+
+    final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
+    final padW = box?.size.width ?? width.toDouble();
+    final padH = box?.size.height ?? widget.height;
+    final sx = width / padW;
+    final sy = height / padH;
+    Offset scale(Offset p) => Offset(p.dx * sx, p.dy * sy);
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawRect(
@@ -45,7 +58,7 @@ class SignaturePadState extends State<SignaturePad> {
     for (final stroke in [..._strokes, if (_current != null) _current!]) {
       if (stroke.length < 2) continue;
       for (var i = 0; i < stroke.length - 1; i++) {
-        canvas.drawLine(stroke[i], stroke[i + 1], paint);
+        canvas.drawLine(scale(stroke[i]), scale(stroke[i + 1]), paint);
       }
     }
     final picture = recorder.endRecording();
@@ -54,17 +67,46 @@ class SignaturePadState extends State<SignaturePad> {
     return data?.buffer.asUint8List();
   }
 
+  RenderBox? get _boardBox =>
+      _boardKey.currentContext?.findRenderObject() as RenderBox?;
+
+  Offset? _toBoardLocal(PointerEvent event) {
+    final box = _boardBox;
+    if (box == null || !box.hasSize) return null;
+    return box.globalToLocal(event.position);
+  }
+
+  Offset _clampToBoard(Offset local) {
+    final box = _boardBox!;
+    return Offset(
+      local.dx.clamp(0.0, box.size.width),
+      local.dy.clamp(0.0, box.size.height),
+    );
+  }
+
+  void _notifyChanged() => widget.onChanged?.call();
+
   void _start(PointerDownEvent event) {
     if (_activePointer != null) return;
+    final local = _toBoardLocal(event);
+    if (local == null) return;
     _activePointer = event.pointer;
-    setState(() => _current = [event.localPosition]);
+    setState(() {
+      _revision++;
+      _current = [_clampToBoard(local)];
+    });
+    _notifyChanged();
   }
 
   void _move(PointerMoveEvent event) {
     if (event.pointer != _activePointer) return;
+    final local = _toBoardLocal(event);
+    if (local == null) return;
     setState(() {
-      _current = [...?_current, event.localPosition];
+      _revision++;
+      _current = [...?_current, _clampToBoard(local)];
     });
+    _notifyChanged();
   }
 
   void _end(int pointer) {
@@ -75,7 +117,9 @@ class SignaturePadState extends State<SignaturePad> {
       }
       _current = null;
       _activePointer = null;
+      _revision++;
     });
+    _notifyChanged();
   }
 
   @override
@@ -84,27 +128,27 @@ class SignaturePadState extends State<SignaturePad> {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (_) => true,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: _start,
-        onPointerMove: _move,
-        onPointerUp: (event) => _end(event.pointer),
-        onPointerCancel: (event) => _end(event.pointer),
-        child: RepaintBoundary(
-          child: SizedBox(
-            width: double.infinity,
-            height: widget.height,
+      child: RepaintBoundary(
+        child: Container(
+          key: _boardKey,
+          width: double.infinity,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _start,
+            onPointerMove: _move,
+            onPointerUp: (event) => _end(event.pointer),
+            onPointerCancel: (event) => _end(event.pointer),
             child: CustomPaint(
-              painter: _SignaturePainter(
+              foregroundPainter: _SignaturePainter(
                 strokes: _strokes,
                 current: _current,
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.white,
-                ),
+                revision: _revision,
               ),
             ),
           ),
@@ -115,13 +159,21 @@ class SignaturePadState extends State<SignaturePad> {
 }
 
 class _SignaturePainter extends CustomPainter {
-  _SignaturePainter({required this.strokes, required this.current});
+  _SignaturePainter({
+    required this.strokes,
+    required this.current,
+    required this.revision,
+  });
 
   final List<List<Offset>> strokes;
   final List<Offset>? current;
+  final int revision;
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+
     final paint = Paint()
       ..color = const Color(0xFF1A1A1A)
       ..strokeWidth = 2.2
@@ -133,11 +185,10 @@ class _SignaturePainter extends CustomPainter {
         canvas.drawLine(stroke[i], stroke[i + 1], paint);
       }
     }
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _SignaturePainter old) =>
-      old.strokes.length != strokes.length ||
-      old.current?.length != current?.length ||
-      old.current != current;
+      old.revision != revision;
 }
