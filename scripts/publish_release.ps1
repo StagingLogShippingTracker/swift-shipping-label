@@ -25,6 +25,37 @@ function Get-VersionFromPy {
     throw "Could not parse version.py"
 }
 
+function Invoke-Flutter([string]$Flutter, [string[]]$CmdArgs) {
+    # Gradle/KGP write warnings to stderr; don't treat as terminating errors.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Flutter @CmdArgs 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                Write-Host $_.ToString()
+            } else {
+                Write-Host $_
+            }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter $($CmdArgs -join ' ') failed (exit $LASTEXITCODE)"
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
+function Sync-AppDataMobile {
+    $src = Join-Path $root "mobile"
+    foreach ($name in @("swift-document-generator-mobile", "swift-shipping-label-mobile")) {
+        $dest = Join-Path $env:LOCALAPPDATA $name
+        if (-not (Test-Path (Join-Path $dest "pubspec.yaml"))) { continue }
+        Write-Host "Syncing $src -> $dest"
+        robocopy $src $dest /MIR /XD build .dart_tool .idea /XF *.iml /NFL /NDL /NJH /NJS /NC /NS | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "robocopy sync to $dest failed ($LASTEXITCODE)" }
+    }
+}
+
 function Set-VersionEverywhere([string]$ver) {
     if ($ver -notmatch '^\d+\.\d+\.\d+$') {
         throw "Version must be semver X.Y.Z (got: $ver)"
@@ -70,6 +101,7 @@ $tag = "v$Version"
 Write-Host "Publishing release $tag"
 
 & (Join-Path $root "scripts\sync_calibri_fonts.ps1")
+Sync-AppDataMobile
 
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
@@ -125,10 +157,8 @@ if (-not $SkipAndroid) {
 
     Push-Location $mobileRoot
     try {
-        & $flutter pub get
-        if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
-        & $flutter build apk --release
-        if ($LASTEXITCODE -ne 0) { throw "flutter build apk failed" }
+        Invoke-Flutter $flutter @("pub", "get")
+        Invoke-Flutter $flutter @("build", "apk", "--release")
         $apkSrc = Join-Path $mobileRoot "build\app\outputs\flutter-apk\app-release.apk"
         if (-not (Test-Path $apkSrc)) {
             $apkSrc = Join-Path $mobileRoot "build\app\outputs\flutter-apk\app-debug.apk"
@@ -159,10 +189,13 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
+- Crop shipper signature PNG to ink bounds so BOL PDF shows readable signatures
 - Fix Android PDF share (FileProvider: copy from app_flutter to cache before share)
 - BOL: single Sales Order field (removed duplicate Order #)
 - BOL line Item Type dropdown (Pallet, Crate, Box, Pipe, Bundle, Other) with PDF pluralization
 - Optional shipper signature capture + cloud save/reuse via Supabase
+
+Re-save your shipper signature after updating so the cropped export is stored.
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.

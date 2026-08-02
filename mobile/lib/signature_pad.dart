@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -34,18 +35,43 @@ class SignaturePadState extends State<SignaturePad> {
     widget.onChanged?.call();
   }
 
-  /// Exports strokes as PNG using uniform scale so aspect ratio matches the pad.
-  Future<Uint8List?> exportPng({int maxHeight = 220}) async {
+  /// Exports strokes as PNG: uniform scale, cropped to ink bounds (+ padding).
+  Future<Uint8List?> exportPng({int maxHeight = 220, double padding = 10}) async {
     if (isEmpty) return null;
 
     final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
     final padW = box?.size.width ?? 400.0;
     final padH = box?.size.height ?? widget.height;
-    // Match pad aspect ratio; never use independent sx/sy (that squashes strokes).
+
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
+    const strokePad = 2.0;
+    for (final stroke in [..._strokes, if (_current != null) _current!]) {
+      for (final p in stroke) {
+        minX = math.min(minX, p.dx);
+        minY = math.min(minY, p.dy);
+        maxX = math.max(maxX, p.dx);
+        maxY = math.max(maxY, p.dy);
+      }
+    }
+    if (!minX.isFinite) return null;
+
+    minX = (minX - strokePad - padding).clamp(0.0, padW);
+    minY = (minY - strokePad - padding).clamp(0.0, padH);
+    maxX = (maxX + strokePad + padding).clamp(0.0, padW);
+    maxY = (maxY + strokePad + padding).clamp(0.0, padH);
+
+    final cropW = (maxX - minX).clamp(1.0, padW);
+    final cropH = (maxY - minY).clamp(1.0, padH);
+
+    // Uniform scale into maxHeight; never independent sx/sy (that squashes strokes).
     final outH = maxHeight;
-    final outW = (maxHeight * padW / padH).round().clamp(1, 4096);
-    final scale = outH / padH;
-    Offset scalePt(Offset p) => Offset(p.dx * scale, p.dy * scale);
+    final outW = (maxHeight * cropW / cropH).round().clamp(1, 4096);
+    final scale = outH / cropH;
+    Offset scalePt(Offset p) =>
+        Offset((p.dx - minX) * scale, (p.dy - minY) * scale);
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -55,7 +81,7 @@ class SignaturePadState extends State<SignaturePad> {
     );
     final paint = Paint()
       ..color = const Color(0xFF1A1A1A)
-      ..strokeWidth = 2.2
+      ..strokeWidth = 2.2 * scale
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     for (final stroke in [..._strokes, if (_current != null) _current!]) {

@@ -741,9 +741,9 @@ class BolLabelPdf {
         _micro(c, fonts, cx, labelY, cell.$2);
         final sigImg = signatureImages?[cell.$1];
         if (sigImg != null) {
-          const fieldH = 11.0;
           final maxW = fw - 2;
-          final maxH = fieldH - 1;
+          // Use the full underline band up to the label (cropped PNG fills this slot).
+          final maxH = (labelY - yRule - 0.5).clamp(11.0, 18.0);
           final iw = sigImg.width.toDouble();
           final ih = sigImg.height.toDouble();
           if (iw > 0 && ih > 0) {
