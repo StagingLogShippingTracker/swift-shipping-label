@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -740,22 +741,16 @@ class BolLabelPdf {
         _micro(c, fonts, cx, labelY, cell.$2);
         final sigImg = signatureImages?[cell.$1];
         if (sigImg != null) {
-          final fieldH = 11.0;
-          final imgH = fieldH - 1;
+          const fieldH = 11.0;
+          final maxW = fw - 2;
+          final maxH = fieldH - 1;
           final iw = sigImg.width.toDouble();
           final ih = sigImg.height.toDouble();
           if (iw > 0 && ih > 0) {
-            var imgW = imgH * iw / ih;
-            if (imgW > fw - 2) {
-              imgW = fw - 2;
-            }
-            c.drawImage(
-              sigImg,
-              cx + 1,
-              yRule + 1,
-              imgW,
-              imgH,
-            );
+            final fitScale = math.min(maxW / iw, maxH / ih);
+            final imgW = iw * fitScale;
+            final imgH = ih * fitScale;
+            c.drawImage(sigImg, cx + 1, yRule + 1, imgW, imgH);
           }
         } else {
           final value = d.get(cell.$1);

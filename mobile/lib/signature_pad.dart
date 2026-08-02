@@ -34,20 +34,23 @@ class SignaturePadState extends State<SignaturePad> {
     widget.onChanged?.call();
   }
 
-  Future<Uint8List?> exportPng({int width = 480, int height = 140}) async {
+  /// Exports strokes as PNG using uniform scale so aspect ratio matches the pad.
+  Future<Uint8List?> exportPng({int maxHeight = 220}) async {
     if (isEmpty) return null;
 
     final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
-    final padW = box?.size.width ?? width.toDouble();
+    final padW = box?.size.width ?? 400.0;
     final padH = box?.size.height ?? widget.height;
-    final sx = width / padW;
-    final sy = height / padH;
-    Offset scale(Offset p) => Offset(p.dx * sx, p.dy * sy);
+    // Match pad aspect ratio; never use independent sx/sy (that squashes strokes).
+    final outH = maxHeight;
+    final outW = (maxHeight * padW / padH).round().clamp(1, 4096);
+    final scale = outH / padH;
+    Offset scalePt(Offset p) => Offset(p.dx * scale, p.dy * scale);
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble()),
       Paint()..color = const Color(0xFFFFFFFF),
     );
     final paint = Paint()
@@ -58,11 +61,11 @@ class SignaturePadState extends State<SignaturePad> {
     for (final stroke in [..._strokes, if (_current != null) _current!]) {
       if (stroke.length < 2) continue;
       for (var i = 0; i < stroke.length - 1; i++) {
-        canvas.drawLine(scale(stroke[i]), scale(stroke[i + 1]), paint);
+        canvas.drawLine(scalePt(stroke[i]), scalePt(stroke[i + 1]), paint);
       }
     }
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width, height);
+    final image = await picture.toImage(outW, outH);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     return data?.buffer.asUint8List();
   }
