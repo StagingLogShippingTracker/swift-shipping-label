@@ -18,6 +18,7 @@ class AppStorage {
   File get presetsFile => File(p.join(root.path, 'presets.json'));
   File get signaturesFile => File(p.join(root.path, 'signatures.json'));
   File get updateScheduleFile => File(p.join(root.path, 'update_schedule.json'));
+  File get settingsFile => File(p.join(root.path, 'settings.json'));
 
   Map<String, CustomerPreset> presets = {};
   List<SavedSignature> signatures = [];
@@ -255,6 +256,34 @@ class AppStorage {
   String compactFileToken(String text) {
     final cleaned = text.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '');
     return cleaned;
+  }
+
+  static const logoSearchEngineKey = 'logoSearchEngine';
+
+  Future<String?> loadLogoSearchEngine() async {
+    if (!await settingsFile.exists()) return null;
+    try {
+      final data =
+          jsonDecode(await settingsFile.readAsString()) as Map<String, dynamic>;
+      final value = data[logoSearchEngineKey];
+      return value is String && value.isNotEmpty ? value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveLogoSearchEngine(String engineId) async {
+    Map<String, dynamic> data = {};
+    if (await settingsFile.exists()) {
+      try {
+        final raw = jsonDecode(await settingsFile.readAsString());
+        if (raw is Map<String, dynamic>) data = raw;
+      } catch (_) {}
+    }
+    data[logoSearchEngineKey] = engineId;
+    await settingsFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(data),
+    );
   }
 
   /// e.g. `SL-StrikeSO1223344.pdf`, `RL-…`, or `BOL-…`

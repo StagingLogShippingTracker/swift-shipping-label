@@ -565,49 +565,83 @@ class _HomeScreenState extends State<HomeScreen> {
       text: _controllers[LabelFields.customer]?.text.trim() ?? '',
     );
     final domainCtrl = TextEditingController();
+    final retoolConfigured = LogoSearchEngine.retoolClearbitConfigured();
+    final engineOptions =
+        LogoSearchEngine.pickerOptions(retoolConfigured: retoolConfigured);
+    final savedEngineId = await widget.storage.loadLogoSearchEngine();
+    var selectedEngine =
+        LogoSearchEngine.tryParse(savedEngineId) ?? LogoSearchEngine.defaultEngine;
+    if (!engineOptions.contains(selectedEngine)) {
+      selectedEngine = LogoSearchEngine.defaultEngine;
+    }
+
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Find logo on the web'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'We’ll search Clearbit, Google & Bing Images, Brands of the World, '
-              'Logo.dev, Brandfetch, TinEye, and Wikipedia for a logo. '
-              'A website domain improves accuracy.',
-              style: TextStyle(fontSize: 13, color: SwiftColors.muted),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'CUSTOMER / COMPANY'),
-              autofocus: true,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: domainCtrl,
-              decoration: const InputDecoration(
-                labelText: 'WEBSITE DOMAIN (OPTIONAL)',
-                hintText: 'e.g. conocophillips.com',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Find logo on the web'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Search Google, Bing, Clearbit, Brands of the World, and other '
+                'sources. A website domain improves accuracy.',
+                style: TextStyle(fontSize: 13, color: SwiftColors.muted),
               ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'CUSTOMER / COMPANY',
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: domainCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'WEBSITE DOMAIN (OPTIONAL)',
+                  hintText: 'e.g. conocophillips.com',
+                ),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<LogoSearchEngine>(
+                value: selectedEngine,
+                decoration: const InputDecoration(
+                  labelText: 'SEARCH SOURCE',
+                ),
+                items: [
+                  for (final engine in engineOptions)
+                    DropdownMenuItem(
+                      value: engine,
+                      child: Text(engine.label),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setDialogState(() => selectedEngine = value);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Search'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Search'),
-          ),
-        ],
       ),
     );
     if (confirmed != true || !mounted) return;
+
+    await widget.storage.saveLogoSearchEngine(selectedEngine.id);
 
     setState(() => _findingLogo = true);
     try {
@@ -615,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final rawCandidates = await finder.findDownloadedCandidates(
         companyName: nameCtrl.text,
         domain: domainCtrl.text,
+        engine: selectedEngine,
       );
       final candidates = LogoFinder.filterForPicker(rawCandidates);
       if (!mounted) return;

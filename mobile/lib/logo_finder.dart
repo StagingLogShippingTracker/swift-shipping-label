@@ -6,6 +6,65 @@ import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 
+/// Which web source(s) to query when finding a customer logo.
+enum LogoSearchEngine {
+  all,
+  google,
+  bing,
+  clearbit,
+  brandsOfTheWorld,
+  logoDev,
+  brandfetch,
+  tineye,
+  wikipediaDuckDuckGo,
+  retoolClearbit;
+
+  static const defaultEngine = LogoSearchEngine.all;
+
+  String get id => name;
+
+  String get label => switch (this) {
+        LogoSearchEngine.all => 'All sources',
+        LogoSearchEngine.google => 'Google',
+        LogoSearchEngine.bing => 'Bing',
+        LogoSearchEngine.clearbit => 'Clearbit',
+        LogoSearchEngine.brandsOfTheWorld => 'Brands of the World',
+        LogoSearchEngine.logoDev => 'Logo.dev',
+        LogoSearchEngine.brandfetch => 'Brandfetch',
+        LogoSearchEngine.tineye => 'TinEye',
+        LogoSearchEngine.wikipediaDuckDuckGo => 'Wikipedia / DuckDuckGo',
+        LogoSearchEngine.retoolClearbit => 'Clearbit via Retool',
+      };
+
+  static LogoSearchEngine? tryParse(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    for (final e in LogoSearchEngine.values) {
+      if (e.id == raw) return e;
+    }
+    return null;
+  }
+
+  /// UI order: Google & Bing first, then the rest; Retool last when configured.
+  static List<LogoSearchEngine> pickerOptions({required bool retoolConfigured}) {
+    final out = <LogoSearchEngine>[
+      LogoSearchEngine.all,
+      LogoSearchEngine.google,
+      LogoSearchEngine.bing,
+      LogoSearchEngine.clearbit,
+      LogoSearchEngine.brandsOfTheWorld,
+      LogoSearchEngine.logoDev,
+      LogoSearchEngine.brandfetch,
+      LogoSearchEngine.tineye,
+      LogoSearchEngine.wikipediaDuckDuckGo,
+    ];
+    if (retoolConfigured) out.add(LogoSearchEngine.retoolClearbit);
+    return out;
+  }
+
+  static bool retoolClearbitConfigured() =>
+      LogoFinder._retoolClearbitUrlTemplate().isNotEmpty;
+}
+
 /// A logo image URL discovered from a web source, ranked for download.
 class LogoCandidate {
   const LogoCandidate({
@@ -89,7 +148,7 @@ class LogoFinder {
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
   static const _browserUa =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
   static Map<String, String> get _browserHeaders => {
         'User-Agent': _browserUa,
@@ -115,10 +174,11 @@ class LogoFinder {
     return strong;
   }
 
-  /// Returns ranked, successfully downloaded logo candidates from all sources.
+  /// Returns ranked, successfully downloaded logo candidates from selected sources.
   Future<List<LogoDownloadedCandidate>> findDownloadedCandidates({
     required String companyName,
     String domain = '',
+    LogoSearchEngine engine = LogoSearchEngine.all,
   }) async {
     final name = companyName.trim();
     final dom = _normalizeDomain(domain);
@@ -127,19 +187,40 @@ class LogoFinder {
     final domainList = _uniqueDomains(name, dom);
     final ctx = _RelevanceContext.from(name, domainList);
     final query = name.isEmpty ? 'logo' : '$name logo';
+    final useAll = engine == LogoSearchEngine.all;
+    final use = (LogoSearchEngine e) => useAll || engine == e;
 
-    final urlLists = await Future.wait([
-      Future.value(_clearbitUrlCandidates(domainList, ctx)),
-      _retoolClearbitCandidates(domainList, ctx),
-      Future.value(_logoDevCandidates(domainList, ctx)),
-      Future.value(_brandfetchCandidates(domainList, ctx)),
-      _bingImageSearch(query, ctx),
-      _googleImageSearch(query, ctx),
-      if (name.isNotEmpty) _brandsOfTheWorldSearch(name, ctx),
-      _tineyeSearch(query, ctx),
-      if (name.isNotEmpty) _wikipediaCandidates(name, ctx),
-      if (name.isNotEmpty) _duckDuckGoCandidates('$name logo', ctx),
-    ]);
+    final futures = <Future<List<LogoCandidate>>>[];
+    if (use(LogoSearchEngine.clearbit)) {
+      futures.add(Future.value(_clearbitUrlCandidates(domainList, ctx)));
+    }
+    if (use(LogoSearchEngine.retoolClearbit)) {
+      futures.add(_retoolClearbitCandidates(domainList, ctx));
+    }
+    if (use(LogoSearchEngine.logoDev)) {
+      futures.add(Future.value(_logoDevCandidates(domainList, ctx)));
+    }
+    if (use(LogoSearchEngine.brandfetch)) {
+      futures.add(Future.value(_brandfetchCandidates(domainList, ctx)));
+    }
+    if (use(LogoSearchEngine.bing)) {
+      futures.add(_bingImageSearch(query, ctx));
+    }
+    if (use(LogoSearchEngine.google)) {
+      futures.add(_googleImageSearch(query, ctx));
+    }
+    if (use(LogoSearchEngine.brandsOfTheWorld) && name.isNotEmpty) {
+      futures.add(_brandsOfTheWorldSearch(name, ctx));
+    }
+    if (use(LogoSearchEngine.tineye)) {
+      futures.add(_tineyeSearch(query, ctx));
+    }
+    if (use(LogoSearchEngine.wikipediaDuckDuckGo) && name.isNotEmpty) {
+      futures.add(_wikipediaCandidates(name, ctx));
+      futures.add(_duckDuckGoCandidates('$name logo', ctx));
+    }
+
+    final urlLists = await Future.wait(futures);
 
     final merged = <LogoCandidate>[];
     for (final list in urlLists) {
@@ -194,6 +275,7 @@ class LogoFinder {
   Future<LogoFindResult> find({
     required String companyName,
     String domain = '',
+    LogoSearchEngine engine = LogoSearchEngine.all,
   }) async {
     final name = companyName.trim();
     final dom = _normalizeDomain(domain);
@@ -204,7 +286,11 @@ class LogoFinder {
     }
 
     final candidates = filterForPicker(
-      await findDownloadedCandidates(companyName: name, domain: dom),
+      await findDownloadedCandidates(
+        companyName: name,
+        domain: dom,
+        engine: engine,
+      ),
     );
     if (candidates.isEmpty) {
       return LogoFindResult.fail(
@@ -345,7 +431,8 @@ class LogoFinder {
         urls,
         source: 'Bing Images',
         ctx: ctx,
-        sourceBonus: 0,
+        sourceBonus: -6,
+        minScore: 34,
       );
     } catch (_) {
       return const [];
@@ -370,52 +457,155 @@ class LogoFinder {
     _RelevanceContext ctx,
   ) async {
     try {
-      final q = ctx.companyName.isNotEmpty
-          ? '"${ctx.companyName}" logo'
-          : query;
-      final uri = Uri.https('www.google.com', '/search', {
-        'q': q,
-        'tbm': 'isch',
-        'hl': 'en',
-        'gl': 'us',
-        'ijn': '0',
-      });
-      final res = await _client
-          .get(uri, headers: _browserHeaders)
-          .timeout(const Duration(seconds: 14));
-      if (res.statusCode != 200) return const [];
-
       final urls = <String>{};
-      final html = res.body;
+      final queries = _googleSearchQueries(ctx, query);
 
-      for (final pattern in [
-        RegExp(r'"ou":"(https?://[^"]+)"'),
-        RegExp(r'\\"ou\\":\\"(https?://[^\\"]+)\\"'),
-        RegExp(r'imgurl=(https?://[^&"]+)'),
-        RegExp(r'"ou":\s*"(https?://[^"]+)"'),
-      ]) {
-        for (final m in pattern.allMatches(html)) {
-          final raw = m.group(1);
-          if (raw == null) continue;
-          urls.add(Uri.decodeComponent(raw.replaceAll(r'\\/', '/')));
+      await Future.wait(
+        queries.map((q) => _fetchGoogleImageUrls(q, urls, basicHtml: false)),
+      );
+
+      if (urls.length < 4) {
+        for (final q in queries.take(3)) {
+          await _fetchGoogleImageUrls(q, urls, basicHtml: true);
         }
       }
 
-      for (final m
-          in RegExp(r'AF_initDataCallback\(\{[^;]+\}\);', dotAll: true)
-              .allMatches(html)) {
-        _collectOuFields(m.group(0) ?? '', urls);
+      if (urls.isEmpty && ctx.domains.isNotEmpty) {
+        for (final d in ctx.domains.take(2)) {
+          urls.add('https://www.google.com/s2/favicons?domain=$d&sz=256');
+          urls.add('https://logo.clearbit.com/$d');
+        }
       }
 
       return _urlCandidatesFromSet(
         urls,
         source: 'Google Images',
         ctx: ctx,
-        sourceBonus: 2,
+        sourceBonus: 16,
+        minScore: 26,
       );
     } catch (_) {
       return const [];
     }
+  }
+
+  static List<String> _googleSearchQueries(
+    _RelevanceContext ctx,
+    String fallbackQuery,
+  ) {
+    final name = ctx.companyName.trim();
+    if (name.isEmpty) return [fallbackQuery];
+
+    final out = <String>{
+      '"$name" logo',
+      '"$name" logo png',
+      '$name logo png',
+      '$name logo',
+      '$name brand logo',
+    };
+    for (final d in ctx.domains.take(3)) {
+      out.add('site:$d logo');
+      out.add('$name logo site:$d');
+      out.add('"$name" logo site:$d');
+    }
+    return out.toList();
+  }
+
+  Future<void> _fetchGoogleImageUrls(
+    String q,
+    Set<String> urls, {
+    required bool basicHtml,
+  }) async {
+    try {
+      final params = <String, String>{
+        'q': q,
+        'tbm': 'isch',
+        'hl': 'en',
+        'gl': 'us',
+        'ijn': '0',
+      };
+      if (basicHtml) params['gbv'] = '1';
+
+      final uri = Uri.https('www.google.com', '/search', params);
+      final res = await _client
+          .get(uri, headers: _browserHeaders)
+          .timeout(const Duration(seconds: 14));
+      if (res.statusCode != 200) return;
+
+      _extractGoogleImageUrls(res.body, urls);
+    } catch (_) {}
+  }
+
+  static void _extractGoogleImageUrls(String html, Set<String> urls) {
+    for (final pattern in [
+      RegExp(r'"ou":"(https?://[^"]+)"'),
+      RegExp(r'\\"ou\\":\\"(https?://[^\\"]+)\\"'),
+      RegExp(r'\["ou","(https?://[^"]+)"\]'),
+      RegExp(r'"ou":\s*"(https?://[^"]+)"'),
+      RegExp(r'imgurl=(https?://[^&"]+)'),
+      RegExp(r'imgrefurl=(https?://[^&"]+)'),
+      RegExp(r',"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"'),
+      RegExp(r'\[\s*"(https?://[^"]+\.(?:png|jpe?g|webp))"'),
+    ]) {
+      for (final m in pattern.allMatches(html)) {
+        final raw = m.group(1);
+        if (raw == null) continue;
+        final decoded =
+            Uri.decodeComponent(raw.replaceAll(r'\\/', '/').replaceAll(r'\\u003d', '='));
+        if (decoded.startsWith('http')) urls.add(decoded);
+      }
+    }
+
+    for (final m
+        in RegExp(r'AF_initDataCallback\(\{[^;]+\}\);', dotAll: true)
+            .allMatches(html)) {
+      final chunk = m.group(0) ?? '';
+      _collectOuFields(chunk, urls);
+      _collectInitDataUrls(chunk, urls);
+    }
+
+    for (final m in RegExp(
+      r'(https?://[^"\s<>]+googleusercontent\.com/[^"\s<>]+)',
+    ).allMatches(html)) {
+      final u = m.group(1)!;
+      if (_isGoogleThumbnail(u)) continue;
+      urls.add(u.replaceAll(r'\\u003d', '='));
+    }
+  }
+
+  static void _collectInitDataUrls(String chunk, Set<String> urls) {
+    for (final m in RegExp(
+      r'"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"',
+    ).allMatches(chunk)) {
+      final u = m.group(1);
+      if (u != null && !_isGoogleThumbnail(u)) urls.add(u);
+    }
+    for (final m in RegExp(r'\[\s*"(https?://[^"]{12,})"').allMatches(chunk)) {
+      final u = m.group(1);
+      if (u == null || _isGoogleThumbnail(u)) continue;
+      if (_looksLikeDirectImageUrl(u)) urls.add(u);
+    }
+  }
+
+  static bool _isGoogleThumbnail(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('=s16') ||
+        lower.contains('=s32') ||
+        lower.contains('=w16') ||
+        lower.contains('=h16') ||
+        lower.contains('encrypted-tbn0.gstatic.com') ||
+        lower.contains('/imgres?');
+  }
+
+  static bool _looksLikeDirectImageUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.png') ||
+        lower.contains('.jpg') ||
+        lower.contains('.jpeg') ||
+        lower.contains('.webp') ||
+        lower.contains('.gif') ||
+        lower.contains('logo') ||
+        lower.contains('brand');
   }
 
   static void _collectOuFields(String chunk, Set<String> urls) {
@@ -648,12 +838,13 @@ class LogoFinder {
     required String source,
     required _RelevanceContext ctx,
     required int sourceBonus,
+    int minScore = _minUrlCandidateScore,
   }) {
     final out = <LogoCandidate>[];
     for (final url in urls) {
       if (!_isAcceptableLogoUrl(url)) continue;
       final score = _scoreUrl(url, source, ctx) + sourceBonus;
-      if (score < _minUrlCandidateScore) continue;
+      if (score < minScore) continue;
       out.add(LogoCandidate(url: url, source: source, score: score));
     }
     return out;
@@ -779,9 +970,11 @@ class LogoFinder {
       case 'Clearbit via Retool':
         break;
       case 'Bing Images':
-        if (score < 35) score -= 12;
+        if (score < 38) score -= 18;
+        else if (score < 42) score -= 8;
       case 'Google Images':
-        if (score < 35) score -= 8;
+        score += 6;
+        if (score < 32) score -= 4;
       case 'TinEye':
         if (score < 32) score -= 6;
       case 'Wikipedia':
@@ -937,7 +1130,8 @@ class LogoFinder {
         lower.contains('cloudfront.net') ||
         lower.contains('logo.clearbit.com') ||
         lower.contains('img.logo.dev') ||
-        lower.contains('cdn.brandfetch.io');
+        lower.contains('cdn.brandfetch.io') ||
+        lower.contains('google.com/s2/favicons');
   }
 
   Future<LogoFindResult> _downloadImage(
@@ -1036,17 +1230,26 @@ class LogoFinder {
     if (cleaned.isEmpty) return const [];
     final compact = cleaned.replaceAll(' ', '');
     final dashed = cleaned.replaceAll(' ', '-');
-    final out = <String>{
-      '$compact.com',
-      '$dashed.com',
-      '$compact.ca',
-      '$dashed.ca',
-      '$compact.net',
-    };
+    const tlds = [
+      '.com',
+      '.ca',
+      '.com.au',
+      '.co.uk',
+      '.net',
+      '.org',
+      '.co',
+      '.io',
+    ];
+    final out = <String>{};
+    for (final tld in tlds) {
+      out.add('$compact$tld');
+      if (dashed != compact) out.add('$dashed$tld');
+    }
     final words = cleaned.split(' ');
     if (words.length >= 2) {
       out.add('${words.first}${words[1]}.com');
       out.add('${words.first}.com');
+      out.add('${words.first}${words[1]}.ca');
     }
     return out.toList();
   }
