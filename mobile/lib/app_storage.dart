@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'label_data.dart';
+import 'logo_image_process.dart';
 
 /// App-private storage for presets, logos, and generated PDFs.
 class AppStorage {
@@ -182,45 +184,34 @@ class AppStorage {
   }
 
   Future<File> importLogo(File source, {String? preferredName}) async {
-    var name = preferredName ?? p.basename(source.path);
-    var dest = File(p.join(logosDir.path, name));
-    final sameFile = await dest.exists() &&
-        p.normalize(dest.absolute.path) == p.normalize(source.absolute.path);
-    if (await dest.exists() && !sameFile) {
-      final stem = p.basenameWithoutExtension(name);
-      final suf = p.extension(name);
-      var n = 2;
-      while (await dest.exists()) {
-        dest = File(p.join(logosDir.path, '$stem ($n)$suf'));
-        n++;
-      }
-    }
-    if (!sameFile) {
-      await source.copy(dest.path);
-    }
-    return dest;
+    final raw = await source.readAsBytes();
+    return importLogoBytes(
+      raw,
+      preferredName: preferredName ?? p.basename(source.path),
+    );
   }
 
-  /// Save downloaded logo bytes into [logosDir] (unique filename).
+  /// Save processed logo bytes into [logosDir] (unique filename, always PNG).
   Future<File> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
   }) async {
     await logosDir.create(recursive: true);
-    var name = preferredName.trim();
-    if (name.isEmpty) name = 'logo.png';
-    name = name.replaceAll(RegExp(r'[^\w\- .]+'), '_');
+    final processed = LogoImageProcessor.process(Uint8List.fromList(bytes));
+
+    var stem = p.basenameWithoutExtension(preferredName.trim());
+    if (stem.isEmpty) stem = 'logo';
+    stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
+    var name = '$stem.png';
     var dest = File(p.join(logosDir.path, name));
     if (await dest.exists()) {
-      final stem = p.basenameWithoutExtension(name);
-      final suf = p.extension(name);
       var n = 2;
       while (await dest.exists()) {
-        dest = File(p.join(logosDir.path, '$stem ($n)$suf'));
+        dest = File(p.join(logosDir.path, '$stem ($n).png'));
         n++;
       }
     }
-    await dest.writeAsBytes(bytes, flush: true);
+    await dest.writeAsBytes(processed, flush: true);
     return dest;
   }
 

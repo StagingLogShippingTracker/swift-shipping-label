@@ -300,7 +300,7 @@ def _draw_logo_at_height(
     c.drawImage(
         img,
         slot_x + (slot_w - w) / 2,
-        slot_y + (slot_h - h) / 2,
+        slot_y + (slot_h - h),
         w,
         h,
         mask="auto",
@@ -317,25 +317,32 @@ def draw_customer_logos_header(
     logos = [p for p in logos if p and p.exists()][:2]
     if not logos:
         return
-    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4.
+    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4 (62.24 pt).
     swift_y_offset = 2
     swift_logo_h = band_h - 4
     pad = 4
+    dual_gap = 8
     area_w = COL_W * 0.95
     area_x = MX + pad
     area_y = logo_bottom + swift_y_offset
     area_h = swift_logo_h
+    inner_w = area_w - pad * 2
 
     if len(logos) == 1:
-        _draw_logo_at_height(c, logos[0], area_x, area_y, area_w - pad * 2, area_h, swift_logo_h)
+        _draw_logo_at_height(c, logos[0], area_x, area_y, inner_w, area_h, swift_logo_h)
         return
 
-    gap = 8
-    slot_w = (area_w - gap) / len(logos)
-    common_h = _uniform_logo_height(logos, slot_w, swift_logo_h)
+    slot_w = (inner_w - dual_gap) / len(logos)
     for i, path in enumerate(logos):
-        slot_x = MX + i * (slot_w + gap)
-        _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
+        _draw_logo_at_height(
+            c,
+            path,
+            area_x + i * (slot_w + dual_gap),
+            area_y,
+            slot_w,
+            area_h,
+            swift_logo_h,
+        )
 
 
 def draw_header(

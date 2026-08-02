@@ -311,6 +311,7 @@ def draw_value(
     font_name: str = ENTRY_BOLD,
     multiline: bool = False,
     color=BLACK,
+    centered: bool = False,
 ) -> None:
     """Static Calibri Bold entry value (samples / generated fills)."""
     if not text:
@@ -326,7 +327,8 @@ def draw_value(
             c.drawString(x + 1, yy, line)
             yy -= font_size + LINE_GAP
     else:
-        c.drawString(x + 1, y + (h - font_size) / 2 + 1, text)
+        tx = x + (w - stringWidth(text, font_name, font_size)) / 2 if centered else x + 1
+        c.drawString(tx, y + (h - font_size) / 2 + 1, text)
 
 
 def draw_image_fit(
@@ -402,7 +404,7 @@ def _draw_logo_at_height(
     c.drawImage(
         img,
         slot_x + (slot_w - w) / 2,
-        slot_y + (slot_h - h) / 2,
+        slot_y + (slot_h - h),
         w,
         h,
         mask="auto",
@@ -419,25 +421,32 @@ def draw_customer_logos_header(
     logos = [p for p in logos if p and p.exists()][:2]
     if not logos:
         return
-    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4.
+    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4 (62.24 pt).
     swift_y_offset = 2
     swift_logo_h = band_h - 4
     pad = 4
+    dual_gap = 8
     area_w = COL_W * 0.95
     area_x = MX + pad
     area_y = logo_bottom + swift_y_offset
     area_h = swift_logo_h
+    inner_w = area_w - pad * 2
 
     if len(logos) == 1:
-        _draw_logo_at_height(c, logos[0], area_x, area_y, area_w - pad * 2, area_h, swift_logo_h)
+        _draw_logo_at_height(c, logos[0], area_x, area_y, inner_w, area_h, swift_logo_h)
         return
 
-    gap = 8
-    slot_w = (area_w - gap) / len(logos)
-    common_h = _uniform_logo_height(logos, slot_w, swift_logo_h)
+    slot_w = (inner_w - dual_gap) / len(logos)
     for i, path in enumerate(logos):
-        slot_x = MX + i * (slot_w + gap)
-        _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
+        _draw_logo_at_height(
+            c,
+            path,
+            area_x + i * (slot_w + dual_gap),
+            area_y,
+            slot_w,
+            area_h,
+            swift_logo_h,
+        )
 
 
 def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_logo2: Path | None = None) -> float:
@@ -755,37 +764,43 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
         c.setFillColor(LABEL_C)
         c.setFont(FONT_MED, 7.5)
         cx = x + 12
-        mid_y = y - row_h / 2 - 2.5
+        cell_mid = y - row_h / 2
+        label_mid_y = cell_mid - 2.5
         for ch in label.upper():
-            c.drawString(cx, mid_y, ch)
+            c.drawString(cx, label_mid_y, ch)
             cx += stringWidth(ch, FONT_MED, 7.5) + 0.7
 
         box = 34
         of_w = 28
-        fx = x + half - 12 - box * 2 - of_w
+        block_w = box * 2 + of_w
+        fx = x + (half - block_w) / 2
+
+        value_h = 20
+        value_y = cell_mid - value_h / 2
+        underline_y = value_y - 1
 
         num_sz = fit_single_line_size(
             sample.get(f"{prefix}_num", ""), box - 4, ENTRY_SIZE, min_size=11
         )
         put_field(
-            form, f"{prefix}_num", fx, y - row_h + 7, box, 24, "", num_sz, fill=WHITE,
+            form, f"{prefix}_num", fx, value_y, box, value_h, "", num_sz, fill=WHITE,
             font_name="Helvetica-Bold",
         )
         if sample.get(f"{prefix}_num"):
             draw_value(
-                c, sample[f"{prefix}_num"], fx, y - row_h + 7, box, 24, num_sz, ENTRY_BOLD
+                c, sample[f"{prefix}_num"], fx, value_y, box, value_h, num_sz, ENTRY_BOLD, centered=True
             )
-        hairline(c, fx, y - row_h + 6, box, RULE)
+        hairline(c, fx, underline_y, box, RULE)
 
         c.setFillColor(SWIFT)
         c.setFont(FONT_BOLD, 11)
-        c.drawCentredString(fx + box + of_w / 2, mid_y, "OF")
+        c.drawCentredString(fx + box + of_w / 2, label_mid_y, "OF")
 
         of_sz = fit_single_line_size(
             sample.get(f"{prefix}_of", ""), box - 4, ENTRY_SIZE, min_size=11
         )
         put_field(
-            form, f"{prefix}_of", fx + box + of_w, y - row_h + 7, box, 24, "", of_sz, fill=WHITE,
+            form, f"{prefix}_of", fx + box + of_w, value_y, box, value_h, "", of_sz, fill=WHITE,
             font_name="Helvetica-Bold",
         )
         if sample.get(f"{prefix}_of"):
@@ -793,13 +808,14 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
                 c,
                 sample[f"{prefix}_of"],
                 fx + box + of_w,
-                y - row_h + 7,
+                value_y,
                 box,
-                24,
+                value_h,
                 of_sz,
                 ENTRY_BOLD,
+                centered=True,
             )
-        hairline(c, fx + box + of_w, y - row_h + 6, box, RULE)
+        hairline(c, fx + box + of_w, underline_y, box, RULE)
 
     cell(MX, "Pallet / Crate", "pallet")
     cell(MX + half + gap, "Box", "box")

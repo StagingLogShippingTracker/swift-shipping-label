@@ -175,8 +175,9 @@ class BolLabelPdf {
       }
     }
 
-    // Customer logos: left frame only, aspect preserved — never move Swift/probill.
-    _drawCustomerLogosLeft(c, customerLogos, logoX, y, logoH);
+    // Customer logos: left frame only — fixed 59.04 pt (0.82") Swift BOL height.
+    const customerLogoH = 0.82 * inch;
+    _drawCustomerLogosLeft(c, customerLogos, logoX, y, customerLogoH);
 
     _probillCutout(c, fonts, d, logoX, logoW, y, logoH);
     y -= logoH + 6;
@@ -1009,23 +1010,6 @@ class BolLabelPdf {
     c.drawImage(img, dx, dy, w, h);
   }
 
-  double _uniformLogoHeight(
-    List<PdfImage> logos,
-    double slotW,
-    double maxH,
-  ) {
-    var commonH = maxH;
-    for (final logo in logos) {
-      final iw = logo.width.toDouble();
-      final ih = logo.height.toDouble();
-      if (iw <= 0 || ih <= 0) continue;
-      final scale = slotW / iw < maxH / ih ? slotW / iw : maxH / ih;
-      final h = ih * scale;
-      if (h < commonH) commonH = h;
-    }
-    return commonH;
-  }
-
   void _drawLogoAtHeight(
     PdfGraphics c,
     PdfImage img,
@@ -1049,7 +1033,7 @@ class BolLabelPdf {
     c.drawImage(
       img,
       slotX + (slotW - w) / 2,
-      slotY + (slotH - h) / 2,
+      slotY + (slotH - h),
       w,
       h,
     );
@@ -1065,14 +1049,12 @@ class BolLabelPdf {
   ) {
     final logos = customerLogos.take(maxCustomerLogos).toList();
     if (logos.isEmpty) return;
-    // Single logo: wider left band; dual logos: side-by-side or stacked.
     final maxFrameW = logos.length == 1 ? 2.25 * inch : 1.85 * inch;
     final frameLeft = margin;
     final frameRight = (swiftLogoX - 14).clamp(frameLeft + 40, frameLeft + maxFrameW);
     final frameW = frameRight - frameLeft;
     if (frameW < 36) return;
     final frameBot = logoTop - logoH;
-    const gap = 6.0;
 
     if (logos.length == 1) {
       _drawLogoAtHeight(
@@ -1087,37 +1069,20 @@ class BolLabelPdf {
       return;
     }
 
-    // Prefer side-by-side when the left frame is wide enough; else stack.
-    final sideBySide = frameW >= logoH * 1.2;
-    if (sideBySide) {
-      final slotW = (frameW - gap) / 2;
-      final commonH = _uniformLogoHeight(logos, slotW, logoH);
-      for (var i = 0; i < logos.length; i++) {
-        _drawLogoAtHeight(
-          c,
-          logos[i],
-          frameLeft + i * (slotW + gap),
-          frameBot,
-          slotW,
-          logoH,
-          commonH,
-        );
-      }
-    } else {
-      final slotH = (logoH - gap) / 2;
-      final commonH = _uniformLogoHeight(logos, frameW, slotH);
-      for (var i = 0; i < logos.length; i++) {
-        // i=0 on top of the stack (higher y in PDF = higher on page)
-        _drawLogoAtHeight(
-          c,
-          logos[i],
-          frameLeft,
-          frameBot + (logos.length - 1 - i) * (slotH + gap),
-          frameW,
-          slotH,
-          commonH,
-        );
-      }
+    // Dual logos: stack vertically — each half of 59.04 pt (29.52 pt).
+    const stackGap = 4.0;
+    final slotH = (logoH - stackGap) / 2;
+    final targetH = logoH / 2;
+    for (var i = 0; i < logos.length; i++) {
+      _drawLogoAtHeight(
+        c,
+        logos[i],
+        frameLeft,
+        frameBot + (logos.length - 1 - i) * (slotH + stackGap),
+        frameW,
+        slotH,
+        targetH,
+      );
     }
   }
 

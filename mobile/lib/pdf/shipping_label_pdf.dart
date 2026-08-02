@@ -400,6 +400,7 @@ class ShippingLabelPdf {
     PdfFont? font,
     bool multiline = false,
     PdfColor textColor = black,
+    bool centered = false,
   }) {
     if (text.isEmpty) return;
     final f = font ?? fonts.calibriBold;
@@ -415,7 +416,8 @@ class ShippingLabelPdf {
         yy -= fontSize + lineGap;
       }
     } else {
-      c.drawString(f, fontSize, text, x + 1, y + (h - fontSize) / 2 + 1);
+      final tx = centered ? x + (w - stringWidth(f, text, fontSize)) / 2 : x + 1;
+      c.drawString(f, fontSize, text, tx, y + (h - fontSize) / 2 + 1);
     }
   }
 
@@ -457,24 +459,6 @@ class ShippingLabelPdf {
     c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
   }
 
-  /// Max rendered height every logo can share in [slotW]×[maxH] (Swift-height band).
-  double _uniformCustomerLogoHeight(
-    List<PdfImage> logos,
-    double slotW,
-    double maxH,
-  ) {
-    var commonH = maxH;
-    for (final logo in logos) {
-      final iw = logo.width.toDouble();
-      final ih = logo.height.toDouble();
-      if (iw <= 0 || ih <= 0) continue;
-      final scale = (slotW / iw < maxH / ih) ? slotW / iw : maxH / ih;
-      final h = ih * scale;
-      if (h < commonH) commonH = h;
-    }
-    return commonH;
-  }
-
   void _drawCustomerLogoAtHeight(
     PdfGraphics c,
     PdfImage image,
@@ -498,7 +482,7 @@ class ShippingLabelPdf {
     c.drawImage(
       image,
       slotX + (slotW - w) / 2,
-      slotY + (slotH - h) / 2,
+      slotY + (slotH - h),
       w,
       h,
     );
@@ -510,14 +494,16 @@ class ShippingLabelPdf {
     double logoBottom,
     double bandH,
   ) {
-    // Match Swift header mark: y = logoBottom + 2, height = bandH - 4.
+    // Match Swift header mark: y = logoBottom + 2, height = bandH - 4 (62.24 pt).
     const swiftYOffset = 2.0;
     final swiftLogoH = bandH - 4;
     const pad = 4.0;
+    const dualGap = 8.0;
     final areaW = colW * 0.95;
     final areaX = mx + pad;
     final areaY = logoBottom + swiftYOffset;
     final areaH = swiftLogoH;
+    final innerW = areaW - pad * 2;
 
     if (logos.length == 1) {
       _drawCustomerLogoAtHeight(
@@ -525,26 +511,23 @@ class ShippingLabelPdf {
         logos[0],
         areaX,
         areaY,
-        areaW - pad * 2,
+        innerW,
         areaH,
         swiftLogoH,
       );
       return;
     }
 
-    const gap = 8.0;
-    final slotW = (areaW - gap) / logos.length;
-    final commonH = _uniformCustomerLogoHeight(logos, slotW, swiftLogoH);
+    final slotW = (innerW - dualGap) / logos.length;
     for (var i = 0; i < logos.length; i++) {
-      final slotX = mx + i * (slotW + gap);
       _drawCustomerLogoAtHeight(
         c,
         logos[i],
-        slotX,
+        areaX + i * (slotW + dualGap),
         areaY,
         slotW,
         areaH,
-        commonH,
+        swiftLogoH,
       );
     }
   }
@@ -1153,18 +1136,24 @@ class ShippingLabelPdf {
         ..setFillColor(labelC)
         ..setFont(fonts.oswaldMedium, 7.5);
       var cx = x + 12;
-      final midY = y - rowH / 2 - 2.5;
+      final cellMid = y - rowH / 2;
+      final labelMidY = cellMid - 2.5;
       for (final ch in _chars(label.toUpperCase())) {
-        c.drawString(fonts.oswaldMedium, 7.5, ch, cx, midY);
+        c.drawString(fonts.oswaldMedium, 7.5, ch, cx, labelMidY);
         cx += stringWidth(fonts.oswaldMedium, ch, 7.5) + 0.7;
       }
 
       const box = 34.0;
       const ofW = 28.0;
-      final fx = x + half - 12 - box * 2 - ofW;
+      const blockW = box * 2 + ofW;
+      final fx = x + (half - blockW) / 2;
 
       final numVal = sample.get('${prefix}_num');
       final ofVal = sample.get('${prefix}_of');
+
+      const valueH = 20.0;
+      final valueY = cellMid - valueH / 2;
+      final underlineY = valueY - 1;
 
       final numSz = fitSingleLineSize(
         numVal,
@@ -1179,14 +1168,15 @@ class ShippingLabelPdf {
           fonts,
           numVal,
           fx,
-          y - rowH + 7,
+          valueY,
           box,
-          24,
+          valueH,
           fontSize: numSz,
           font: fonts.calibriBold,
+          centered: true,
         );
       }
-      _hairline(c, fx, y - rowH + 6, box);
+      _hairline(c, fx, underlineY, box);
 
       c
         ..setFillColor(swift)
@@ -1198,7 +1188,7 @@ class ShippingLabelPdf {
         11,
         ofText,
         fx + box + ofW / 2 - ofTw / 2,
-        midY,
+        labelMidY,
       );
 
       final ofSz = fitSingleLineSize(
@@ -1214,14 +1204,15 @@ class ShippingLabelPdf {
           fonts,
           ofVal,
           fx + box + ofW,
-          y - rowH + 7,
+          valueY,
           box,
-          24,
+          valueH,
           fontSize: ofSz,
           font: fonts.calibriBold,
+          centered: true,
         );
       }
-      _hairline(c, fx + box + ofW, y - rowH + 6, box);
+      _hairline(c, fx + box + ofW, underlineY, box);
     }
 
     cell(mx, 'Pallet / Crate', 'pallet');
