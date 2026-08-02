@@ -579,64 +579,87 @@ class _HomeScreenState extends State<HomeScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Find logo on the web'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Search Google, Bing, Clearbit, Brands of the World, and other '
-                'sources. A website domain improves accuracy.',
-                style: TextStyle(fontSize: 13, color: SwiftColors.muted),
+        builder: (ctx, setDialogState) {
+          final viewInsets = MediaQuery.viewInsetsOf(ctx);
+          final screenHeight = MediaQuery.sizeOf(ctx).height;
+          final maxContentHeight = (screenHeight -
+                  viewInsets.vertical -
+                  kToolbarHeight -
+                  120)
+              .clamp(120.0, screenHeight * 0.55);
+          return AnimatedPadding(
+            padding: EdgeInsets.only(bottom: viewInsets.bottom),
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.decelerate,
+            child: AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'CUSTOMER / COMPANY',
+              title: const Text('Find logo on the web'),
+              content: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxContentHeight),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Search Google, Bing, Clearbit, Brands of the World, and other '
+                        'sources. A website domain improves accuracy.',
+                        style: TextStyle(fontSize: 13, color: SwiftColors.muted),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'CUSTOMER / COMPANY',
+                        ),
+                        autofocus: true,
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: domainCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'WEBSITE DOMAIN (OPTIONAL)',
+                          hintText: 'e.g. conocophillips.com',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<LogoSearchEngine>(
+                        value: selectedEngine,
+                        decoration: const InputDecoration(
+                          labelText: 'SEARCH SOURCE',
+                        ),
+                        items: [
+                          for (final engine in engineOptions)
+                            DropdownMenuItem(
+                              value: engine,
+                              child: Text(engine.label),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => selectedEngine = value);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                autofocus: true,
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: domainCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'WEBSITE DOMAIN (OPTIONAL)',
-                  hintText: 'e.g. conocophillips.com',
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
                 ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<LogoSearchEngine>(
-                value: selectedEngine,
-                decoration: const InputDecoration(
-                  labelText: 'SEARCH SOURCE',
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Search'),
                 ),
-                items: [
-                  for (final engine in engineOptions)
-                    DropdownMenuItem(
-                      value: engine,
-                      child: Text(engine.label),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setDialogState(() => selectedEngine = value);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              ],
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Search'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
     if (confirmed != true || !mounted) return;
