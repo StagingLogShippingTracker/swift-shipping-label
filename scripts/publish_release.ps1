@@ -6,6 +6,7 @@
 #
 # Assets:
 #   SwiftDocumentGenerator-windows.zip
+#   SwiftDocumentGenerator-Setup.exe
 #   SwiftDocumentGenerator-android.apk
 param(
     [string]$Version = "",
@@ -131,6 +132,15 @@ Copy this entire folder to any work PC (Documents / Desktop / USB) and run.
     Compress-Archive -Path $onedir -DestinationPath $zip -CompressionLevel Optimal
     $assets += $zip
     Write-Host "Windows asset: $zip"
+
+    Write-Host "`n=== Windows installer (Inno Setup) ==="
+    & (Join-Path $root "scripts\build_windows_installer.ps1")
+    $setup = Join-Path $dist "SwiftDocumentGenerator-Setup.exe"
+    if (-not (Test-Path $setup)) {
+        throw "Windows installer missing: $setup"
+    }
+    $assets += $setup
+    Write-Host "Windows installer asset: $setup"
 }
 
 if (-not $SkipAndroid) {
@@ -189,20 +199,16 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Crop shipper signature PNG to ink bounds so BOL PDF shows readable signatures
-- Fix Android PDF share (FileProvider: copy from app_flutter to cache before share)
-- BOL: single Sales Order field (removed duplicate Order #)
-- BOL line Item Type dropdown (Pallet, Crate, Box, Pipe, Bundle, Other) with PDF pluralization
-- Optional shipper signature capture + cloud save/reuse via Supabase
-
-Re-save your shipper signature after updating so the cropped export is stored.
+- Windows installer (SwiftDocumentGenerator-Setup.exe) for work PCs — Program Files, Start Menu shortcut, uninstaller
+- Portable zip unchanged; in-app Update still uses the zip only
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.
+- SwiftDocumentGenerator-Setup.exe - Windows installer (Program Files, Start Menu, uninstaller).
 - SwiftDocumentGenerator-android.apk - Android install package.
 
 ### In-app Update
-Update checks releases/latest for the host-platform asset names above.
+In-app Update still downloads the portable zip only (not the Setup.exe).
 "@
 
 if ($releaseExists) {

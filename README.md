@@ -10,7 +10,8 @@ Swift Oilfield Supply warehouse documents for **Windows** and **Android**:
 
 | | |
 |--|--|
-| App | `dist\Swift Document Generator\swift_shipping_label.exe` |
+| Portable | `dist\Swift Document Generator\swift_shipping_label.exe` |
+| Installer | [SwiftDocumentGenerator-Setup.exe](https://github.com/StagingLogShippingTracker/swift-shipping-label/releases/latest/download/SwiftDocumentGenerator-Setup.exe) (Program Files, Start Menu, uninstaller) |
 | Launch | **Launch Swift Document Generator.vbs** (no console) |
 
 ```powershell
@@ -18,11 +19,17 @@ Swift Oilfield Supply warehouse documents for **Windows** and **Android**:
 .\Launch Swift Document Generator.vbs
 ```
 
+Build the installer after a Windows release build:
+
+```powershell
+.\scripts\build_windows_installer.ps1
+```
+
 ## Update
 
 In-app **Update** downloads from GitHub Releases:
 
-- `SwiftDocumentGenerator-windows.zip`
+- `SwiftDocumentGenerator-windows.zip` (portable; in-app Update does not use Setup.exe)
 - `SwiftDocumentGenerator-android.apk`
 
 ## Publish
