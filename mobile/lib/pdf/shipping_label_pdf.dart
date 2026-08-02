@@ -35,6 +35,8 @@ class ShippingLabelPdf {
   static const pieceFill = PdfColor.fromInt(0xFFF7F7F7);
   static const soBg = PdfColor.fromInt(0xFFF8EBE7);
   static const recvSoBg = PdfColor.fromInt(0xFFFFEB3B);
+  static const recvInstructionsAlert = PdfColor.fromInt(0xFFE53935);
+  static const white = PdfColor.fromInt(0xFFFFFFFF);
 
   static final pageFormat = PdfPageFormat.letter.landscape;
   static const inch = PdfPageFormat.inch;
@@ -397,11 +399,12 @@ class ShippingLabelPdf {
     double fontSize = entrySize,
     PdfFont? font,
     bool multiline = false,
+    PdfColor textColor = black,
   }) {
     if (text.isEmpty) return;
     final f = font ?? fonts.calibriBold;
     c
-      ..setFillColor(black)
+      ..setFillColor(textColor)
       ..setFont(f, fontSize);
     if (multiline) {
       final lines = wrapLines(text, w - 4, f, fontSize);
@@ -641,6 +644,7 @@ class ShippingLabelPdf {
     double preferredSize = entrySize,
     int maxLines = wrapMaxLines,
     bool hero = false,
+    PdfColor? valueBgWhenNonEmpty,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
@@ -678,6 +682,11 @@ class ShippingLabelPdf {
       final base = size + (hero ? 12 : 10);
       vh = valueH ?? (hero ? (base < 30 ? 30 : base) : (base < 26 ? 26 : base));
     }
+    final alertFill = valueBgWhenNonEmpty != null && val.isNotEmpty;
+    if (alertFill) {
+      c.setFillColor(valueBgWhenNonEmpty);
+      _fillRect(c, x, y - vh, colWidth, vh);
+    }
     if (val.isNotEmpty) {
       _drawValue(
         c,
@@ -690,6 +699,7 @@ class ShippingLabelPdf {
         fontSize: size,
         font: bold,
         multiline: multiline,
+        textColor: alertFill ? white : black,
       );
     }
     _hairline(c, x, y - vh - 1, colWidth);
@@ -780,6 +790,7 @@ class ShippingLabelPdf {
       sample,
       multiline: true,
       maxLines: 2,
+      valueBgWhenNonEmpty: recvInstructionsAlert,
     );
 
     _hairline(c, mx, recvTop + 10, contentW, ruleSoft);

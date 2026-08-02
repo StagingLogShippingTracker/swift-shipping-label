@@ -34,6 +34,7 @@ WHITE = colors.white
 SO_BG = colors.HexColor("#FFEB3B")
 RECV_BG = colors.HexColor("#F7F0D8")
 PIECE_FILL = colors.HexColor("#F7F7F7")
+INSTRUCTIONS_ALERT = colors.HexColor("#E53935")
 
 PAGE_W, PAGE_H = landscape(letter)
 MX = 0.52 * inch
@@ -208,10 +209,11 @@ def draw_value(
     font_size: float = ENTRY_SIZE,
     font_name: str = ENTRY_BOLD,
     multiline: bool = False,
+    text_color=BLACK,
 ) -> None:
     if not text:
         return
-    c.setFillColor(BLACK)
+    c.setFillColor(text_color)
     c.setFont(font_name, font_size)
     if multiline:
         lines = wrap_lines(str(text), w - 4, font_name, font_size)
@@ -401,19 +403,49 @@ def draw_labeled_value(
     hero: bool = False,
     multiline: bool = False,
     max_lines: int = WRAP_MAX_LINES,
+    alert_when_nonempty: bool = False,
 ) -> float:
     micro_label(c, x, y, label)
     y -= 4
+    val = (value or "").strip()
+    alert_fill = alert_when_nonempty and bool(val)
     if multiline:
         size = fit_wrapped_size(value, col_w - 4, preferred, max_lines=max_lines)
         vh = field_height_for(value, col_w, size, max_lines=max_lines)
-        draw_value(c, value, x, y - vh, col_w, vh, size, ENTRY_BOLD, multiline=True)
+        if alert_fill:
+            c.setFillColor(INSTRUCTIONS_ALERT)
+            c.rect(x, y - vh, col_w, vh, stroke=0, fill=1)
+        draw_value(
+            c,
+            value,
+            x,
+            y - vh,
+            col_w,
+            vh,
+            size,
+            ENTRY_BOLD,
+            multiline=True,
+            text_color=WHITE if alert_fill else BLACK,
+        )
     else:
         size = fit_single_line_size(
             value, col_w - 4, ENTRY_HERO if hero else preferred, min_size=12 if hero else ENTRY_MIN
         )
         vh = max(size + 12, 30 if hero else 26)
-        draw_value(c, value, x, y - vh, col_w, vh, size, ENTRY_BOLD)
+        if alert_fill:
+            c.setFillColor(INSTRUCTIONS_ALERT)
+            c.rect(x, y - vh, col_w, vh, stroke=0, fill=1)
+        draw_value(
+            c,
+            value,
+            x,
+            y - vh,
+            col_w,
+            vh,
+            size,
+            ENTRY_BOLD,
+            text_color=WHITE if alert_fill else BLACK,
+        )
     hairline(c, x, y - vh - 1, col_w)
     return y - vh - 14
 
@@ -519,6 +551,7 @@ def draw_label_page(
         CONTENT_W,
         multiline=True,
         max_lines=2,
+        alert_when_nonempty=True,
     )
 
     hairline(c, MX, recv_top + 10, CONTENT_W, RULE_SOFT)
