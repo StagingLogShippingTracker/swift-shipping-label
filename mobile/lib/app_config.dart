@@ -17,4 +17,14 @@ class AppConfig {
   static const supabaseUrl = 'https://gdrpdiwykmnybmkadlrv.supabase.co';
   static const supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcnBkaXd5a21ueWJta2FkbHJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MjMyMTIsImV4cCI6MjA5NjA5OTIxMn0.Z7ih_vQic1GtzCyZmTEV-RWJnmuaNZQDfOV2_Fvan5g';
+
+  /// Optional Retool REST/workflow proxy for Clearbit logo lookups.
+  /// Set at build time via `--dart-define=RETOOL_CLEARBIT_LOGO_URL=...` or
+  /// the `RETOOL_CLEARBIT_LOGO_URL` environment variable. Use `{domain}` in
+  /// the template, e.g. `https://your-org.retool.com/api/.../clearbit?domain={domain}`.
+  /// When empty, only the public `https://logo.clearbit.com/{domain}` endpoint is used.
+  static const retoolClearbitLogoUrl = String.fromEnvironment(
+    'RETOOL_CLEARBIT_LOGO_URL',
+    defaultValue: '',
+  );
 }

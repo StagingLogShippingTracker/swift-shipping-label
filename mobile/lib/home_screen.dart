@@ -574,8 +574,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'We’ll search Google & Bing Images, Brands of the World, Logo.dev, '
-              'Brandfetch, TinEye, and Clearbit for a logo. A website domain helps.',
+              'We’ll search Clearbit, Google & Bing Images, Brands of the World, '
+              'Logo.dev, Brandfetch, TinEye, and Wikipedia for a logo. '
+              'A website domain improves accuracy.',
               style: TextStyle(fontSize: 13, color: SwiftColors.muted),
             ),
             const SizedBox(height: 14),
@@ -611,10 +612,11 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _findingLogo = true);
     try {
       final finder = LogoFinder();
-      final candidates = await finder.findDownloadedCandidates(
+      final rawCandidates = await finder.findDownloadedCandidates(
         companyName: nameCtrl.text,
         domain: domainCtrl.text,
       );
+      final candidates = LogoFinder.filterForPicker(rawCandidates);
       if (!mounted) return;
       if (candidates.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
