@@ -199,12 +199,12 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Windows installer (SwiftDocumentGenerator-Setup.exe) for work PCs — Program Files, Start Menu shortcut, uninstaller
+- Windows installer (SwiftDocumentGenerator-Setup.exe) — per-user install, no admin UAC; Start Menu shortcut, uninstaller
 - Portable zip unchanged; in-app Update still uses the zip only
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.
-- SwiftDocumentGenerator-Setup.exe - Windows installer (Program Files, Start Menu, uninstaller).
+- SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller).
 - SwiftDocumentGenerator-android.apk - Android install package.
 
 ### In-app Update
