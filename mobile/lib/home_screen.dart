@@ -580,21 +580,27 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final viewInsets = MediaQuery.viewInsetsOf(ctx);
-          final screenHeight = MediaQuery.sizeOf(ctx).height;
-          final maxContentHeight = (screenHeight -
-                  viewInsets.vertical -
-                  kToolbarHeight -
-                  120)
+          final media = MediaQuery.of(ctx);
+          final viewInsets = media.viewInsets;
+          final padding = media.padding;
+          final screenHeight = media.size.height;
+          const horizontalInset = 24.0;
+          const verticalInset = 24.0;
+          final topInset = padding.top + verticalInset;
+          final bottomInset = viewInsets.bottom + verticalInset;
+          final maxDialogHeight = (screenHeight - topInset - bottomInset)
+              .clamp(200.0, screenHeight);
+          final maxContentHeight = (maxDialogHeight - 140)
               .clamp(120.0, screenHeight * 0.55);
-          return AnimatedPadding(
-            padding: EdgeInsets.only(bottom: viewInsets.bottom),
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.decelerate,
+          return MediaQuery.removeViewInsets(
+            removeBottom: true,
+            context: ctx,
             child: AlertDialog(
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 24,
+              insetPadding: EdgeInsets.fromLTRB(
+                horizontalInset,
+                topInset,
+                horizontalInset,
+                bottomInset,
               ),
               title: const Text('Find logo on the web'),
               content: ConstrainedBox(
