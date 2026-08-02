@@ -315,20 +315,22 @@ def draw_customer_logos_header(
     logos = [p for p in logos if p and p.exists()][:2]
     if not logos:
         return
+    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4.
+    swift_y_offset = 2
+    swift_logo_h = band_h - 4
     pad = 4
     area_w = COL_W * 0.95
     area_x = MX + pad
-    area_y = logo_bottom + pad
-    area_h = band_h - pad * 2
-    max_logo_h = min(band_h - 4, area_h)
+    area_y = logo_bottom + swift_y_offset
+    area_h = swift_logo_h
 
     if len(logos) == 1:
-        draw_image_in_box(c, logos[0], area_x, area_y, area_w - pad * 2, max_logo_h)
+        _draw_logo_at_height(c, logos[0], area_x, area_y, area_w - pad * 2, area_h, swift_logo_h)
         return
 
     gap = 8
     slot_w = (area_w - gap) / len(logos)
-    common_h = _uniform_logo_height(logos, slot_w, max_logo_h)
+    common_h = _uniform_logo_height(logos, slot_w, swift_logo_h)
     for i, path in enumerate(logos):
         slot_x = MX + i * (slot_w + gap)
         _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
@@ -422,16 +424,26 @@ def draw_sales_order_pill(c: canvas.Canvas, y: float, x: float, col_w: float, va
     val = (value or "").strip()
     pad_x, pad_y = 12, 8
     size = fit_single_line_size(val, col_w - 2 * pad_x, ENTRY_SO, min_size=14)
-    pill_w = col_w
+    text_w = stringWidth(val, ENTRY_BOLD, size) if val else size * 2
+    pill_w = min(col_w, text_w + 2 * pad_x)
     pill_h = size + 2 * pad_y
     row_h = max(pill_h, 48)
 
     c.setFillColor(SO_BG)
     c.roundRect(x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
     if val:
-        c.setFont(ENTRY_BOLD, size)
-        text_y = y - pill_h + pad_y - 2 + (size + 4 - size) / 2 + 1
-        c.drawCentredString(x + pill_w / 2, text_y, val)
+        text_box_h = size + 4
+        text_y = y - pill_h + (pill_h - text_box_h) / 2
+        draw_value(
+            c,
+            val,
+            x + pad_x,
+            text_y,
+            max(pill_w - 2 * pad_x, 20),
+            text_box_h,
+            size,
+            ENTRY_BOLD,
+        )
     hairline(c, x, y - row_h - 1, col_w)
     return y - row_h - 14
 

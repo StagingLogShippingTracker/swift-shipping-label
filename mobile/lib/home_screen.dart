@@ -991,7 +991,59 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _pickDate(String key) async {
+    final current = AppDates.parse(_controllers[key]!.text) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null && mounted) {
+      _setField(key, AppDates.format(picked));
+      setState(() {});
+    }
+  }
+
+  Widget _buildDateField(String key) {
+    final m = _meta(key);
+    final ctrl = _controllers[key]!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: TextField(
+        controller: ctrl,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: m.$2.toUpperCase(),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (ctrl.text.isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.clear, size: 20),
+                  onPressed: () {
+                    _setField(key, '');
+                    setState(() {});
+                  },
+                ),
+              IconButton(
+                tooltip: 'Pick date',
+                icon: const Icon(Icons.calendar_today, size: 20),
+                onPressed: () => _pickDate(key),
+              ),
+            ],
+          ),
+        ),
+        onTap: () => _pickDate(key),
+      ),
+    );
+  }
+
   Widget _buildFormField(String key) {
+    if (appDateFieldKeys.contains(key)) {
+      return _buildDateField(key);
+    }
     final m = _meta(key);
     final lines = !m.$3
         ? 1

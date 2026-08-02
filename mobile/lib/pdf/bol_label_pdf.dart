@@ -1031,7 +1031,15 @@ class BolLabelPdf {
     const gap = 6.0;
 
     if (logos.length == 1) {
-      _drawImageInBox(c, logos.first, frameLeft, frameBot, frameW, logoH);
+      _drawLogoAtHeight(
+        c,
+        logos.first,
+        frameLeft,
+        frameBot,
+        frameW,
+        logoH,
+        logoH,
+      );
       return;
     }
 

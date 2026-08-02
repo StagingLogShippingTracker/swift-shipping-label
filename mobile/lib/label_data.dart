@@ -138,6 +138,56 @@ class LabelFields {
   ];
 }
 
+/// Date fields that use a calendar picker in the form UI.
+const appDateFieldKeys = <String>{
+  LabelFields.dateReceived,
+  BolFields.documentDate,
+  BolFields.shipperCertDate,
+  BolFields.driverDate,
+  BolFields.consigneeDate,
+};
+
+/// Display/parse dates as "Aug 1, 2026" (matches BOL today stamp).
+class AppDates {
+  AppDates._();
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  static String format(DateTime d) =>
+      '${_months[d.month - 1]} ${d.day}, ${d.year}';
+
+  static DateTime? parse(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    final direct = DateTime.tryParse(s);
+    if (direct != null) return direct;
+    final m = RegExp(
+      r'^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$',
+    ).firstMatch(s);
+    if (m == null) return null;
+    final mon = m.group(1)!.toLowerCase();
+    final month = _months.indexWhere((name) => name.toLowerCase() == mon) + 1;
+    if (month < 1) return null;
+    final day = int.tryParse(m.group(2)!);
+    final year = int.tryParse(m.group(3)!);
+    if (day == null || year == null) return null;
+    return DateTime(year, month, day);
+  }
+}
+
 /// Form field keys persisted on a customer preset for [kind].
 List<String> presetKeysFor(LabelKind kind) {
   switch (kind) {

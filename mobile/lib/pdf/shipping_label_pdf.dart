@@ -507,22 +507,31 @@ class ShippingLabelPdf {
     double logoBottom,
     double bandH,
   ) {
+    // Match Swift header mark: y = logoBottom + 2, height = bandH - 4.
+    const swiftYOffset = 2.0;
+    final swiftLogoH = bandH - 4;
     const pad = 4.0;
     final areaW = colW * 0.95;
     final areaX = mx + pad;
-    final areaY = logoBottom + pad;
-    final areaH = bandH - pad * 2;
-    // Match Swift logo band height (bandH - 4) without exceeding customer area.
-    final maxLogoH = (bandH - 4).clamp(0.0, areaH);
+    final areaY = logoBottom + swiftYOffset;
+    final areaH = swiftLogoH;
 
     if (logos.length == 1) {
-      _drawImageInBox(c, logos[0], areaX, areaY, areaW - pad * 2, maxLogoH);
+      _drawCustomerLogoAtHeight(
+        c,
+        logos[0],
+        areaX,
+        areaY,
+        areaW - pad * 2,
+        areaH,
+        swiftLogoH,
+      );
       return;
     }
 
     const gap = 8.0;
     final slotW = (areaW - gap) / logos.length;
-    final commonH = _uniformCustomerLogoHeight(logos, slotW, maxLogoH);
+    final commonH = _uniformCustomerLogoHeight(logos, slotW, swiftLogoH);
     for (var i = 0; i < logos.length; i++) {
       final slotX = mx + i * (slotW + gap);
       _drawCustomerLogoAtHeight(
@@ -755,7 +764,7 @@ class ShippingLabelPdf {
       sample,
       pillBg: recvSoBg,
       preferredSize: entryRecvSo,
-      centerInPill: true,
+      minRowH: 48,
     );
     yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.pm, rx, colW, sample);
 
@@ -846,7 +855,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample, {
     PdfColor? pillBg,
     double? preferredSize,
-    bool centerInPill = false,
+    double minRowH = 44,
   }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
     y -= 4;
@@ -863,42 +872,28 @@ class ShippingLabelPdf {
     );
     final textW =
         val.isEmpty ? size * 2 : stringWidth(fonts.calibriBold, val, size);
-    final pillW = centerInPill
-        ? colWidth
-        : (textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX);
+    final pillW =
+        textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX;
     final pillH = size + 2 * padY;
-    final rowH = pillH < 44 ? 44.0 : pillH;
+    final rowH = pillH < minRowH ? minRowH : pillH;
 
     c.setFillColor(pillBg ?? soBg);
     _fillRRect(c, x, y - pillH, pillW, pillH, 8);
 
     if (val.isNotEmpty) {
       final textBoxH = size + 4;
-      final textY = y - pillH + padY - 2;
-      if (centerInPill) {
-        c
-          ..setFillColor(black)
-          ..setFont(fonts.calibriBold, size);
-        c.drawString(
-          fonts.calibriBold,
-          size,
-          val,
-          x + pillW / 2 - textW / 2,
-          textY + (textBoxH - size) / 2 + 1,
-        );
-      } else {
-        _drawValue(
-          c,
-          fonts,
-          val,
-          x + padX,
-          textY,
-          pillW - 2 * padX,
-          textBoxH,
-          fontSize: size,
-          font: fonts.calibriBold,
-        );
-      }
+      final textY = y - pillH + (pillH - textBoxH) / 2;
+      _drawValue(
+        c,
+        fonts,
+        val,
+        x + padX,
+        textY,
+        pillW - 2 * padX,
+        textBoxH,
+        fontSize: size,
+        font: fonts.calibriBold,
+      );
     }
     _hairline(c, x, y - rowH - 1, colWidth);
     return y - rowH - 12;

@@ -419,20 +419,22 @@ def draw_customer_logos_header(
     logos = [p for p in logos if p and p.exists()][:2]
     if not logos:
         return
+    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4.
+    swift_y_offset = 2
+    swift_logo_h = band_h - 4
     pad = 4
     area_w = COL_W * 0.95
     area_x = MX + pad
-    area_y = logo_bottom + pad
-    area_h = band_h - pad * 2
-    max_logo_h = min(band_h - 4, area_h)
+    area_y = logo_bottom + swift_y_offset
+    area_h = swift_logo_h
 
     if len(logos) == 1:
-        draw_image_in_box(c, logos[0], area_x, area_y, area_w - pad * 2, max_logo_h)
+        _draw_logo_at_height(c, logos[0], area_x, area_y, area_w - pad * 2, area_h, swift_logo_h)
         return
 
     gap = 8
     slot_w = (area_w - gap) / len(logos)
-    common_h = _uniform_logo_height(logos, slot_w, max_logo_h)
+    common_h = _uniform_logo_height(logos, slot_w, swift_logo_h)
     for i, path in enumerate(logos):
         slot_x = MX + i * (slot_w + gap)
         _draw_logo_at_height(c, path, slot_x, area_y, slot_w, area_h, common_h)
