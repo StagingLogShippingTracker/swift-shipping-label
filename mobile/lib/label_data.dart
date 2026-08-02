@@ -62,7 +62,6 @@ class BolFields {
     (consigneeContactNumber, 'Contact Number', false),
     (thirdPartyBilling, '3rd Party Billing', true),
     (packingList, 'Packing List #', false),
-    (orderNum, 'Order #', false),
     (shipperCertName, 'Shipper Cert Name', false),
     (shipperCertDate, 'Shipper Cert Date', false),
     (driverCompany, 'Carrier Company', false),
@@ -221,7 +220,7 @@ List<String> presetKeysFor(LabelKind kind) {
         BolFields.consigneeContactNumber,
         BolFields.freightCharges,
         BolFields.packingList,
-        BolFields.orderNum,
+        LabelFields.salesOrder,
         BolFields.driverCompany,
         BolFields.shipperCertName,
       ];
@@ -290,19 +289,53 @@ class ShippingLabelData {
     BolFields.consigneeContactNumber: '250-555-0199',
     BolFields.freightCharges: 'prepaid',
     BolFields.packingList: '1224618',
-    BolFields.orderNum: 'SO-88421',
     BolFields.lineKey(1, 'pieces'): '2',
-    BolFields.lineKey(1, 'item_type'): 'Pallets',
+    BolFields.lineKey(1, 'item_type'): 'Pallet',
     BolFields.lineKey(1, 'dimensions'): '48x40x48',
     BolFields.lineKey(1, 'description'): 'Pipe fittings - north pad staging',
     BolFields.lineKey(1, 'weight'): '1800',
     BolFields.lineKey(2, 'pieces'): '1',
-    BolFields.lineKey(2, 'item_type'): 'Boxes',
+    BolFields.lineKey(2, 'item_type'): 'Box',
     BolFields.lineKey(2, 'description'): 'Gasket kit',
     BolFields.lineKey(2, 'weight'): '40',
     BolFields.shipperCertName: 'J. SMITH',
     BolFields.shipperCertDate: 'Aug 1, 2026',
   });
+}
+
+/// Saved shipper signature (local PNG + Supabase sync).
+class SavedSignature {
+  SavedSignature({
+    required this.id,
+    required this.name,
+    required this.fileName,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String fileName;
+  final DateTime updatedAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'file_name': fileName,
+        'updated_at': updatedAt.toUtc().toIso8601String(),
+      };
+
+  factory SavedSignature.fromJson(Map<String, dynamic> json) {
+    DateTime updated = DateTime.fromMillisecondsSinceEpoch(0);
+    try {
+      updated = DateTime.parse('${json['updated_at']}').toUtc();
+    } catch (_) {}
+    return SavedSignature(
+      id: '${json['id'] ?? ''}'.trim(),
+      name: '${json['name'] ?? ''}'.trim(),
+      fileName: '${json['file_name'] ?? ''}'.trim(),
+      updatedAt: updated,
+    );
+  }
 }
 
 class CustomerPreset {
@@ -348,6 +381,13 @@ class CustomerPreset {
     for (final key in presetKeysFor(kind)) {
       final v = json[key];
       if (v != null) fields[key] = '$v';
+    }
+    if (kind == LabelKind.bol &&
+        (fields[LabelFields.salesOrder] ?? '').trim().isEmpty) {
+      final legacy = json[BolFields.orderNum];
+      if (legacy != null && '$legacy'.trim().isNotEmpty) {
+        fields[LabelFields.salesOrder] = '$legacy';
+      }
     }
     final logos = <String>[];
     final rawList = json['logos'];

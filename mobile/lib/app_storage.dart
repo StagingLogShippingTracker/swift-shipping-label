@@ -13,10 +13,13 @@ class AppStorage {
   final Directory root;
 
   Directory get logosDir => Directory(p.join(root.path, 'customer_logos'));
+  Directory get signaturesDir => Directory(p.join(root.path, 'signatures'));
   Directory get filledDir => Directory(p.join(root.path, 'filled'));
   File get presetsFile => File(p.join(root.path, 'presets.json'));
+  File get signaturesFile => File(p.join(root.path, 'signatures.json'));
 
   Map<String, CustomerPreset> presets = {};
+  List<SavedSignature> signatures = [];
 
   /// Storage map key for a preset (`shipping::Name`, etc.).
   static String presetStorageKey(LabelKind kind, String displayName) =>
@@ -65,12 +68,14 @@ class AppStorage {
     final store = AppStorage._(root);
     await store.ensureDirs();
     await store.loadPresets();
+    await store.loadSignatures();
     return store;
   }
 
   Future<void> ensureDirs() async {
     await root.create(recursive: true);
     await logosDir.create(recursive: true);
+    await signaturesDir.create(recursive: true);
     await filledDir.create(recursive: true);
   }
 
@@ -122,6 +127,43 @@ class AppStorage {
     }
     await presetsFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert({'customers': customers}),
+    );
+  }
+
+  DateTime get signaturesIndexModified {
+    try {
+      return signaturesFile.statSync().modified;
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+  }
+
+  Future<void> loadSignatures() async {
+    signatures = [];
+    if (!await signaturesFile.exists()) return;
+    try {
+      final data =
+          jsonDecode(await signaturesFile.readAsString()) as Map<String, dynamic>;
+      final raw = data['signatures'];
+      if (raw is! List) return;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final sig = SavedSignature.fromJson(Map<String, dynamic>.from(item));
+        if (sig.id.isNotEmpty && sig.fileName.isNotEmpty) {
+          signatures.add(sig);
+        }
+      }
+      signatures.sort((a, b) => a.name.compareTo(b.name));
+    } catch (_) {
+      signatures = [];
+    }
+  }
+
+  Future<void> saveSignatures() async {
+    await signaturesFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'signatures': signatures.map((s) => s.toJson()).toList(),
+      }),
     );
   }
 

@@ -39,8 +39,11 @@ Future<void> shareOrOpenFile({
   String subject = 'Swift Supply Shipping Label',
 }) async {
   if (Platform.isAndroid) {
+    if (!await file.exists()) {
+      throw StateError('File not found: ${file.path}');
+    }
     await _native.invokeMethod<bool>('shareFile', {
-      'path': file.path,
+      'path': file.absolute.path,
       'mime': mime,
       'subject': subject,
     });

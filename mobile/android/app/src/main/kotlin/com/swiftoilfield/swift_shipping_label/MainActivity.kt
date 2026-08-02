@@ -76,10 +76,11 @@ class MainActivity : FlutterActivity() {
         if (!file.exists() || file.length() == 0L) {
             throw IllegalArgumentException("APK file missing or empty")
         }
+        val installTarget = fileForProvider(file)
         val uri = FileProvider.getUriForFile(
             this,
             "${applicationContext.packageName}.fileprovider",
-            file,
+            installTarget,
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -91,10 +92,14 @@ class MainActivity : FlutterActivity() {
 
     private fun shareFile(path: String, mime: String, subject: String) {
         val file = File(path)
+        if (!file.exists() || file.length() == 0L) {
+            throw IllegalArgumentException("PDF file missing or empty")
+        }
+        val shareTarget = fileForProvider(file)
         val uri = FileProvider.getUriForFile(
             this,
             "${applicationContext.packageName}.fileprovider",
-            file,
+            shareTarget,
         )
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mime
@@ -103,6 +108,35 @@ class MainActivity : FlutterActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(intent, subject))
+    }
+
+    /**
+     * FileProvider only exposes cache, files, and external-files — not Flutter's
+     * app_flutter documents tree. Copy into cache/share when needed.
+     */
+    private fun fileForProvider(source: File): File {
+        val canonical = source.canonicalFile
+        val allowedRoots = listOfNotNull(cacheDir, filesDir, getExternalFilesDir(null))
+        for (root in allowedRoots) {
+            val rootPath = root.canonicalFile.path
+            val filePath = canonical.path
+            if (filePath == rootPath || filePath.startsWith("$rootPath/")) {
+                return canonical
+            }
+        }
+        val shareDir = File(cacheDir, "share").apply { mkdirs() }
+        var dest = File(shareDir, canonical.name.ifBlank { "document.pdf" })
+        if (dest.exists()) {
+            val stem = dest.nameWithoutExtension.ifBlank { "document" }
+            val ext = dest.extension.ifEmpty { "pdf" }
+            var n = 2
+            while (dest.exists()) {
+                dest = File(shareDir, "$stem ($n).$ext")
+                n++
+            }
+        }
+        canonical.copyTo(dest, overwrite = true)
+        return dest
     }
 
     @Deprecated("Deprecated in Java")

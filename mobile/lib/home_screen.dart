@@ -6,7 +6,10 @@ import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
 import 'bol_document_number.dart';
+import 'bol_item_type.dart';
 import 'preset_sync.dart';
+import 'signature_pad.dart';
+import 'signature_sync.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'pdf/bol_label_pdf.dart';
@@ -95,13 +98,12 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Tracking & references',
-    'PO, packing list, order, project',
+    'PO, packing list, sales order, project',
     [
       LabelFields.poNum,
       BolFields.packingList,
-      BolFields.orderNum,
-      LabelFields.project,
       LabelFields.salesOrder,
+      LabelFields.project,
       LabelFields.specialInstructions,
     ],
   ),
@@ -163,11 +165,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Visible BOL goods lines (1..7); start with line 1 only.
   int _bolLineCount = 1;
   late final PresetSync _presetSync;
+  late final SignatureSync _signatureSync;
+  Uint8List? _shipperSignatureBytes;
+  SavedSignature? _selectedSavedSignature;
 
   @override
   void initState() {
     super.initState();
     _presetSync = PresetSync(widget.storage);
+    _signatureSync = SignatureSync(widget.storage);
     _controllers = {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
@@ -196,6 +202,22 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+    }
+    await _syncSignaturesQuietly();
+  }
+
+  Future<void> _syncSignaturesQuietly() async {
+    try {
+      await _signatureSync.syncOnLaunch();
+      if (mounted) setState(() {});
+    } on SignatureSyncException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Signature sync: ${e.message}')),
+        );
+      }
+    } catch (_) {
+      // Signatures are optional — ignore offline failures.
     }
   }
 
@@ -911,6 +933,10 @@ class _HomeScreenState extends State<HomeScreen> {
         if (data.get(BolFields.orderNum).isEmpty) {
           data.set(BolFields.orderNum, data.get(LabelFields.salesOrder));
         }
+        final soVal = data.get(LabelFields.salesOrder);
+        if (soVal.isNotEmpty) {
+          data.set(BolFields.orderNum, soVal);
+        }
         if (data.get(BolFields.packingList).isEmpty) {
           data.set(BolFields.packingList, data.get(LabelFields.packingSlip));
         }
@@ -944,6 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes = await BolLabelPdf(widget.pdf).build(
             data: data,
             customerLogoBytes: logoBytes,
+            shipperSignatureBytes: _shipperSignatureBytes,
             copies: bolCopies,
           );
         case LabelKind.shipping:
@@ -1040,7 +1067,239 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildItemTypeField(String key) {
+    final raw = _controllers[key]?.text ?? '';
+    final normalized = BolItemTypes.normalizeStored(raw);
+    if (normalized != raw && normalized.isNotEmpty) {
+      _controllers[key]?.text = normalized;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: DropdownButtonFormField<String>(
+        value: BolItemTypes.options.contains(normalized) ? normalized : null,
+        decoration: const InputDecoration(labelText: 'ITEM TYPE'),
+        hint: const Text('Select type'),
+        items: [
+          for (final opt in BolItemTypes.options)
+            DropdownMenuItem(value: opt, child: Text(opt)),
+        ],
+        onChanged: (v) {
+          _setField(key, v ?? '');
+          setState(() {});
+        },
+      ),
+    );
+  }
+
+  Future<void> _captureShipperSignature() async {
+    final padKey = GlobalKey<SignaturePadState>();
+    Uint8List? captured;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Shipper signature'),
+        content: SizedBox(
+          width: 420,
+          child: SignaturePad(key: padKey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => padKey.currentState?.clear(),
+            child: const Text('Clear'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final state = padKey.currentState;
+              if (state == null || state.isEmpty) return;
+              captured = await state.exportPng();
+              if (ctx.mounted && captured != null) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Use'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || captured == null || !mounted) return;
+
+    final png = captured!;
+
+    setState(() {
+      _shipperSignatureBytes = png;
+      _selectedSavedSignature = null;
+    });
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save for future use?'),
+        content: const Text(
+          'Store this signature in the cloud so you can reuse it on later BOLs.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No, this BOL only'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes, save'),
+          ),
+        ],
+      ),
+    );
+    if (save != true || !mounted) return;
+
+    final defaultName =
+        _controllers[BolFields.shipperCertName]?.text.trim() ?? '';
+    final name = await _askString(
+      'Name signature',
+      'Short name',
+      defaultName.isEmpty ? 'My signature' : defaultName,
+    );
+    if (name == null || !mounted) return;
+
+    try {
+      final saved = await _signatureSync.saveSignature(
+        name: name,
+        pngBytes: png,
+      );
+      if (mounted) {
+        setState(() => _selectedSavedSignature = saved);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved signature “${saved.name}”.')),
+        );
+      }
+    } on SignatureSyncException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save signature: ${e.message}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickSavedSignature() async {
+    final sigs = _signatureSync.localSignatures;
+    if (sigs.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No saved signatures yet.')),
+        );
+      }
+      return;
+    }
+    final picked = await showDialog<SavedSignature>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Saved signatures'),
+        children: [
+          for (final sig in sigs)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, sig),
+              child: Text(sig.name),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final bytes = await _signatureSync.loadBytes(picked);
+    if (bytes == null || !mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load signature.')),
+      );
+      return;
+    }
+    setState(() {
+      _shipperSignatureBytes = bytes;
+      _selectedSavedSignature = picked;
+    });
+  }
+
+  void _clearShipperSignature() {
+    setState(() {
+      _shipperSignatureBytes = null;
+      _selectedSavedSignature = null;
+    });
+  }
+
+  Widget _buildShipperSignatureRow() {
+    final label = _selectedSavedSignature?.name ??
+        (_shipperSignatureBytes != null ? 'Drawn signature' : null);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'SHIPPER SIGNATURE (OPTIONAL)',
+            style: TextStyle(
+              fontFamily: 'Oswald',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: SwiftColors.muted,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_shipperSignatureBytes != null) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: SwiftColors.border),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+              ),
+              child: Image.memory(
+                _shipperSignatureBytes!,
+                height: 56,
+                fit: BoxFit.contain,
+              ),
+            ),
+            if (label != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(label, style: const TextStyle(fontSize: 12)),
+              ),
+            const SizedBox(height: 8),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _captureShipperSignature,
+                icon: const Icon(Icons.gesture, size: 18),
+                label: Text(
+                  _shipperSignatureBytes == null ? 'Add signature' : 'Redraw',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _pickSavedSignature,
+                icon: const Icon(Icons.bookmark_outline, size: 18),
+                label: const Text('Pick saved'),
+              ),
+              if (_shipperSignatureBytes != null)
+                TextButton(
+                  onPressed: _clearShipperSignature,
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFormField(String key) {
+    if (key.endsWith('_item_type')) {
+      return _buildItemTypeField(key);
+    }
     if (appDateFieldKeys.contains(key)) {
       return _buildDateField(key);
     }
@@ -1159,6 +1418,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       _presetName = null;
                       if (_kind == LabelKind.bol) {
                         _bolLineCount = _detectBolLineCount();
+                        _syncSignaturesQuietly();
                       } else {
                         _bolLineCount = 1;
                       }
@@ -1498,6 +1758,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     hint: _bolSignaturesGroup.$2,
                     child: Column(
                       children: [
+                        _buildShipperSignatureRow(),
                         for (final key in _bolSignaturesGroup.$3)
                           _buildFormField(key),
                       ],

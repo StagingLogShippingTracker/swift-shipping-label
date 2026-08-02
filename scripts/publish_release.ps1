@@ -159,11 +159,10 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Blank preset selector on launch (no auto-loaded Pacific Canbriam)
-- BOL: start with one goods line; tap Add line for up to seven rows
-- Multi-source logo search (Google, Bing, Brands of the World, and more)
-- BOL freight radio circles aligned with Windows/Python PDF output
-- Presets scoped per document type (Shipping, Receiving, BOL)
+- Fix Android PDF share (FileProvider: copy from app_flutter to cache before share)
+- BOL: single Sales Order field (removed duplicate Order #)
+- BOL line Item Type dropdown (Pallet, Crate, Box, Pipe, Bundle, Other) with PDF pluralization
+- Optional shipper signature capture + cloud save/reuse via Supabase
 
 ### Assets
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.

@@ -45,7 +45,43 @@ INSET = 3.0
 ROW = 12
 LBL = 7
 LINE_ROWS = 7
-ITEM_TYPE_OPTIONS = ("Pallets", "Crates", "Boxes", "Pipe", "Other")
+ITEM_TYPE_OPTIONS = ("Pallet", "Crate", "Box", "Pipe", "Bundle", "Other")
+PRODUCT_TOTAL_LABELS = ("Pallets", "Crates", "Boxes", "Pipes", "Bundles", "Other")
+
+_ITEM_TYPE_PLURAL = {
+    "Pallet": "Pallets",
+    "Crate": "Crates",
+    "Box": "Boxes",
+    "Pipe": "Pipes",
+    "Bundle": "Bundles",
+    "Other": "Other",
+}
+
+
+def pluralize_item_type(value: str, qty: float) -> str:
+    """Singular dropdown value → PDF line text (plural when qty > 1)."""
+    s = (value or "").strip()
+    if not s:
+        return ""
+    singular = s
+    for opt in ITEM_TYPE_OPTIONS:
+        if s.lower() in (opt.lower(), _ITEM_TYPE_PLURAL.get(opt, opt).lower()):
+            singular = opt
+            break
+    if qty <= 1:
+        return singular
+    return _ITEM_TYPE_PLURAL.get(singular, singular)
+
+
+def normalize_item_type(value: str) -> str:
+    s = (value or "").strip()
+    if not s:
+        return ""
+    for opt in ITEM_TYPE_OPTIONS:
+        if s.lower() in (opt.lower(), _ITEM_TYPE_PLURAL.get(opt, opt).lower()):
+            return opt
+    return s
+
 
 OUT_PATH = Path(r"C:\Users\Brice\OneDrive\Documents\swift-shipping-label\Swift Supply Bill of Lading.pdf")
 SERIAL_PATH = OUT_PATH.with_name("bol_serial.txt")
@@ -156,15 +192,39 @@ SHIPPER_CERT = (
 COPY_TYPES = ("STORE COPY", "DRIVER COPY", "CUSTOMER COPY")
 
 # Inlined into field actions so totals work even if document-level JS is blocked.
-_PRODUCT_TOTAL_TYPES_JS = ", ".join(f'"{t}"' for t in ITEM_TYPE_OPTIONS)
+_PRODUCT_TOTAL_TYPES_JS = ", ".join(f'"{t}"' for t in PRODUCT_TOTAL_LABELS)
+_ITEM_TYPE_SINGULAR_JS = ", ".join(f'"{t}"' for t in ITEM_TYPE_OPTIONS)
 
 PRODUCT_TOTALS_JS = f"""\
 var PRODUCT_TOTAL_TYPES = [{_PRODUCT_TOTAL_TYPES_JS}];
+var ITEM_TYPE_SINGULAR = [{_ITEM_TYPE_SINGULAR_JS}];
+var ITEM_TYPE_PLURAL = {{
+    "Pallet": "Pallets", "Crate": "Crates", "Box": "Boxes",
+    "Pipe": "Pipes", "Bundle": "Bundles", "Other": "Other"
+}};
 var PRODUCT_TOTAL_ROWS = {LINE_ROWS};
 
 function parseQty(raw) {{
     var n = parseFloat(String(raw == null ? "" : raw).replace(/,/g, ""));
     return isNaN(n) ? 0 : n;
+}}
+
+function normalizeItemType(raw) {{
+    var s = String(raw == null ? "" : raw).trim();
+    if (!s) return "";
+    var lower = s.toLowerCase();
+    for (var i = 0; i < ITEM_TYPE_SINGULAR.length; i++) {{
+        var opt = ITEM_TYPE_SINGULAR[i];
+        var pl = ITEM_TYPE_PLURAL[opt] || opt;
+        if (lower === opt.toLowerCase() || lower === pl.toLowerCase()) return opt;
+    }}
+    return s;
+}}
+
+function totalCategory(raw) {{
+    var s = normalizeItemType(raw);
+    if (!s) return "";
+    return ITEM_TYPE_PLURAL[s] || s;
 }}
 
 function fieldQty(doc, name) {{
@@ -182,7 +242,7 @@ function fieldText(doc, name) {{
 function qtyForItemType(doc, typeName) {{
     var sum = 0;
     for (var i = 1; i <= PRODUCT_TOTAL_ROWS; i++) {{
-        if (fieldText(doc, "line_" + i + "_item_type") !== typeName) continue;
+        if (totalCategory(fieldText(doc, "line_" + i + "_item_type")) !== typeName) continue;
         sum += fieldQty(doc, "line_" + i + "_pieces");
     }}
     return sum;
@@ -1028,7 +1088,7 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
     rect_stroke(c, tx, block_bot, tw, body_h, 0.75)
 
     # --- Product totals: qty sum per Item Type from goods rows ---
-    categories = ITEM_TYPE_OPTIONS
+    categories = PRODUCT_TOTAL_LABELS
     n = len(categories)
     avail = body_h - BODY_INSET - 4
     row_h = avail / n
@@ -1492,7 +1552,7 @@ def wire_product_total_calculations(pdf_path: Path) -> None:
     writer.append(reader)
 
     calc_scripts = {
-        **{f"product_total_{t.lower()}": CALC_PRODUCT_TOTAL_JS for t in ITEM_TYPE_OPTIONS},
+        **{f"product_total_{t.lower()}": CALC_PRODUCT_TOTAL_JS for t in PRODUCT_TOTAL_LABELS},
         "total_pieces": CALC_TOTAL_PIECES_JS,
         "total_weight": CALC_TOTAL_WEIGHT_JS,
     }
@@ -1565,7 +1625,7 @@ def wire_product_total_calculations(pdf_path: Path) -> None:
         ordered = []
         # Stable order: product totals first, then piece/weight totals.
         preferred = [
-            *[f"product_total_{t.lower()}" for t in ITEM_TYPE_OPTIONS],
+            *[f"product_total_{t.lower()}" for t in PRODUCT_TOTAL_LABELS],
             "total_pieces",
             "total_weight",
         ]

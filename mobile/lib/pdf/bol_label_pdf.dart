@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../bol_item_type.dart';
 import '../label_data.dart';
 import 'shipping_label_pdf.dart';
 
@@ -38,7 +39,7 @@ class BolLabelPdf {
   static const bodyInset = 8.0;
   static const inset = 3.0;
   static const lineRows = 7;
-  static const itemTypes = ['Pallets', 'Crates', 'Boxes', 'Pipe', 'Other'];
+  static List<String> get itemTypes => BolItemTypes.productTotalLabels;
   static const copyTypes = ['STORE COPY', 'DRIVER COPY', 'CUSTOMER COPY'];
   static const shipperLines = [
     'Swift Oilfield Supply',
@@ -70,6 +71,7 @@ class BolLabelPdf {
   Future<Uint8List> build({
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
+    Uint8List? shipperSignatureBytes,
     /// Which copy pages to include (subset of [copyTypes]). Defaults to all three.
     List<String>? copies,
   }) async {
@@ -113,8 +115,25 @@ class BolLabelPdf {
             }
             return pw.CustomPaint(
               size: PdfPoint(pageFormat.width, pageFormat.height),
-              painter: (c, size) =>
-                  _paint(c, fonts, data, copy, swiftLogo, customerLogos),
+              painter: (c, size) {
+                PdfImage? shipperSig;
+                if (shipperSignatureBytes != null &&
+                    shipperSignatureBytes.isNotEmpty) {
+                  shipperSig = PdfImage.file(
+                    context.document,
+                    bytes: shipperSignatureBytes,
+                  );
+                }
+                return _paint(
+                  c,
+                  fonts,
+                  data,
+                  copy,
+                  swiftLogo,
+                  customerLogos,
+                  shipperSignature: shipperSig,
+                );
+              },
             );
           },
         ),
@@ -129,8 +148,9 @@ class BolLabelPdf {
     ShippingLabelData d,
     String copyLabel,
     PdfImage? swiftLogo,
-    List<PdfImage> customerLogos,
-  ) {
+    List<PdfImage> customerLogos, {
+    PdfImage? shipperSignature,
+  }) {
     final pageW = pageFormat.width;
     final pageH = pageFormat.height;
     var y = pageH - margin - 2;
@@ -408,18 +428,22 @@ class BolLabelPdf {
       cx = margin;
       final n = row + 1;
       final pieces = d.get(BolFields.lineKey(n, 'pieces'));
-      final itype = d.get(BolFields.lineKey(n, 'item_type'));
+      final itypeRaw = d.get(BolFields.lineKey(n, 'item_type'));
       final dims = d.get(BolFields.lineKey(n, 'dimensions'));
       final desc = d.get(BolFields.lineKey(n, 'description'));
       final weight = d.get(BolFields.lineKey(n, 'weight'));
-      final vals = [pieces, itype, dims, desc, weight];
       final pq = double.tryParse(pieces.replaceAll(',', '')) ?? 0;
+      final itype = BolItemTypes.displayForm(itypeRaw, pq);
+      final vals = [pieces, itype, dims, desc, weight];
       final wq = double.tryParse(weight.replaceAll(',', '')) ?? 0;
       totalPieces += pq;
       totalWeight += wq;
-      for (final t in itemTypes) {
-        if (itype.toLowerCase() == t.toLowerCase()) {
-          typeTotals[t] = (typeTotals[t] ?? 0) + pq;
+      final cat = BolItemTypes.totalCategory(itypeRaw);
+      if (cat.isNotEmpty) {
+        for (final t in itemTypes) {
+          if (cat.toLowerCase() == t.toLowerCase()) {
+            typeTotals[t] = (typeTotals[t] ?? 0) + pq;
+          }
         }
       }
       for (var i = 0; i < lineCols.length; i++) {
@@ -507,6 +531,9 @@ class BolLabelPdf {
         ],
       ],
       topInset: 7,
+      signatureImages: shipperSignature == null
+          ? null
+          : {BolFields.shipperCertSign: shipperSignature},
     );
     sx += sw + gap;
 
@@ -678,6 +705,7 @@ class BolLabelPdf {
     double w,
     List<List<(String, String, double)>> rows, {
     double? topInset,
+    Map<String, PdfImage>? signatureImages,
   }) {
     final innerX = x + pad;
     final innerW = w - 2 * pad;
@@ -710,8 +738,29 @@ class BolLabelPdf {
       for (final cell in row) {
         final fw = avail * (cell.$3 / total);
         _micro(c, fonts, cx, labelY, cell.$2);
-        final value = d.get(cell.$1);
-        _drawValue(c, fonts, value, cx, yRule + 1.5, fw, fieldH - 1, 8);
+        final sigImg = signatureImages?[cell.$1];
+        if (sigImg != null) {
+          final fieldH = 11.0;
+          final imgH = fieldH - 1;
+          final iw = sigImg.width.toDouble();
+          final ih = sigImg.height.toDouble();
+          if (iw > 0 && ih > 0) {
+            var imgW = imgH * iw / ih;
+            if (imgW > fw - 2) {
+              imgW = fw - 2;
+            }
+            c.drawImage(
+              sigImg,
+              cx + 1,
+              yRule + 1,
+              imgW,
+              imgH,
+            );
+          }
+        } else {
+          final value = d.get(cell.$1);
+          _drawValue(c, fonts, value, cx, yRule + 1.5, fw, fieldH - 1, 8);
+        }
         _hline(c, cx, yRule, fw);
         cx += fw + colGap;
       }
