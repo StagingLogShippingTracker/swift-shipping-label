@@ -671,51 +671,66 @@ class _HomeScreenState extends State<HomeScreen> {
         final picked = await showDialog<LogoDownloadedCandidate>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Pick a logo'),
+            title: const Text('Choose a logo'),
             content: SizedBox(
-              width: 420,
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final c in candidates.take(6))
-                      InkWell(
-                        onTap: () => Navigator.pop(ctx, c),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          width: 120,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: SwiftColors.muted),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Image.memory(
-                                c.bytes,
-                                height: 72,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.broken_image_outlined,
-                                  size: 48,
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Top ${candidates.length} result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
+                    style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
+                  ),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 440),
+                    child: SingleChildScrollView(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final c in candidates)
+                            InkWell(
+                              onTap: () => Navigator.pop(ctx, c),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 96,
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: SwiftColors.muted),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Image.memory(
+                                      c.bytes,
+                                      height: 56,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(
+                                        Icons.broken_image_outlined,
+                                        size: 40,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      c.source,
+                                      style: const TextStyle(fontSize: 10),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                c.source,
-                                style: const TextStyle(fontSize: 11),
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
             ),
             actions: [

@@ -140,11 +140,12 @@ class LogoFinder {
 
   final http.Client _client;
   static const maxBytes = 5 * 1024 * 1024;
-  static const _maxCandidatesToDownload = 10;
-  static const _minUrlCandidateScore = 28;
-  static const _minDownloadedScore = 32;
-  static const _pickerMinScore = 40;
-  static const _autoPickLead = 14;
+  /// Max thumbnails shown in the post-search logo picker grid.
+  static const pickerMaxResults = 20;
+  static const _maxCandidatesToDownload = 40;
+  static const _minUrlCandidateScore = 24;
+  static const _minDownloadedScore = 26;
+  static const _pickerMinScore = 24;
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
   static const _browserUa =
@@ -157,21 +158,16 @@ class LogoFinder {
         'Accept-Language': 'en-US,en;q=0.9',
       };
 
-  /// Filters downloaded candidates for the picker UI — drops low-relevance junk
-  /// and auto-selects when one candidate is clearly best.
+  /// Ranked list for the picker UI — top [pickerMaxResults] by score, with light
+  /// junk filtering. Callers skip the grid only when this returns exactly one item.
   static List<LogoDownloadedCandidate> filterForPicker(
     List<LogoDownloadedCandidate> candidates,
   ) {
     if (candidates.isEmpty) return candidates;
     final sorted = [...candidates]..sort((a, b) => b.score.compareTo(a.score));
-    final strong =
-        sorted.where((c) => c.score >= _pickerMinScore).take(6).toList();
-    if (strong.isEmpty) return sorted.take(1).toList();
-    if (strong.length == 1) return strong;
-    if (strong.first.score >= strong[1].score + _autoPickLead) {
-      return strong.take(1).toList();
-    }
-    return strong;
+    final usable = sorted.where((c) => c.score >= _pickerMinScore).toList();
+    final pool = usable.isNotEmpty ? usable : sorted;
+    return pool.take(pickerMaxResults).toList();
   }
 
   /// Returns ranked, successfully downloaded logo candidates from selected sources.
@@ -231,6 +227,7 @@ class LogoFinder {
     final downloaded = <LogoDownloadedCandidate>[];
 
     for (final c in ranked.take(_maxCandidatesToDownload)) {
+      if (downloaded.length >= pickerMaxResults) break;
       final dl = await _downloadImage(Uri.parse(c.url), source: c.source);
       if (!dl.ok) continue;
       final finalScore = c.score + _bytesBonus(dl.bytes!);
