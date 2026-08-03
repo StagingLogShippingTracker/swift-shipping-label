@@ -34,7 +34,7 @@ def regen(name: str, fill: str) -> bool:
 
 
 def main() -> int:
-    ok = regen("white", "#FFFFFF") and regen("orange", "#D94B2B")
+    ok = regen("white", "#FFFFFF") and regen("orange", "#CE4E30")
     return 0 if ok else 1
 
 

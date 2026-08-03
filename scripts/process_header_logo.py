@@ -37,8 +37,8 @@ BRAND_TARGET_WIDTH = 3000
 PREVIEW_WIDTH = 1200
 
 # App accent from mobile/lib/theme.dart / ShippingLabelPdf.swift
-APP_ORANGE_HEX = "#D94B2B"
-APP_ORANGE_RGB = (0xD9, 0x4B, 0x2B)
+APP_ORANGE_HEX = "#CE4E30"
+APP_ORANGE_RGB = (0xCE, 0x4E, 0x30)
 
 # SWIFT drop shadow sits down-right of the orange letter cores.
 SHADOW_DX = (2, 18)

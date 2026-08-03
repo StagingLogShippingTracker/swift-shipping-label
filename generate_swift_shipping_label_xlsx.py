@@ -18,7 +18,7 @@ OUT = ROOT / "Swift Supply Shipping Label.xlsx"
 LOGO = ROOT / "swift_supply_logo.png"
 SAMPLE_CUSTOMER = ROOT / "sample_customer_logo.png"
 
-SWIFT = "D94B2B"
+SWIFT = "CE4E30"
 FIELD = "F7F7F7"
 RULE = "C8C8C8"
 INK = "111111"

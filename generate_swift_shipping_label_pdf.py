@@ -23,7 +23,7 @@ from pypdf.generic import BooleanObject, NameObject
 
 from app_paths import app_dir, bundle_dir
 
-SWIFT = colors.HexColor("#D94B2B")
+SWIFT = colors.HexColor("#CE4E30")
 BLACK = colors.HexColor("#111111")
 INK = colors.HexColor("#1A1A1A")
 LABEL_C = colors.HexColor("#6A6A6A")

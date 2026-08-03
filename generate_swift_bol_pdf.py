@@ -16,7 +16,7 @@ from pypdf.generic import (
     NumberObject, StreamObject, TextStringObject,
 )
 
-SWIFT = colors.HexColor("#D94B2B")
+SWIFT = colors.HexColor("#CE4E30")
 SWIFT_LIGHT = colors.HexColor("#FDF4F1")
 BLACK = colors.HexColor("#1A1A1A")
 WHITE = colors.white

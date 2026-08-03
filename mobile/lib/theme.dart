@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Shared brand tokens — keep in sync with Windows `fill_shipping_label.py`.
 class SwiftColors {
-  static const accent = Color(0xFFD94B2B);
+  static const accent = Color(0xFFCE4E30);
   static const accentSoft = Color(0xFFF8EBE7);
   static const bg = Color(0xFFF4F2EF);
   static const surface = Color(0xFFFFFFFF);

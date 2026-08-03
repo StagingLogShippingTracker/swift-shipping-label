@@ -15,7 +15,7 @@ class BolLabelPdf {
 
   final ShippingLabelPdf shipping;
 
-  static const swift = PdfColor.fromInt(0xFFD94B2B);
+  static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const swiftLight = PdfColor.fromInt(0xFFFDF4F1);
   static const black = PdfColor.fromInt(0xFF1A1A1A);
   static const secondary = PdfColor.fromInt(0xFF4A4A4A);

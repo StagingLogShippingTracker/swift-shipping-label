@@ -26,7 +26,7 @@ class ShippingLabelPdf {
   final pw.Font calibriBold;
   final Uint8List? swiftLogoBytes;
 
-  static const swift = PdfColor.fromInt(0xFFD94B2B);
+  static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const black = PdfColor.fromInt(0xFF111111);
   static const labelC = PdfColor.fromInt(0xFF6A6A6A);
   static const rule = PdfColor.fromInt(0xFFC8C8C8);

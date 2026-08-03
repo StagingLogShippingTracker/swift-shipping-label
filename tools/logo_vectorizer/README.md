@@ -15,7 +15,7 @@ Optional: `winget install Inkscape.Inkscape` for an additional trace backend.
 ```powershell
 # Offline ensemble (no API keys needed)
 python -m tools.logo_vectorizer --input assets/brand/swift_supply_logo_orange.png `
-  --output out.svg --fill "#D94B2B" --qa
+  --output out.svg --fill "#CE4E30" --qa
 
 # With vision AI advisors (reads keys from environment only)
 $env:GOOGLE_API_KEY = "..."      # or GEMINI_API_KEY
@@ -23,7 +23,7 @@ $env:ANTHROPIC_API_KEY = "..."
 $env:OPENAI_API_KEY = "..."
 
 python -m tools.logo_vectorizer --input assets/brand/swift_supply_logo_orange.png `
-  --output out.svg --fill "#D94B2B" --qa --ai `
+  --output out.svg --fill "#CE4E30" --qa --ai `
   --ai-providers gemini,claude,openai
 ```
 

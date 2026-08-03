@@ -141,7 +141,7 @@ def counter_hollow_score(
     r, g, b, a = region[:, :, 0], region[:, :, 1], region[:, :, 2], region[:, :, 3]
 
     if is_orange:
-        # Orange fill ~ (217, 75, 43)
+        # Orange fill ~ (206, 78, 48)
         is_fill = (a > 64) & (r > 150) & (g < 120) & (b < 100)
         hollow = ~is_fill
     else:

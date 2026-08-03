@@ -25,7 +25,7 @@ from reportlab.pdfgen import canvas
 
 from app_paths import app_dir, bundle_dir
 
-SWIFT = colors.HexColor("#D94B2B")
+SWIFT = colors.HexColor("#CE4E30")
 BLACK = colors.HexColor("#111111")
 LABEL_C = colors.HexColor("#6A6A6A")
 RULE = colors.HexColor("#C8C8C8")
