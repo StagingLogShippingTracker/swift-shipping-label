@@ -57,11 +57,14 @@ def _two_stage_brand_svg(png_path: Path, dest: Path, fill_hex: str) -> str:
     sc = result.score
     iou = sc.alpha_iou if sc else 0.0
     p_h = sc.p_hollow if sc else 0.0
+    rq = result.roundness_qa or {}
     print(
         f"  two-stage/{result.stage} "
         f"QA={'PASS' if result.passed_qa else 'FAIL'} "
         f"iou={iou:.3f} p_hollow={p_h:.3f} "
-        f"holes={result.hole_count}"
+        f"holes={result.hole_count} "
+        f"peri_drop={rq.get('perimeter_drop', 0):.4f} "
+        f"circ_gain={rq.get('circularity_gain', 0):.4f}"
     )
     if not result.passed_qa:
         print("  WARN: polish QA failed — kept embed-PNG SVG")

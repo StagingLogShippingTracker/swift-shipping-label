@@ -67,6 +67,12 @@ def main() -> int:
                 f"  score={sc.total:.3f} iou={sc.alpha_iou:.3f} ssim={sc.ssim:.3f} "
                 f"edge={sc.edge_score:.3f} p_hollow={sc.p_hollow:.3f}"
             )
+        if result.roundness_qa:
+            rq = result.roundness_qa
+            print(
+                f"  roundness: peri_drop={rq.get('perimeter_drop', 0):.4f} "
+                f"circ_gain={rq.get('circularity_gain', 0):.4f}"
+            )
         if result.p_qa:
             print(f"  P-counter QA: {result.p_qa}")
         if not result.passed_qa:
