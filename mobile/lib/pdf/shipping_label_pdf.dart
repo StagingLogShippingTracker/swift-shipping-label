@@ -64,7 +64,8 @@ class ShippingLabelPdf {
 
     Uint8List? logoBytes;
     try {
-      final data = await rootBundle.load('assets/images/swift_supply_logo.png');
+      final data =
+          await rootBundle.load('assets/images/swift_supply_logo_orange.png');
       logoBytes = data.buffer.asUint8List();
     } catch (_) {
       logoBytes = null;

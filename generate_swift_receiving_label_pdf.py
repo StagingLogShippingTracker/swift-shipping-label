@@ -46,7 +46,7 @@ COL_W = (CONTENT_W - GUTTER) / 2
 ROOT = app_dir()
 BUNDLE = bundle_dir()
 OUT_PATH = ROOT / "Swift Supply Receiving Label.pdf"
-LOGO_PATH = BUNDLE / "swift_supply_logo.png"
+LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
 FONTS_DIR = BUNDLE / "fonts"
 
 FONT = "Oswald"

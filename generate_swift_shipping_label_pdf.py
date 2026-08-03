@@ -44,7 +44,7 @@ COL_W = (CONTENT_W - GUTTER) / 2
 ROOT = app_dir()
 BUNDLE = bundle_dir()
 OUT_PATH = ROOT / "Swift Supply Shipping Label.pdf"
-LOGO_PATH = BUNDLE / "swift_supply_logo.png"
+LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
 CUSTOMER_LOGO_SAMPLE = ROOT / "sample_customer_logo.png"
 if not CUSTOMER_LOGO_SAMPLE.exists():
     alt = BUNDLE / "sample_customer_logo.png"

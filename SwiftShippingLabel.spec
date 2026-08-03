@@ -8,7 +8,7 @@ root = Path(SPECPATH)
 
 datas = [
     (str(root / "fonts"), "fonts"),
-    (str(root / "swift_supply_logo.png"), "."),
+    (str(root / "assets" / "brand" / "swift_supply_logo_orange.png"), "assets/brand"),
 ]
 sample = root / "sample_customer_logo.png"
 if sample.exists():

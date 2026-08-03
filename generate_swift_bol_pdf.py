@@ -83,10 +83,12 @@ def normalize_item_type(value: str) -> str:
     return s
 
 
-OUT_PATH = Path(r"C:\Users\Brice\OneDrive\Documents\swift-shipping-label\Swift Supply Bill of Lading.pdf")
+from app_paths import bundle_dir
+
+OUT_PATH = Path(__file__).resolve().parent / "Swift Supply Bill of Lading.pdf"
 SERIAL_PATH = OUT_PATH.with_name("bol_serial.txt")
 XLSM_PATH = Path(r"C:\Users\Brice\OneDrive\Documents\Swift Waybill Document.xlsm")
-LOGO_PATH = OUT_PATH.with_name("swift_supply_logo.png")
+LOGO_PATH = bundle_dir() / "assets" / "brand" / "swift_supply_logo_orange.png"
 
 
 def _safe_replace(tmp: Path, pdf_path: Path) -> Path:
@@ -110,56 +112,7 @@ def _safe_replace(tmp: Path, pdf_path: Path) -> Path:
 
 
 def ensure_logo() -> Path:
-    """Keep a cropped Swift wordmark beside the PDF (source: Excel waybill media)."""
-    import zipfile
-
-    from PIL import Image
-
-    need_extract = not LOGO_PATH.exists() or LOGO_PATH.stat().st_size == 0
-    if need_extract and XLSM_PATH.exists():
-        with zipfile.ZipFile(XLSM_PATH) as zf:
-            with zf.open("xl/media/image1.png") as src, open(LOGO_PATH, "wb") as dst:
-                dst.write(src.read())
-
-    if not LOGO_PATH.exists():
-        return LOGO_PATH
-
-    im = Image.open(LOGO_PATH).convert("RGBA")
-    # Drop near-white / empty padding so height maps to the real wordmark.
-    pixels = im.load()
-    w, h = im.size
-    minx, miny, maxx, maxy = w, h, 0, 0
-    found = False
-    for yy in range(h):
-        for xx in range(w):
-            r, g, b, a = pixels[xx, yy]
-            if a > 20 and (r < 250 or g < 250 or b < 250):
-                found = True
-                if xx < minx:
-                    minx = xx
-                if yy < miny:
-                    miny = yy
-                if xx > maxx:
-                    maxx = xx
-                if yy > maxy:
-                    maxy = yy
-    if found:
-        pad = 8
-        box = (
-            max(0, minx - pad),
-            max(0, miny - pad),
-            min(w, maxx + 1 + pad),
-            min(h, maxy + 1 + pad),
-        )
-        im = im.crop(box)
-    # Mobile-friendly size: keep the wordmark sharp but light in the PDF.
-    max_w = 420
-    if im.width > max_w:
-        nh = max(1, int(im.height * max_w / im.width))
-        im = im.resize((max_w, nh), Image.Resampling.LANCZOS)
-    bg = Image.new("RGB", im.size, (255, 255, 255))
-    bg.paste(im, mask=im.split()[-1])
-    bg.save(LOGO_PATH, "PNG", optimize=True)
+    """Brand orange wordmark shipped under assets/brand/."""
     return LOGO_PATH
 
 
