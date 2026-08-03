@@ -314,13 +314,50 @@ def _preview_png(img: Image.Image, dest: Path, preview_width: int = PREVIEW_WIDT
     preview.save(dest, optimize=True)
 
 
+def _is_full_frame_path(d: str, width: int, height: int) -> bool:
+    """True when the first subpath spans the entire SVG canvas (inverted stacked trace)."""
+    if not d.startswith("M0 0"):
+        return False
+    first_sub = d.split(" Z")[0] if " Z" in d else d[:500]
+    return (
+        str(width) in first_sub
+        and str(height) in first_sub
+        and first_sub.count("C") >= 3
+    )
+
+
+def _postprocess_traced_svg(svg: str, fill_hex: str) -> str:
+    dim = re.search(r'width="(\d+)"\s+height="(\d+)"', svg)
+    width = int(dim.group(1)) if dim else 0
+    height = int(dim.group(2)) if dim else 0
+
+    def _fix_path(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        d_match = re.search(r'\sd="([^"]+)"', tag)
+        if d_match and _is_full_frame_path(d_match.group(1), width, height):
+            return ""
+        if 'fill="' in tag:
+            tag = re.sub(r'fill="[^"]*"', f'fill="{fill_hex}"', tag)
+        elif "fill=" not in tag:
+            tag = tag.replace("<path ", f'<path fill="{fill_hex}" ', 1)
+        return tag
+
+    svg = re.sub(r"<path\s[^>]+/>", _fix_path, svg)
+    svg = re.sub(r"<path\s[^>]+>", _fix_path, svg)
+    if 'style="background:' not in svg:
+        svg = svg.replace("<svg ", '<svg style="background:transparent" ', 1)
+    return svg
+
+
 def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> None:
     import numpy as np
     import vtracer
 
     alpha = np.array(img.split()[3])
-    mask = np.zeros((img.height, img.width, 3), dtype=np.uint8)
-    mask[alpha > 32] = 255
+    # Black logo on white — vtracer traces letterforms as filled shapes, not an
+    # inverted full-canvas path with holes (white-on-black + hierarchical stacked).
+    mask = np.full((img.height, img.width, 3), 255, dtype=np.uint8)
+    mask[alpha > 32] = 0
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -339,18 +376,7 @@ def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> None:
         tmp_path.unlink(missing_ok=True)
 
     svg = dest.read_text(encoding="utf-8")
-    svg = re.sub(r'fill="#[^"]*"', f'fill="{fill_hex}"', svg)
-    svg = re.sub(
-        r'fill="rgb\([^)]+\)"',
-        f'fill="{fill_hex}"',
-        svg,
-    )
-    if 'fill="none"' not in svg and "<rect" not in svg:
-        svg = svg.replace(
-            "<svg ",
-            '<svg style="background:transparent" ',
-            1,
-        )
+    svg = _postprocess_traced_svg(svg, fill_hex)
     dest.write_text(svg, encoding="utf-8")
 
 
