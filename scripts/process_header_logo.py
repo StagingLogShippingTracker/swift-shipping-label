@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 from tools.logo_vectorizer.ai_advisors import AIConfig  # noqa: E402
 from tools.logo_vectorizer.ai_advisors.orchestrator import resolve_providers  # noqa: E402
+from tools.logo_vectorizer.embed import write_embedded_png_svg  # noqa: E402
 from tools.logo_vectorizer.ensemble import vectorize_ensemble  # noqa: E402
 from tools.logo_vectorizer.env_loader import gemini_configured, load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
@@ -353,7 +354,7 @@ def _preview_png(img: Image.Image, dest: Path, preview_width: int = PREVIEW_WIDT
     preview.save(dest, optimize=True)
 
 
-def export_brand_assets(src: Path) -> dict[str, Path]:
+def export_brand_assets(src: Path, *, trace_vector: bool = False) -> dict[str, Path]:
     """Write high-res brand PNG/SVG exports plus chat-friendly previews."""
     white = render_white_logo(src, BRAND_TARGET_WIDTH)
     orange = recolor_logo(white, APP_ORANGE_RGB)
@@ -379,10 +380,28 @@ def export_brand_assets(src: Path) -> dict[str, Path]:
         f"fill {APP_ORANGE_HEX}"
     )
 
-    white_method = _trace_mask_to_svg(white, outputs["white_svg"], "#FFFFFF")
-    orange_method = _trace_mask_to_svg(orange, outputs["orange_svg"], APP_ORANGE_HEX)
-    print(f"Wrote {outputs['white_svg']} ({outputs['white_svg'].stat().st_size} bytes) via {white_method}")
-    print(f"Wrote {outputs['orange_svg']} ({outputs['orange_svg'].stat().st_size} bytes) via {orange_method}")
+    if trace_vector:
+        white_method = _trace_mask_to_svg(white, outputs["white_svg"], "#FFFFFF")
+        orange_method = _trace_mask_to_svg(orange, outputs["orange_svg"], APP_ORANGE_HEX)
+        print(
+            f"Wrote {outputs['white_svg']} ({outputs['white_svg'].stat().st_size} bytes) "
+            f"via {white_method}"
+        )
+        print(
+            f"Wrote {outputs['orange_svg']} ({outputs['orange_svg'].stat().st_size} bytes) "
+            f"via {orange_method}"
+        )
+    else:
+        w_dims = write_embedded_png_svg(outputs["white_png"], outputs["white_svg"])
+        o_dims = write_embedded_png_svg(outputs["orange_png"], outputs["orange_svg"])
+        print(
+            f"Wrote {outputs['white_svg']} ({outputs['white_svg'].stat().st_size} bytes, "
+            f"embed-png {w_dims[0]}x{w_dims[1]})"
+        )
+        print(
+            f"Wrote {outputs['orange_svg']} ({outputs['orange_svg'].stat().st_size} bytes, "
+            f"embed-png {o_dims[0]}x{o_dims[1]})"
+        )
 
     _preview_png(white, outputs["white_preview"])
     _preview_png(orange, outputs["orange_preview"])
@@ -402,6 +421,7 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
 def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     brand_mode = "--brand" in sys.argv
+    trace_vector = "--trace-vector" in sys.argv
 
     explicit = Path(args[0]) if args else None
     try:
@@ -414,7 +434,7 @@ def main() -> int:
         return 1
 
     if brand_mode:
-        export_brand_assets(src)
+        export_brand_assets(src, trace_vector=trace_vector)
         return 0
 
     process_logo(src, OUT)
