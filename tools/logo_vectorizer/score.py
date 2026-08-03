@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 from .backends import TraceCandidate
+from .preprocess import PreprocessConfig
 from .qa import counter_hollow_score, render_svg_chrome, supply_p_ranges
 
 
@@ -33,6 +34,15 @@ def _alpha_mask(img: Image.Image, threshold: int = 64) -> np.ndarray:
     return (np.array(img.convert("RGBA"))[:, :, 3] > threshold).astype(np.uint8)
 
 
+def _render_mask(img: Image.Image, *, is_orange: bool = True, threshold: int = 64) -> np.ndarray:
+    """Extract logo pixels from a Chrome RGB(A) screenshot on black."""
+    arr = np.array(img.convert("RGBA"))
+    r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
+    if is_orange:
+        return ((a > threshold) & (r > 100) & (g < 150) & (b < 120)).astype(np.uint8)
+    return ((a > threshold) & (r > 200) & (g > 200) & (b > 200)).astype(np.uint8)
+
+
 def _canny_edges(mask: np.ndarray) -> np.ndarray:
     blurred = cv2.GaussianBlur(mask.astype(np.uint8) * 255, (3, 3), 0)
     return cv2.Canny(blurred, 50, 150)
@@ -44,6 +54,27 @@ def alpha_iou(ref: np.ndarray, render: np.ndarray) -> float:
     inter = np.logical_and(ref, render).sum()
     union = np.logical_or(ref, render).sum()
     return float(inter / union) if union else 0.0
+
+
+def trace_aligned_iou(ref_img: Image.Image, rendered: Image.Image, *, cfg: PreprocessConfig | None = None, is_orange: bool = True) -> float:
+    """
+    Compare rendered SVG to the same binarized mask used for tracing.
+
+    PNG alpha alone understates logo area (soft 240–249 alpha); the trace mask
+    is the fair reference for vector QA.
+    """
+    from .preprocess import DEFAULT_VARIANTS, build_mask
+
+    cfg = cfg or DEFAULT_VARIANTS[0]
+    mask, _, source_size = build_mask(ref_img, cfg)
+    scale = cfg.upscale
+    ref_bin = cv2.resize(
+        (mask > 0).astype(np.uint8),
+        source_size,
+        interpolation=cv2.INTER_NEAREST,
+    )
+    render_bin = _render_mask(rendered, is_orange=is_orange)
+    return alpha_iou(ref_bin, render_bin)
 
 
 def edge_overlap(ref_edges: np.ndarray, render_edges: np.ndarray) -> float:
@@ -88,7 +119,7 @@ def render_svg_string(svg: str, width: int, height: int) -> Image.Image | None:
         png_path = Path(tmpdir) / "c.png"
         svg_path.write_text(svg, encoding="utf-8")
         try:
-            render_svg_chrome(svg_path, png_path, width=width)
+            render_svg_chrome(svg_path, png_path, width=width, height=height)
             return Image.open(png_path).convert("RGBA")
         except Exception:
             return None
@@ -113,7 +144,7 @@ def score_candidate(
         return None
 
     ref_alpha = _alpha_mask(ref_img)
-    ren_alpha = _alpha_mask(rendered)
+    ren_alpha = _render_mask(rendered, is_orange=is_orange)
     iou = alpha_iou(ref_alpha, ren_alpha)
     ssim = simple_ssim(ref_alpha, ren_alpha)
     edge = edge_overlap(_canny_edges(ref_alpha), _canny_edges(ren_alpha))

@@ -1,4 +1,4 @@
-"""CLI: python -m tools.logo_vectorizer --input logo.png --output out.svg [--fill #HEX] [--qa] [--ai]"""
+"""CLI: python -m tools.logo_vectorizer --input logo.png --output out.svg [--fill #HEX] [--qa] [--two-stage] [--ai]"""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from tools.logo_vectorizer.ai_advisors.orchestrator import resolve_providers  # 
 from tools.logo_vectorizer.ensemble import vectorize_ensemble_file  # noqa: E402
 from tools.logo_vectorizer.env_loader import load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
+from tools.logo_vectorizer.two_stage import run_two_stage  # noqa: E402
 
 
 def main() -> int:
@@ -26,6 +27,11 @@ def main() -> int:
     parser.add_argument("--fill", default="#FFFFFF", help="SVG fill color (default #FFFFFF)")
     parser.add_argument("--qa", action="store_true", help="Run P-counter QA + overlay crop")
     parser.add_argument("--qa-crop", type=Path, help="Save SUPPLY P zoom QA crop PNG")
+    parser.add_argument(
+        "--two-stage",
+        action="store_true",
+        help="Stage A embed-PNG + Stage B geometric polish with QA gate",
+    )
     parser.add_argument("--no-cache", action="store_true", help="Skip .cache/ param memory")
     parser.add_argument("--ai", action="store_true", help="Enable vision AI advisors (env API keys)")
     parser.add_argument(
@@ -39,6 +45,38 @@ def main() -> int:
         print(f"Input not found: {args.input}", file=sys.stderr)
         return 1
 
+    out = args.output or args.input.with_suffix(".svg")
+
+    if args.two_stage:
+        qa_crop = args.qa_crop or out.with_name(out.stem + "_qa_p_crop.png")
+        result = run_two_stage(
+            args.input,
+            out,
+            fill_hex=args.fill,
+            qa=args.qa or True,
+            qa_crop_path=qa_crop,
+        )
+        sc = result.score
+        print(
+            f"Two-stage -> {out} ({out.stat().st_size} bytes)\n"
+            f"  stage: {result.stage} (QA {'PASS' if result.passed_qa else 'FAIL'})\n"
+            f"  contours={result.contour_count} holes={result.hole_count}"
+        )
+        if sc:
+            print(
+                f"  score={sc.total:.3f} iou={sc.alpha_iou:.3f} ssim={sc.ssim:.3f} "
+                f"edge={sc.edge_score:.3f} p_hollow={sc.p_hollow:.3f}"
+            )
+        if result.p_qa:
+            print(f"  P-counter QA: {result.p_qa}")
+        if not result.passed_qa:
+            print(
+                "  WARN: geometric polish failed QA — kept embed-PNG SVG (pixel-perfect fallback).",
+                file=sys.stderr,
+            )
+            return 2 if args.qa else 0
+        return 0
+
     loaded = load_env()
     if loaded:
         print(f"Loaded env from: {', '.join(str(p.name) for p in loaded)}", file=sys.stderr)
@@ -50,7 +88,6 @@ def main() -> int:
     if args.ai and not ai_cfg.enabled:
         print("[ai] --ai set but no API keys found in env", file=sys.stderr)
 
-    out = args.output or args.input.with_suffix(".svg")
     result = vectorize_ensemble_file(
         args.input,
         out,

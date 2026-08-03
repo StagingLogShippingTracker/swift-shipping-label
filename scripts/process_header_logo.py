@@ -19,6 +19,7 @@ from tools.logo_vectorizer.embed import write_embedded_png_svg  # noqa: E402
 from tools.logo_vectorizer.ensemble import vectorize_ensemble  # noqa: E402
 from tools.logo_vectorizer.env_loader import gemini_configured, load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
+from tools.logo_vectorizer.two_stage import run_two_stage  # noqa: E402
 
 DEFAULT_SRC = (
     Path.home()
@@ -42,6 +43,30 @@ APP_ORANGE_RGB = (0xD9, 0x4B, 0x2B)
 # SWIFT drop shadow sits down-right of the orange letter cores.
 SHADOW_DX = (2, 18)
 SHADOW_DY = (2, 18)
+
+def _two_stage_brand_svg(png_path: Path, dest: Path, fill_hex: str) -> str:
+    """Stage A embed + Stage B geometric polish; fallback to embed when QA fails."""
+    qa_crop = BRAND_DIR / f"{dest.stem}_qa_p_crop.png"
+    result = run_two_stage(
+        png_path,
+        dest,
+        fill_hex=fill_hex,
+        qa=True,
+        qa_crop_path=qa_crop,
+    )
+    sc = result.score
+    iou = sc.alpha_iou if sc else 0.0
+    p_h = sc.p_hollow if sc else 0.0
+    print(
+        f"  two-stage/{result.stage} "
+        f"QA={'PASS' if result.passed_qa else 'FAIL'} "
+        f"iou={iou:.3f} p_hollow={p_h:.3f} "
+        f"holes={result.hole_count}"
+    )
+    if not result.passed_qa:
+        print("  WARN: polish QA failed — kept embed-PNG SVG")
+    return f"two-stage/{result.stage}"
+
 
 def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> str:
     """Ensemble vector trace with P-counter QA; AI advisors when keys present."""
@@ -354,7 +379,12 @@ def _preview_png(img: Image.Image, dest: Path, preview_width: int = PREVIEW_WIDT
     preview.save(dest, optimize=True)
 
 
-def export_brand_assets(src: Path, *, trace_vector: bool = False) -> dict[str, Path]:
+def export_brand_assets(
+    src: Path,
+    *,
+    trace_vector: bool = False,
+    two_stage: bool = True,
+) -> dict[str, Path]:
     """Write high-res brand PNG/SVG exports plus chat-friendly previews."""
     white = render_white_logo(src, BRAND_TARGET_WIDTH)
     orange = recolor_logo(white, APP_ORANGE_RGB)
@@ -380,7 +410,20 @@ def export_brand_assets(src: Path, *, trace_vector: bool = False) -> dict[str, P
         f"fill {APP_ORANGE_HEX}"
     )
 
-    if trace_vector:
+    if two_stage:
+        white_method = _two_stage_brand_svg(outputs["white_png"], outputs["white_svg"], "#FFFFFF")
+        orange_method = _two_stage_brand_svg(
+            outputs["orange_png"], outputs["orange_svg"], APP_ORANGE_HEX
+        )
+        print(
+            f"Wrote {outputs['white_svg']} ({outputs['white_svg'].stat().st_size} bytes) "
+            f"via {white_method}"
+        )
+        print(
+            f"Wrote {outputs['orange_svg']} ({outputs['orange_svg'].stat().st_size} bytes) "
+            f"via {orange_method}"
+        )
+    elif trace_vector:
         white_method = _trace_mask_to_svg(white, outputs["white_svg"], "#FFFFFF")
         orange_method = _trace_mask_to_svg(orange, outputs["orange_svg"], APP_ORANGE_HEX)
         print(

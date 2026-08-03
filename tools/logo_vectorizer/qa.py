@@ -33,21 +33,39 @@ def supply_p_ranges(img: Image.Image) -> list[tuple[int, int]]:
     return runs
 
 
+def _svg_dimensions(svg: str, width: int | None = None) -> tuple[int, int]:
+    import re
+
+    m_w = re.search(r'width="(\d+(?:\.\d+)?)"', svg)
+    m_h = re.search(r'height="(\d+(?:\.\d+)?)"', svg)
+    svg_w = int(float(m_w.group(1))) if m_w else 2987
+    svg_h = int(float(m_h.group(1))) if m_h else max(200, int(svg_w * 0.35))
+    if width is None:
+        return svg_w, svg_h
+    scale = width / svg_w if svg_w else 1.0
+    return width, max(1, round(svg_h * scale))
+
+
 def render_svg_chrome(
     svg_path: Path,
     png_path: Path,
     *,
     width: int | None = None,
+    height: int | None = None,
     chrome: Path | None = None,
 ) -> None:
     """Headless Chrome screenshot of SVG on black background."""
     svg = svg_path.read_text(encoding="utf-8")
-    if width is None:
-        import re
-
-        m = re.search(r'width="(\d+)"', svg)
-        width = int(m.group(1)) if m else 2987
-    height = max(200, int(width * 0.35))
+    if width is None and height is None:
+        width, height = _svg_dimensions(svg)
+    elif width is not None and height is None:
+        width, height = _svg_dimensions(svg, width=width)
+    elif height is not None and width is None:
+        svg_w, svg_h = _svg_dimensions(svg)
+        width = max(1, round(svg_w * (height / svg_h))) if svg_h else height
+    else:
+        width = int(width)  # type: ignore[arg-type]
+        height = int(height)  # type: ignore[arg-type]
 
     chrome_exe = chrome or Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     if not chrome_exe.is_file():
@@ -155,7 +173,7 @@ def verify_p_counters(
     tmp_render = (render_path or svg_path.with_suffix(".qa_render.png")).resolve()
     rendered_ok = False
     try:
-        render_svg_chrome(svg_path, tmp_render, width=ref.width)
+        render_svg_chrome(svg_path, tmp_render, width=ref.width, height=ref.height)
         rendered_ok = tmp_render.is_file()
     except (FileNotFoundError, subprocess.CalledProcessError):
         rendered_ok = False
