@@ -8,7 +8,7 @@ import tempfile
 from collections import deque
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SRC = (
@@ -33,6 +33,11 @@ APP_ORANGE_RGB = (0xD9, 0x4B, 0x2B)
 # SWIFT drop shadow sits down-right of the orange letter cores.
 SHADOW_DX = (2, 18)
 SHADOW_DY = (2, 18)
+
+# Vector trace: upscale raster before vtracer for smoother SWIFT curves/diagonals.
+TRACE_UPSCALE = 2
+TRACE_CLOSE_ITERS = 1
+TRACE_ALPHA_THRESHOLD = 32
 
 
 def _pick_source(explicit: Path | None) -> Path:
@@ -326,15 +331,47 @@ def _is_full_frame_path(d: str, width: int, height: int) -> bool:
     )
 
 
-def _postprocess_traced_svg(svg: str, fill_hex: str) -> str:
+def _prepare_trace_mask(img: Image.Image) -> tuple["np.ndarray", tuple[int, int], tuple[int, int]]:
+    """Build a high-res white-on-black trace mask with thin-stroke morphological close."""
+    import numpy as np
+
+    source_size = img.size
+    work = img
+    if TRACE_UPSCALE > 1:
+        work = img.resize(
+            (img.width * TRACE_UPSCALE, img.height * TRACE_UPSCALE),
+            Image.Resampling.LANCZOS,
+        )
+
+    alpha = np.array(work.split()[3])
+    binary = Image.fromarray(
+        ((alpha > TRACE_ALPHA_THRESHOLD).astype(np.uint8) * 255),
+        mode="L",
+    )
+    for _ in range(TRACE_CLOSE_ITERS):
+        binary = binary.filter(ImageFilter.MaxFilter(3))
+        binary = binary.filter(ImageFilter.MinFilter(3))
+
+    letter = np.array(binary) >= 128
+    # Black letterforms on white — vtracer emits one path per letter/bar.
+    mask = np.full((letter.shape[0], letter.shape[1], 3), 255, dtype=np.uint8)
+    mask[letter] = 0
+    return mask, work.size, source_size
+
+
+def _postprocess_traced_svg(
+    svg: str,
+    fill_hex: str,
+    source_size: tuple[int, int] | None = None,
+) -> str:
     dim = re.search(r'width="(\d+)"\s+height="(\d+)"', svg)
-    width = int(dim.group(1)) if dim else 0
-    height = int(dim.group(2)) if dim else 0
+    trace_width = int(dim.group(1)) if dim else 0
+    trace_height = int(dim.group(2)) if dim else 0
 
     def _fix_path(match: re.Match[str]) -> str:
         tag = match.group(0)
         d_match = re.search(r'\sd="([^"]+)"', tag)
-        if d_match and _is_full_frame_path(d_match.group(1), width, height):
+        if d_match and _is_full_frame_path(d_match.group(1), trace_width, trace_height):
             return ""
         if 'fill="' in tag:
             tag = re.sub(r'fill="[^"]*"', f'fill="{fill_hex}"', tag)
@@ -344,20 +381,32 @@ def _postprocess_traced_svg(svg: str, fill_hex: str) -> str:
 
     svg = re.sub(r"<path\s[^>]+/>", _fix_path, svg)
     svg = re.sub(r"<path\s[^>]+>", _fix_path, svg)
+
+    if source_size and trace_width and trace_height:
+        src_w, src_h = source_size
+        if (src_w, src_h) != (trace_width, trace_height):
+            if 'viewBox="' not in svg:
+                svg = svg.replace(
+                    "<svg ",
+                    f'<svg viewBox="0 0 {trace_width} {trace_height}" ',
+                    1,
+                )
+            svg = re.sub(
+                rf'width="{trace_width}"\s+height="{trace_height}"',
+                f'width="{src_w}" height="{src_h}"',
+                svg,
+                count=1,
+            )
+
     if 'style="background:' not in svg:
         svg = svg.replace("<svg ", '<svg style="background:transparent" ', 1)
     return svg
 
 
 def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> None:
-    import numpy as np
     import vtracer
 
-    alpha = np.array(img.split()[3])
-    # Black logo on white — vtracer traces letterforms as filled shapes, not an
-    # inverted full-canvas path with holes (white-on-black + hierarchical stacked).
-    mask = np.full((img.height, img.width, 3), 255, dtype=np.uint8)
-    mask[alpha > 32] = 0
+    mask, trace_size, source_size = _prepare_trace_mask(img)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -369,14 +418,17 @@ def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> None:
             colormode="binary",
             hierarchical="stacked",
             mode="spline",
-            filter_speckle=2,
-            path_precision=6,
+            filter_speckle=0,
+            corner_threshold=120,
+            length_threshold=4.0,
+            splice_threshold=45,
+            path_precision=8,
         )
     finally:
         tmp_path.unlink(missing_ok=True)
 
     svg = dest.read_text(encoding="utf-8")
-    svg = _postprocess_traced_svg(svg, fill_hex)
+    svg = _postprocess_traced_svg(svg, fill_hex, source_size=source_size)
     dest.write_text(svg, encoding="utf-8")
 
 
