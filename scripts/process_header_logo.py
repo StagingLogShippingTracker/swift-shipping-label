@@ -1,8 +1,10 @@
-"""Convert Swift Supply logo to white-on-transparent for the app header."""
+"""Convert Swift Supply logo to white-on-transparent for the app header and brand exports."""
 
 from __future__ import annotations
 
+import re
 import sys
+import tempfile
 from collections import deque
 from pathlib import Path
 
@@ -17,9 +19,16 @@ DEFAULT_SRC = (
 HI_RES_SRC = ROOT / "mobile" / "assets" / "images" / "swift_supply_logo.png"
 FALLBACK_SRC = ROOT / "customer_logos" / "swift_supply_logo_opt.png"
 OUT = ROOT / "mobile" / "assets" / "images" / "swift_supply_header_white.png"
+BRAND_DIR = ROOT / "assets" / "brand"
 
 # 3× the original 743 px header asset — crisp when scaled down in Flutter.
 TARGET_WIDTH = 2229
+BRAND_TARGET_WIDTH = 3000
+PREVIEW_WIDTH = 1200
+
+# App accent from mobile/lib/theme.dart / ShippingLabelPdf.swift
+APP_ORANGE_HEX = "#D94B2B"
+APP_ORANGE_RGB = (0xD9, 0x4B, 0x2B)
 
 # SWIFT drop shadow sits down-right of the orange letter cores.
 SHADOW_DX = (2, 18)
@@ -245,7 +254,8 @@ def _upscale_to_target(img: Image.Image, target_width: int) -> Image.Image:
     return img.resize((target_width, new_h), Image.Resampling.LANCZOS)
 
 
-def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> None:
+def render_white_logo(src: Path, target_width: int = TARGET_WIDTH) -> Image.Image:
+    """Flat white SWIFT+SUPPLY+bars on transparent — no drop shadow."""
     img = _upscale_to_target(Image.open(src).convert("RGBA"), target_width)
     w, h = img.size
     px = img.load()
@@ -260,13 +270,8 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
                 letter[y][x] = True
 
     supply_rows = _find_supply_rows(px, w, h, letter)
-    if supply_rows:
-        print(f"SUPPLY band: rows {supply_rows[0]}-{supply_rows[1]}")
-
     outline = _build_outline_mask(px, w, h, letter, supply_rows)
     shadow = _build_shadow_mask(px, w, h, letter, outline, supply_rows)
-    shadow_count = sum(sum(row) for row in shadow)
-    print(f"Shadow pixels removed: {shadow_count}")
 
     out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     out_px = out.load()
@@ -275,24 +280,141 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
         for x in range(w):
             r, g, b, a = px[x, y]
             strength = _logo_strength(r, g, b, a)
-            if strength <= 0:
+            if strength <= 0 or shadow[y][x]:
                 continue
-            if shadow[y][x]:
-                continue
-
             alpha = min(255, max(0, round(strength * 255)))
             if alpha < 12:
                 continue
             out_px[x, y] = (255, 255, 255, alpha)
 
-    out = _trim_transparent(out)
+    return _trim_transparent(out)
+
+
+def recolor_logo(img: Image.Image, rgb: tuple[int, int, int]) -> Image.Image:
+    out = img.copy()
+    out_px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            _, _, _, a = out_px[x, y]
+            if a:
+                out_px[x, y] = (*rgb, a)
+    return out
+
+
+def _preview_png(img: Image.Image, dest: Path, preview_width: int = PREVIEW_WIDTH) -> None:
+    if img.width <= preview_width:
+        preview = img.copy()
+    else:
+        scale = preview_width / img.width
+        preview = img.resize(
+            (preview_width, max(1, round(img.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    preview.save(dest, optimize=True)
+
+
+def _trace_mask_to_svg(img: Image.Image, dest: Path, fill_hex: str) -> None:
+    import numpy as np
+    import vtracer
+
+    alpha = np.array(img.split()[3])
+    mask = np.zeros((img.height, img.width, 3), dtype=np.uint8)
+    mask[alpha > 32] = 255
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        Image.fromarray(mask).save(tmp_path)
+        vtracer.convert_image_to_svg_py(
+            str(tmp_path),
+            str(dest),
+            colormode="binary",
+            hierarchical="stacked",
+            mode="spline",
+            filter_speckle=2,
+            path_precision=6,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    svg = dest.read_text(encoding="utf-8")
+    svg = re.sub(r'fill="#[^"]*"', f'fill="{fill_hex}"', svg)
+    svg = re.sub(
+        r'fill="rgb\([^)]+\)"',
+        f'fill="{fill_hex}"',
+        svg,
+    )
+    if 'fill="none"' not in svg and "<rect" not in svg:
+        svg = svg.replace(
+            "<svg ",
+            '<svg style="background:transparent" ',
+            1,
+        )
+    dest.write_text(svg, encoding="utf-8")
+
+
+def _svg_to_preview_png(svg_path: Path, dest: Path, preview_width: int = PREVIEW_WIDTH) -> None:
+    import cairosvg
+
+    cairosvg.svg2png(
+        url=str(svg_path),
+        write_to=str(dest),
+        output_width=preview_width,
+    )
+
+
+def export_brand_assets(src: Path) -> dict[str, Path]:
+    """Write high-res brand PNG/SVG exports plus chat-friendly previews."""
+    white = render_white_logo(src, BRAND_TARGET_WIDTH)
+    orange = recolor_logo(white, APP_ORANGE_RGB)
+
+    BRAND_DIR.mkdir(parents=True, exist_ok=True)
+    outputs: dict[str, Path] = {
+        "white_png": BRAND_DIR / "swift_supply_logo_white.png",
+        "white_svg": BRAND_DIR / "swift_supply_logo_white.svg",
+        "orange_png": BRAND_DIR / "swift_supply_logo_orange.png",
+        "orange_svg": BRAND_DIR / "swift_supply_logo_orange.svg",
+        "white_preview": BRAND_DIR / "swift_supply_logo_white_preview.png",
+        "orange_preview": BRAND_DIR / "swift_supply_logo_orange_preview.png",
+    }
+
+    white.save(outputs["white_png"], optimize=True)
+    orange.save(outputs["orange_png"], optimize=True)
+    print(
+        f"Wrote {outputs['white_png']} ({white.width}x{white.height}) "
+        f"from {src.name}"
+    )
+    print(
+        f"Wrote {outputs['orange_png']} ({orange.width}x{orange.height}) "
+        f"fill {APP_ORANGE_HEX}"
+    )
+
+    _trace_mask_to_svg(white, outputs["white_svg"], "#FFFFFF")
+    _trace_mask_to_svg(orange, outputs["orange_svg"], APP_ORANGE_HEX)
+    print(f"Wrote {outputs['white_svg']} ({outputs['white_svg'].stat().st_size} bytes)")
+    print(f"Wrote {outputs['orange_svg']} ({outputs['orange_svg'].stat().st_size} bytes)")
+
+    _preview_png(white, outputs["white_preview"])
+    _preview_png(orange, outputs["orange_preview"])
+    print(f"Wrote {outputs['white_preview']}")
+    print(f"Wrote {outputs['orange_preview']}")
+
+    return outputs
+
+
+def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> None:
+    out = render_white_logo(src, target_width)
     dest.parent.mkdir(parents=True, exist_ok=True)
     out.save(dest, optimize=True)
     print(f"Wrote {dest} ({out.width}x{out.height}) from {src.name}")
 
 
 def main() -> int:
-    explicit = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    brand_mode = "--brand" in sys.argv
+
+    explicit = Path(args[0]) if args else None
     try:
         src = _pick_source(explicit)
     except ValueError:
@@ -301,6 +423,11 @@ def main() -> int:
     if not src.is_file():
         print(f"Source logo not found: {src}", file=sys.stderr)
         return 1
+
+    if brand_mode:
+        export_brand_assets(src)
+        return 0
+
     process_logo(src, OUT)
     return 0
 
