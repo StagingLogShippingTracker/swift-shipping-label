@@ -270,8 +270,16 @@ def _render_svg_transparent_via_chrome(
         b_path = Path(tmpd) / "b.png"
         _render_svg_chrome_html(svg_path, w_path, width=width, background="#FFFFFF")
         _render_svg_chrome_html(svg_path, b_path, width=width, background="#000000")
-        white_img = Image.open(w_path).convert("RGB")
-        black_img = Image.open(b_path).convert("RGB")
+        # High-zoom renders can exceed PIL's default 178 MP safety limit
+        # (e.g. 15000×15000). We produced these images ourselves so trust
+        # them and disable the DoS guard.
+        prev_limit = Image.MAX_IMAGE_PIXELS
+        Image.MAX_IMAGE_PIXELS = None
+        try:
+            white_img = Image.open(w_path).convert("RGB")
+            black_img = Image.open(b_path).convert("RGB")
+        finally:
+            Image.MAX_IMAGE_PIXELS = prev_limit
         w_arr = np.array(white_img, dtype=np.int32)
         b_arr = np.array(black_img, dtype=np.int32)
         # a = 255 - (white_r - black_r)  (identical across channels)

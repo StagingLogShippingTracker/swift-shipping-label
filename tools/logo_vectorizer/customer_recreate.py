@@ -270,12 +270,21 @@ def strip_background(img: Image.Image) -> tuple[Image.Image, bool]:
 # ---------------------------------------------------------------------------
 
 
+FG_ALPHA_THRESHOLD = 64
+"""Alpha value at/above which a pixel counts as foreground.
+
+Kept low so anti-aliased punctuation (periods, hyphens) and thin strokes
+survive clustering — extremely small dots often have very few pixels above
+alpha 128 and would otherwise get treated as background.
+"""
+
+
 def _sample_foreground_pixels(
     rgba: np.ndarray, max_samples: int = 50_000
 ) -> np.ndarray:
     """Return (N, 3) RGB samples from opaque foreground pixels."""
     alpha = rgba[:, :, 3]
-    fg = alpha >= 128
+    fg = alpha >= FG_ALPHA_THRESHOLD
     if not fg.any():
         return np.empty((0, 3), dtype=np.float32)
     rgb = rgba[:, :, :3][fg].astype(np.float32)
@@ -525,7 +534,7 @@ def cluster_palette(
     )
 
     # Re-assign every opaque pixel in the full image to nearest centroid.
-    fg = alpha >= 128
+    fg = alpha >= FG_ALPHA_THRESHOLD
     rgb = rgba[:, :, :3].astype(np.int32)
     d2 = np.zeros((h, w, centroids.shape[0]), dtype=np.int32)
     for i, c in enumerate(centroids.astype(np.int32)):
@@ -602,12 +611,15 @@ def build_sections_from_palette(
     """One `Section` per color group; small components are dropped."""
     h, w = label_img.shape[:2]
     if min_area_px is None:
-        # Scale with image area but never lower than 24 or higher than 400.
-        min_area_px = int(max(24, min(400, (h * w) * 0.0004)))
+        # Preserve punctuation-sized details (periods, hyphens): tight floor
+        # and modest ceiling so a real 8×8-pixel period in a 3000-pixel-wide
+        # logo survives even after morphological cleanup. JPEG grain is
+        # handled up-stream by the bilateral filter in `_preclean_for_clustering`.
+        min_area_px = int(max(6, min(48, (h * w) * 0.00002)))
 
     # After each morphology pass, discard sections that lose too much area
     # (usually pure JPEG-artifact clusters).
-    min_final_ratio = 0.15
+    min_final_ratio = 0.05
 
     sections = SectionSet()
     z = 10
@@ -617,10 +629,12 @@ def build_sections_from_palette(
         raw_area = int((mask > 0).sum())
         if raw_area < min_area_px:
             continue
-        # Morphological close to fuse anti-alias holes, then open to drop specks.
+        # Morphological close to fuse anti-alias holes. We deliberately skip
+        # MORPH_OPEN here — opening erodes small legitimate features like
+        # periods, apostrophes, and thin stems that we want to preserve.
+        # The `min_area_px` component filter below still drops speckle grain.
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
         # Drop connected components below the min-area threshold entirely.
         num, labels, stats, _ = cv2.connectedComponentsWithStats(
             (mask > 0).astype(np.uint8), connectivity=8

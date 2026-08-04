@@ -2125,6 +2125,10 @@ class _Card extends StatelessWidget {
 /// routed through the premium Python vectorizer, producing a bg-stripped
 /// vector SVG + a crisp PNG. When unchecked, the raster is stored as-is
 /// (with only the existing light `LogoImageProcessor` fast-trim applied).
+///
+/// On non-Windows platforms (Android in particular) the whole row is
+/// disabled and rendered muted, because the vectorizer is Windows-only
+/// in this build.
 class _RecreateCheckbox extends StatelessWidget {
   const _RecreateCheckbox({
     required this.value,
@@ -2138,55 +2142,68 @@ class _RecreateCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: busy ? null : () => onChanged(!value),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 20,
-              width: 20,
-              child: busy
-                  ? const CircularProgressIndicator(strokeWidth: 2)
-                  : Checkbox(
-                      value: value,
-                      onChanged: onChanged,
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-            ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Recreate (vectorize & clean background)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: SwiftColors.ink,
-                    ),
-                  ),
-                  SizedBox(height: 1),
-                  Text(
-                    'Runs the premium tracer on the next logo you find or '
-                    'upload: strips background, remakes it as clean vectors, '
-                    'stores SVG + crisp PNG. Slower — ~10–30 s. Windows only; '
-                    'Android skips this and keeps the original.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: SwiftColors.muted,
-                    ),
-                  ),
-                ],
+    final supported = Platform.isWindows;
+    final disabled = busy || !supported;
+    final subtitle = supported
+        ? 'Runs the premium tracer on the next logo you find or '
+            'upload: strips background, remakes it as clean vectors, '
+            'stores SVG + crisp PNG. Slower — ~10–30 s.'
+        : 'Recreate is Windows-only in this build. On Android the '
+            'crawled / uploaded raster is stored as-is.';
+    return Tooltip(
+      message: supported
+          ? 'Vectorize and clean the next logo before saving.'
+          : 'Recreate needs Python + tools on Windows. Not available '
+              'on ${Platform.operatingSystem}.',
+      child: InkWell(
+        onTap: disabled ? null : () => onChanged(!value),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 20,
+                width: 20,
+                child: busy
+                    ? const CircularProgressIndicator(strokeWidth: 2)
+                    : Checkbox(
+                        value: supported && value,
+                        onChanged: supported ? onChanged : null,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Recreate (vectorize & clean background)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: supported
+                            ? SwiftColors.ink
+                            : SwiftColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: SwiftColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
