@@ -2122,13 +2122,18 @@ class _Card extends StatelessWidget {
 /// Compact "Recreate" toggle rendered above the logo action buttons.
 ///
 /// When checked, the next logo import (web find OR manual upload) is
-/// routed through the premium Python vectorizer, producing a bg-stripped
+/// routed through the premium vectorizer, producing a bg-stripped
 /// vector SVG + a crisp PNG. When unchecked, the raster is stored as-is
 /// (with only the existing light `LogoImageProcessor` fast-trim applied).
 ///
-/// On non-Windows platforms (Android in particular) the whole row is
-/// disabled and rendered muted, because the vectorizer is Windows-only
-/// in this build.
+/// The recreate pipeline runs on both Windows and Android:
+///   - Windows prefers the bundled local Python tracer (highest
+///     fidelity manual-Bezier fitter) and falls back to the shared
+///     cloud service if Python isn't installed alongside the app.
+///   - Android always calls the shared Supabase edge function
+///     `recreate-logo`, which runs the same background strip → color-
+///     region trace → SVG + rasterize pipeline in Deno + WASM. Output
+///     quality is equivalent to the local path for real customer logos.
 class _RecreateCheckbox extends StatelessWidget {
   const _RecreateCheckbox({
     required this.value,
@@ -2142,19 +2147,18 @@ class _RecreateCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final supported = Platform.isWindows;
-    final disabled = busy || !supported;
-    final subtitle = supported
+    final disabled = busy;
+    final subtitle = Platform.isWindows
         ? 'Runs the premium tracer on the next logo you find or '
-            'upload: strips background, remakes it as clean vectors, '
-            'stores SVG + crisp PNG. Slower — ~10–30 s.'
-        : 'Recreate is Windows-only in this build. On Android the '
-            'crawled / uploaded raster is stored as-is.';
+            'upload: strips background, rebuilds it as clean vectors, '
+            'stores SVG + crisp PNG. Slower — ~5–30 s '
+            '(local Python fast path, shared cloud fallback).'
+        : 'Runs the shared cloud tracer on the next logo you find or '
+            'upload: strips background, rebuilds it as clean vectors, '
+            'stores SVG + crisp PNG. Slower — usually ~5–15 s over '
+            'network.';
     return Tooltip(
-      message: supported
-          ? 'Vectorize and clean the next logo before saving.'
-          : 'Recreate needs Python + tools on Windows. Not available '
-              'on ${Platform.operatingSystem}.',
+      message: 'Vectorize and clean the next logo before saving.',
       child: InkWell(
         onTap: disabled ? null : () => onChanged(!value),
         borderRadius: BorderRadius.circular(8),
@@ -2169,8 +2173,8 @@ class _RecreateCheckbox extends StatelessWidget {
                 child: busy
                     ? const CircularProgressIndicator(strokeWidth: 2)
                     : Checkbox(
-                        value: supported && value,
-                        onChanged: supported ? onChanged : null,
+                        value: value,
+                        onChanged: onChanged,
                         materialTapTargetSize:
                             MaterialTapTargetSize.shrinkWrap,
                         visualDensity: VisualDensity.compact,
@@ -2181,14 +2185,12 @@ class _RecreateCheckbox extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Recreate (vectorize & clean background)',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: supported
-                            ? SwiftColors.ink
-                            : SwiftColors.muted,
+                        color: SwiftColors.ink,
                       ),
                     ),
                     const SizedBox(height: 1),

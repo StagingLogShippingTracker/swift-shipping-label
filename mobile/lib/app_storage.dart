@@ -207,12 +207,15 @@ class AppStorage {
   ///   transparent. It is intentionally conservative — if the raster is
   ///   already transparent, or the corners disagree, the input passes through
   ///   unchanged.
-  /// - `recreate == true`: hand the raster to the premium Python vectorizer
-  ///   (`tools/logo_vectorizer --recreate-customer`). This strips background
-  ///   robustly, clusters colors, traces each color group with the
-  ///   manual-quality Bezier fitter, and returns a PNG derived from the
-  ///   composed SVG. When Python or the tools folder aren't available we
-  ///   fall back to the fast-path bytes with a diagnostic on `onLog`.
+  /// - `recreate == true`: hand the raster to the premium recreate pipeline.
+  ///   On Windows this runs `tools/logo_vectorizer --recreate-customer`
+  ///   locally (manual-quality Bezier fitter). On Android — and as a Windows
+  ///   fallback — it calls the shared Supabase edge function `recreate-logo`,
+  ///   which performs the same background strip → color-region trace →
+  ///   SVG + rasterized PNG using vtracer/resvg WASM. Either way the caller
+  ///   gets a clean transparent PNG plus (when available) an SVG derivative.
+  ///   Failures degrade gracefully to the raw raster with a diagnostic on
+  ///   `onLog`.
   Future<File> importLogoBytes(
     List<int> bytes, {
     required String preferredName,

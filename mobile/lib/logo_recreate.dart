@@ -4,73 +4,111 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-/// Windows-side "Recreate" pipeline bridge: locate `tools/logo_vectorizer`,
-/// pick a Python interpreter, and run the premium vectorizer against the
-/// caller's raster so it comes back as a clean SVG + PNG.
+import 'logo_recreate_cloud.dart';
+
+/// Cross-platform "Recreate" bridge.
 ///
-/// The Flutter Windows build ships the `tools/` directory alongside the exe
-/// (see `scripts/build_windows.ps1`). When running from source, the tools
-/// live two levels above the exe (`mobile\build\...\Release`). We probe a
-/// handful of well-known candidate directories, so both packaged and dev
-/// runs work without config.
+/// Two independent backends produce equivalent premium recreate output:
 ///
-/// On non-Windows platforms this class is a graceful no-op:
-///   - `isAvailable()` returns false
-///   - `run(...)` throws `UnsupportedError`
+/// * **Windows local** — shells out to `python -m tools.logo_vectorizer
+///   --recreate-customer`, which runs the manual-quality Bezier tracer +
+///   sectional composer. This is the highest-fidelity backend and is kept
+///   unchanged on Windows so we never regress the local UX. It's only
+///   available when a Python 3 interpreter and the `tools/logo_vectorizer`
+///   folder can both be located next to the app.
 ///
-/// The caller (usually [AppStorage.importLogoBytes]) is responsible for
-/// falling back to the raw raster when recreate can't run.
+/// * **Cloud (Supabase Edge Function `recreate-logo`)** — runs the same
+///   pipeline (background strip → color-region trace → SVG + rasterized
+///   PNG) on Deno + WASM (vtracer + resvg). This is what Android uses;
+///   Windows falls back to it whenever the local Python path isn't
+///   available.
+///
+/// Both backends return a [LogoRecreateResult] with a rasterized PNG
+/// (transparent background, print-ready) and, when possible, the source
+/// SVG. Callers (see [AppStorage.importLogoBytes]) persist both.
 class LogoRecreate {
   LogoRecreate._();
 
-  /// Diagnostic — location of the resolved `tools/logo_vectorizer` folder
-  /// (or `null` if we couldn't find it).
   static Directory? _cachedToolsDir;
-
-  /// Diagnostic — resolved Python interpreter (or `null` if none found).
   static String? _cachedPython;
 
-  /// True on Windows once we have both a python interpreter and the tools folder.
-  static Future<bool> isAvailable() async {
-    if (!Platform.isWindows) return false;
-    return await _resolvePython() != null && await _resolveToolsRoot() != null;
-  }
+  /// Recreate is always available now: local Python on Windows when we
+  /// find it, cloud otherwise. We can only meaningfully answer "yes" when
+  /// the app has *some* path to run — for the cloud path this means we
+  /// trust it will reach Supabase at call time.
+  static Future<bool> isAvailable() async => true;
 
-  /// Human-readable diagnostic for logs / snackbars.
+  /// Which backend we'd use for the next call, in priority order.
   static Future<String> diagnostic() async {
-    if (!Platform.isWindows) {
-      return 'Recreate requires Windows (current: ${Platform.operatingSystem}).';
+    final local = await _resolveLocalBackend();
+    if (local != null) {
+      return 'Recreate ready — local python=${local.python} '
+          'tools=${local.toolsDir.path} (cloud fallback available)';
     }
-    final py = await _resolvePython();
-    final tools = await _resolveToolsRoot();
-    if (py == null) return 'Recreate: Python 3 not found on PATH.';
-    if (tools == null) {
-      return 'Recreate: tools/logo_vectorizer directory not found next to the app.';
+    if (Platform.isWindows) {
+      return 'Recreate: local Python not found — using cloud recreate service.';
     }
-    return 'Recreate ready — python=$py tools=${tools.path}';
+    return 'Recreate: cloud recreate service (${Platform.operatingSystem}).';
   }
 
-  /// Run recreate on [inputPath]; return the recreated PNG bytes on success.
-  ///
-  /// Writes the SVG next to the PNG so the caller (or callers of the SVG
-  /// export) can persist both. Throws on failure — callers should catch and
-  /// fall back to the original raster.
+  /// Run recreate on [input]. Prefers local Python on Windows when
+  /// available (highest fidelity) and falls back to the cloud edge
+  /// function otherwise. Throws on total failure; callers catch and
+  /// fall back to the raw raster.
   static Future<LogoRecreateResult> run(
     File input, {
     Directory? scratchDir,
     Duration timeout = const Duration(minutes: 4),
     void Function(String)? onLog,
   }) async {
-    if (!Platform.isWindows) {
-      throw UnsupportedError(
-        'Recreate vectorizer is Windows-only in this build.',
-      );
+    final local = await _resolveLocalBackend();
+    if (local != null) {
+      try {
+        return await _runLocal(
+          input,
+          local: local,
+          scratchDir: scratchDir,
+          timeout: timeout,
+          onLog: onLog,
+        );
+      } catch (e) {
+        onLog?.call('Recreate local failed, trying cloud: $e');
+      }
     }
-    final py = await _resolvePython();
-    final tools = await _resolveToolsRoot();
-    if (py == null || tools == null) {
-      throw StateError(await diagnostic());
-    }
+    return _runCloud(input, timeout: timeout, onLog: onLog);
+  }
+
+  static Future<LogoRecreateResult> _runCloud(
+    File input, {
+    required Duration timeout,
+    void Function(String)? onLog,
+  }) async {
+    final cloudTimeout =
+        timeout > const Duration(seconds: 120) ? const Duration(seconds: 120) : timeout;
+    final cloud = await LogoRecreateCloud.run(
+      input,
+      timeout: cloudTimeout,
+      onLog: onLog,
+    );
+    return LogoRecreateResult(
+      pngBytes: cloud.pngBytes,
+      svgBytes: cloud.svgBytes,
+      workDir: null,
+      log: 'cloud recreate (${cloud.elapsed.inMilliseconds}ms, '
+          'sections=${cloud.sectionCount}, '
+          'palette=${cloud.paletteHex.join(",")}, '
+          'bg_stripped=${cloud.backgroundStripped})',
+      backend: LogoRecreateBackend.cloud,
+    );
+  }
+
+  static Future<LogoRecreateResult> _runLocal(
+    File input, {
+    required _LocalBackend local,
+    Directory? scratchDir,
+    required Duration timeout,
+    void Function(String)? onLog,
+  }) async {
     final work = scratchDir ??
         await Directory.systemTemp.createTemp('swift_recreate_');
     final stem = p.basenameWithoutExtension(input.path).trim().isEmpty
@@ -82,12 +120,12 @@ class LogoRecreate {
     // The tools folder we resolved is `.../tools/logo_vectorizer`; the
     // package parent (the folder that contains `tools/`) needs to be the
     // working directory so `python -m tools.logo_vectorizer` resolves.
-    final packageParent = tools.parent.parent;
+    final packageParent = local.toolsDir.parent.parent;
 
-    onLog?.call('recreate: python=$py cwd=${packageParent.path}');
+    onLog?.call('recreate: python=${local.python} cwd=${packageParent.path}');
 
     final proc = await Process.start(
-      py,
+      local.python,
       [
         '-X',
         'utf8',
@@ -100,8 +138,6 @@ class LogoRecreate {
         svgOut.absolute.path,
         '--render-png',
         pngOut.absolute.path,
-        // Rasterize wide enough that scaling / zoom in-app stays crisp;
-        // the vector SVG remains the source of truth and is also stored.
         '--render-width',
         '3000',
       ],
@@ -145,7 +181,16 @@ class LogoRecreate {
       svgBytes: await svgOut.exists() ? await svgOut.readAsBytes() : null,
       workDir: work,
       log: stdoutBuf.toString() + stderrBuf.toString(),
+      backend: LogoRecreateBackend.localPython,
     );
+  }
+
+  static Future<_LocalBackend?> _resolveLocalBackend() async {
+    if (!Platform.isWindows) return null;
+    final python = await _resolvePython();
+    final tools = await _resolveToolsRoot();
+    if (python == null || tools == null) return null;
+    return _LocalBackend(python: python, toolsDir: tools);
   }
 
   static Future<Directory?> _resolveToolsRoot() async {
@@ -154,26 +199,21 @@ class LogoRecreate {
     }
     final candidates = <String>[];
     final exeDir = File(Platform.resolvedExecutable).parent;
-    // 1. Packaged next to the exe (build_windows.ps1 copies this in).
     candidates.add(p.join(exeDir.path, 'tools', 'logo_vectorizer'));
-    // 2. Dev run from Flutter build output: mobile/build/.../Release
     candidates.add(
       p.normalize(
         p.join(exeDir.path, '..', '..', '..', '..', '..', 'tools',
             'logo_vectorizer'),
       ),
     );
-    // 3. Dev run one level up.
     candidates.add(
       p.normalize(p.join(exeDir.path, '..', 'tools', 'logo_vectorizer')),
     );
-    // 4. LOCALAPPDATA install target (see scripts/publish_release.ps1).
     final localAppData = Platform.environment['LOCALAPPDATA'];
     if (localAppData != null) {
       candidates.add(p.join(localAppData,
           'swift-document-generator-mobile', 'tools', 'logo_vectorizer'));
     }
-    // 5. Known dev checkouts.
     final userProfile = Platform.environment['USERPROFILE'];
     if (userProfile != null) {
       candidates.add(p.join(userProfile, 'OneDrive', 'Documents',
@@ -222,16 +262,26 @@ class LogoRecreate {
   }
 }
 
+enum LogoRecreateBackend { localPython, cloud }
+
+class _LocalBackend {
+  const _LocalBackend({required this.python, required this.toolsDir});
+  final String python;
+  final Directory toolsDir;
+}
+
 class LogoRecreateResult {
   LogoRecreateResult({
     required this.pngBytes,
     required this.svgBytes,
     required this.workDir,
     required this.log,
+    required this.backend,
   });
 
   final List<int> pngBytes;
   final List<int>? svgBytes;
-  final Directory workDir;
+  final Directory? workDir;
   final String log;
+  final LogoRecreateBackend backend;
 }
