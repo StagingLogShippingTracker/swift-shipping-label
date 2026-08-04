@@ -157,25 +157,18 @@ class BolLabelPdf {
     var y = pageH - margin - 2;
 
     // Header row: Swift wordmark preferred centered, customer logos sit
-    // to its left at the exact same 59.04 pt (0.82") target height,
-    // Logo 1 at the left margin, Logo 2 immediately to the right of
-    // Logo 1 with a 20 pt gap. When customer logos need more room than
-    // the natural (centered) Swift position leaves, Swift shifts right
-    // just enough to keep both customer logos at the target height. If
-    // even that isn't enough (Swift can't shift beyond the right margin),
-    // both customer logos scale down proportionally to share the same
-    // reduced height while preserving their aspect ratios.
-    var logoH = 0.82 * inch; // 59.04 pt
+    // to its left at the exact same 59.04 pt (0.82") height. When a wide
+    // customer logo would overlap swift, swift shifts right just enough
+    // to keep both at target height without overlap.
+    var logoH = 0.82 * inch;
     var logoW = 0.0;
     var logoX = margin;
-    const customerLogoH = 0.82 * inch; // 59.04 pt — Shipping BOL parity
-    const customerGap = 20.0; // fixed gap between Logo 1 and Logo 2
-    const customerToSwiftGap = 14.0; // breathing room before Swift
+    const customerLogoH = 0.82 * inch;
+    const customerGap = 12.0;
 
     // 1. Pre-compute how much width the customer logo row needs at
-    //    target height (native aspect × 59.04 + 20 pt gap between).
-    final customerReq =
-        _customerLogoRowWidth(customerLogos, customerLogoH, customerGap);
+    //    target height so we can position the Swift wordmark accordingly.
+    final customerReq = _customerLogoRowWidth(customerLogos, customerLogoH);
 
     if (swiftLogo != null) {
       final iw = swiftLogo.width.toDouble();
@@ -189,10 +182,10 @@ class BolLabelPdf {
         }
         // Preferred: swift centered on page.
         var centered = (pageW - logoW) / 2;
-        // Minimum left position that lets the customer row render at
-        // target height (margin + customer req + breathing gap).
+        // Minimum left position to guarantee the customer row fits
+        // (margin + reserved customer width + gap).
         final minLeftForCustomer = margin +
-            (customerReq > 0 ? customerReq + customerToSwiftGap : 0);
+            (customerReq > 0 ? customerReq + customerGap : 0);
         logoX = centered < minLeftForCustomer ? minLeftForCustomer : centered;
         // Right-guard: don't push swift off the page.
         final maxLogoX = pageW - margin - logoW;
@@ -201,19 +194,10 @@ class BolLabelPdf {
       }
     }
 
-    // Draw customer logos: Logo 1 at margin, Logo 2 at (logo1_x + logo1_w + 20).
-    // Available width = space from left margin to Swift's left edge (minus a
-    // small breathing gap). If the row exceeds that, both logos scale down
-    // proportionally so they end up at the same reduced height.
-    _drawCustomerLogosLeft(
-      c,
-      customerLogos,
-      logoX,
-      y,
-      customerLogoH,
-      customerGap,
-      customerToSwiftGap,
-    );
+    // Draw customer logos at fixed 59.04 pt height. Available width is
+    // the space left of the Swift wordmark (minus gap); with the shift
+    // above, this is always at least [customerReq] when [customerReq]>0.
+    _drawCustomerLogosLeft(c, customerLogos, logoX, y, customerLogoH);
 
     _probillCutout(c, fonts, d, logoX, logoW, y, logoH);
     y -= logoH + 6;
@@ -1026,81 +1010,136 @@ class BolLabelPdf {
       ..drawString(fonts.bold, 5.5, text.toUpperCase(), x, y);
   }
 
-  /// Width required to draw the customer logo row at [rowH] tall using
-  /// each logo's native aspect ratio, plus a fixed [gap] between adjacent
-  /// logos. Returns 0 when there are no valid logos.
-  ///
-  ///   1 logo:  iw/ih * rowH
-  ///   2 logos: iw1/ih1 * rowH + gap + iw2/ih2 * rowH
-  double _customerLogoRowWidth(
-    List<PdfImage> customerLogos,
-    double rowH,
-    double gap,
+  /// Fit [img] inside [maxW]×[maxH] at (x,y) bottom-left, preserving aspect ratio.
+  void _drawImageInBox(
+    PdfGraphics c,
+    PdfImage img,
+    double x,
+    double y,
+    double maxW,
+    double maxH,
   ) {
-    final logos = <PdfImage>[
-      for (final l in customerLogos.take(maxCustomerLogos))
-        if (l.width > 0 && l.height > 0) l,
-    ];
-    if (logos.isEmpty) return 0;
-    var total = 0.0;
-    for (final l in logos) {
-      total += l.width / l.height * rowH;
-    }
-    total += gap * (logos.length - 1);
-    return total;
+    final iw = img.width.toDouble();
+    final ih = img.height.toDouble();
+    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) return;
+    final scale = maxW / iw < maxH / ih ? maxW / iw : maxH / ih;
+    final w = iw * scale;
+    final h = ih * scale;
+    final dx = x + (maxW - w) / 2;
+    final dy = y + (maxH - h) / 2;
+    c.drawImage(img, dx, dy, w, h);
   }
 
-  /// Layout for 1–2 customer logos on the left of the BOL header at a
-  /// fixed target height (59.04 pt). Logo 1 sits flush at the left page
-  /// margin; Logo 2, if present, is placed 20 pt to the right of Logo 1's
-  /// rendered right edge. Widths are `nativeW/nativeH * targetH`.
+  void _drawLogoAtHeight(
+    PdfGraphics c,
+    PdfImage img,
+    double slotX,
+    double slotY,
+    double slotW,
+    double slotH,
+    double targetH,
+  ) {
+    final iw = img.width.toDouble();
+    final ih = img.height.toDouble();
+    if (iw <= 0 || ih <= 0) return;
+    var scale = targetH / ih;
+    var w = iw * scale;
+    var h = targetH;
+    if (w > slotW) {
+      scale = slotW / iw;
+      w = slotW;
+      h = ih * scale;
+    }
+    c.drawImage(
+      img,
+      slotX + (slotW - w) / 2,
+      slotY + (slotH - h),
+      w,
+      h,
+    );
+  }
+
+  /// Width required to draw the customer logo row at [rowH] tall in
+  /// natural aspect ratio. Returns 0 when there are no logos. For a
+  /// single logo this is `iw/ih * rowH`. For dual logos (stacked
+  /// vertically at half-height each) it's the wider of the two natural
+  /// widths at that half-height.
+  double _customerLogoRowWidth(List<PdfImage> customerLogos, double rowH) {
+    final logos = customerLogos.take(maxCustomerLogos).toList();
+    if (logos.isEmpty) return 0;
+    if (logos.length == 1) {
+      final iw = logos.first.width.toDouble();
+      final ih = logos.first.height.toDouble();
+      if (iw <= 0 || ih <= 0) return 0;
+      return iw / ih * rowH;
+    }
+    const stackGap = 4.0;
+    final slotH = (rowH - stackGap) / 2;
+    var maxW = 0.0;
+    for (final l in logos) {
+      final iw = l.width.toDouble();
+      final ih = l.height.toDouble();
+      if (iw <= 0 || ih <= 0) continue;
+      final w = iw / ih * slotH;
+      if (w > maxW) maxW = w;
+    }
+    return maxW;
+  }
+
+  /// Up to 2 customer logos in the left header frame only (no Swift/probill shift).
   ///
-  /// When the row exceeds the space between the margin and the Swift
-  /// wordmark, both logos are scaled down by the same factor so they
-  /// end up at the same (reduced) height while preserving their
-  /// individual aspect ratios.
+  /// Customer logos always render at [logoH] (59.04 pt = 0.82") tall — the
+  /// exact height of the Swift wordmark so the header row is visually
+  /// balanced. Width comes purely from the source aspect ratio; the only
+  /// horizontal cap is the space between the left page margin and the
+  /// Swift wordmark (minus a small breathing gap). No fixed sub-frame cap
+  /// so a naturally wide logo (e.g. EPCOR ~2.6:1) is not squished down.
   void _drawCustomerLogosLeft(
     PdfGraphics c,
     List<PdfImage> customerLogos,
     double swiftLogoX,
     double logoTop,
-    double targetH,
-    double gap,
-    double swiftGap,
+    double logoH,
   ) {
-    final logos = <PdfImage>[
-      for (final l in customerLogos.take(maxCustomerLogos))
-        if (l.width > 0 && l.height > 0) l,
-    ];
+    final logos = customerLogos.take(maxCustomerLogos).toList();
     if (logos.isEmpty) return;
+    // Only cap on the right is the Swift wordmark itself (minus gap).
+    // Absolute floor keeps at least a tiny frame if Swift is unusually wide.
+    final frameLeft = margin;
+    final frameRight = (swiftLogoX - 12).clamp(frameLeft + 60, double.infinity);
+    final frameW = frameRight - frameLeft;
+    if (frameW < 60) return;
+    final frameBot = logoTop - logoH;
 
-    final availW = (swiftLogoX - swiftGap - margin).clamp(0.0, double.infinity);
-    if (availW <= 0) return;
-
-    var h = targetH;
-    final widths = <double>[
-      for (final l in logos) l.width / l.height * h,
-    ];
-    var total =
-        widths.fold<double>(0, (a, b) => a + b) + gap * (logos.length - 1);
-    if (total > availW) {
-      final scale = availW / total;
-      h *= scale;
-      for (var i = 0; i < widths.length; i++) {
-        widths[i] *= scale;
-      }
+    if (logos.length == 1) {
+      _drawLogoAtHeight(
+        c,
+        logos.first,
+        frameLeft,
+        frameBot,
+        frameW,
+        logoH,
+        logoH,
+      );
+      return;
     }
 
-    // Center vertically within the original band (top-anchored to the
-    // Swift baseline). Using targetH as the band keeps the row visually
-    // aligned with Swift even after a scale-down.
-    final bandCenter = logoTop - targetH / 2;
-    final y = bandCenter - h / 2;
-
-    var x = margin;
+    // Dual logos: stack vertically inside the same 59.04 pt band so the
+    // header keeps its overall height. Each slot is half of logoH minus a
+    // 4pt gap, and each logo renders at that per-slot target height so
+    // both share the same visual weight.
+    const stackGap = 4.0;
+    final slotH = (logoH - stackGap) / 2;
     for (var i = 0; i < logos.length; i++) {
-      c.drawImage(logos[i], x, y, widths[i], h);
-      x += widths[i] + gap;
+      _drawLogoAtHeight(
+        c,
+        logos[i],
+        frameLeft,
+        frameBot + (logos.length - 1 - i) * (slotH + stackGap),
+        frameW,
+        slotH,
+        slotH,
+      );
     }
   }
 

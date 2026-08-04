@@ -7,23 +7,6 @@ import 'package:swift_shipping_label/label_data.dart';
 import 'package:swift_shipping_label/pdf/bol_label_pdf.dart';
 import 'package:swift_shipping_label/pdf/shipping_label_pdf.dart';
 
-Future<List<Uint8List>> _previewLogos(String root, String sep) async {
-  final dual = [
-    File('$root${sep}customer_logos${sep}EPCOR.png'),
-    File('$root${sep}customer_logos${sep}Mastec.png'),
-  ];
-  if (dual.every((f) => f.existsSync())) {
-    return [await dual[0].readAsBytes(), await dual[1].readAsBytes()];
-  }
-  try {
-    final data =
-        await rootBundle.load('assets/images/sample_customer_logo.png');
-    return [data.buffer.asUint8List()];
-  } catch (_) {
-    return [];
-  }
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -31,7 +14,14 @@ void main() {
     final shipping = await ShippingLabelPdf.load();
     final root = Directory.current.parent.path;
     final sep = Platform.pathSeparator;
-    final logos = await _previewLogos(root, sep);
+
+    Uint8List? logo;
+    try {
+      final data =
+          await rootBundle.load('assets/images/sample_customer_logo.png');
+      logo = data.buffer.asUint8List();
+    } catch (_) {}
+    final logos = logo == null ? <Uint8List>[] : [logo];
 
     final shipBytes = await shipping.build(
       data: ShippingLabelData.sample,

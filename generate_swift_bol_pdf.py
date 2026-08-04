@@ -1128,73 +1128,6 @@ def draw_meta_strip(c: canvas.Canvas, form, y: float) -> float:
     return bot - GAP
 
 
-# Customer logo layout — matches mobile/lib/pdf/bol_label_pdf.dart.
-#
-#   height = 0.82" (59.04 pt) — matches Swift wordmark
-#   logo1_x = MARGIN
-#   logo2_x = logo1_x + logo1_rendered_w + 20 pt
-#   available = swift_left_x - MARGIN - 14 pt breathing gap
-#   if row > available: scale both proportionally to shared reduced height
-BOL_CUSTOMER_LOGO_H = 0.82 * inch  # 59.04 pt
-BOL_CUSTOMER_LOGO_GAP = 20.0
-BOL_CUSTOMER_LOGO_TO_SWIFT_GAP = 14.0
-
-
-def _bol_valid_customer_logos(paths: list[Path]) -> list[tuple[Path, float, float]]:
-    out: list[tuple[Path, float, float]] = []
-    for p in paths:
-        if not p or not p.exists():
-            continue
-        img = ImageReader(str(p))
-        iw, ih = img.getSize()
-        if iw > 0 and ih > 0:
-            out.append((p, float(iw), float(ih)))
-    return out
-
-
-def _bol_customer_row_width(
-    logos: list[tuple[Path, float, float]], row_h: float, gap: float
-) -> float:
-    if not logos:
-        return 0.0
-    total = sum(iw / ih * row_h for _, iw, ih in logos)
-    return total + gap * (len(logos) - 1)
-
-
-def draw_bol_customer_logos(
-    c: canvas.Canvas,
-    logos: list[tuple[Path, float, float]],
-    swift_left_x: float,
-    logo_top: float,
-    target_h: float,
-) -> None:
-    """Left-align 1–2 customer logos at target_h with a 20 pt gap;
-    scale both proportionally if the row would spill past Swift."""
-    if not logos:
-        return
-    avail_w = max(0.0, swift_left_x - BOL_CUSTOMER_LOGO_TO_SWIFT_GAP - MARGIN)
-    if avail_w <= 0:
-        return
-    h = target_h
-    widths = [iw / ih * h for _, iw, ih in logos]
-    total = sum(widths) + BOL_CUSTOMER_LOGO_GAP * (len(logos) - 1)
-    if total > avail_w:
-        scale = avail_w / total
-        h *= scale
-        widths = [w * scale for w in widths]
-    band_center = logo_top - target_h / 2
-    y = band_center - h / 2
-    x = MARGIN
-    for i, (path, _, _) in enumerate(logos):
-        c.drawImage(
-            ImageReader(str(path)),
-            x, y, widths[i], h,
-            mask="auto",
-            preserveAspectRatio=True,
-        )
-        x += widths[i] + BOL_CUSTOMER_LOGO_GAP
-
-
 def draw_probill_cutout(c: canvas.Canvas, form, logo_x: float, logo_w: float,
                         logo_top: float, logo_h: float) -> None:
     """Dashed 'affix probill sticker' box beside the logo (logo position unchanged)."""
@@ -1238,58 +1171,27 @@ def draw_probill_cutout(c: canvas.Canvas, form, logo_x: float, logo_w: float,
     hline(c, box_x + 6, box_y + 6, box_w - 12)
 
 
-def draw_bol_page(
-    c: canvas.Canvas,
-    form,
-    copy_label: str,
-    customer_logo: Path | None = None,
-    customer_logo2: Path | None = None,
-) -> None:
+def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
     """Draw one BOL page. Identical fields/widgets on every page sync by name."""
     draw_watermark(c)
 
     y = PAGE_H - MARGIN - 2
 
-    # Swift wordmark preferred centered; customer logos sit to its left at
-    # 59.04 pt with Logo 1 at the margin and Logo 2 20 pt to its right.
-    logo_h = BOL_CUSTOMER_LOGO_H  # 59.04 pt
+    # Cropped wordmark centered — do not shift when adding the probill cutout.
+    logo_h = 0.82 * inch
     logo_x = MARGIN
     logo_w = 0.0
-
-    logo_paths: list[Path] = []
-    if customer_logo:
-        logo_paths.append(customer_logo)
-    if customer_logo2:
-        logo_paths.append(customer_logo2)
-    valid_customer = _bol_valid_customer_logos(logo_paths)[:2]
-    customer_req = _bol_customer_row_width(
-        valid_customer, BOL_CUSTOMER_LOGO_H, BOL_CUSTOMER_LOGO_GAP
-    )
-
     logo = ensure_logo()
     if logo.exists():
         img = ImageReader(str(logo))
         iw, ih = img.getSize()
-        if iw > 0 and ih > 0:
-            logo_w = logo_h * iw / ih
-            max_w = CONTENT_W * 0.92
-            if logo_w > max_w:
-                logo_w = max_w
-                logo_h = logo_w * ih / iw
-            centered = (PAGE_W - logo_w) / 2
-            min_left_for_customer = MARGIN + (
-                customer_req + BOL_CUSTOMER_LOGO_TO_SWIFT_GAP if customer_req > 0 else 0
-            )
-            logo_x = centered if centered >= min_left_for_customer else min_left_for_customer
-            max_logo_x = PAGE_W - MARGIN - logo_w
-            if logo_x > max_logo_x:
-                logo_x = max_logo_x
-            c.drawImage(img, logo_x, y - logo_h, logo_w, logo_h, mask="auto")
-
-    if valid_customer:
-        draw_bol_customer_logos(
-            c, valid_customer, logo_x, y, BOL_CUSTOMER_LOGO_H
-        )
+        logo_w = logo_h * iw / ih
+        max_w = CONTENT_W * 0.92
+        if logo_w > max_w:
+            logo_w = max_w
+            logo_h = logo_w * ih / iw
+        logo_x = (PAGE_W - logo_w) / 2
+        c.drawImage(img, logo_x, y - logo_h, logo_w, logo_h, mask="auto")
 
     # Probill sticker cutout — sits beside the logo without moving it.
     draw_probill_cutout(c, form, logo_x, logo_w, y, logo_h)
@@ -1699,10 +1601,7 @@ def wire_product_total_calculations(pdf_path: Path) -> None:
     return _safe_replace(tmp, pdf_path)
 
 
-def build_pdf(
-    customer_logo: Path | None = None,
-    customer_logo2: Path | None = None,
-) -> Path:
+def build_pdf() -> Path:
     out = OUT_PATH
     try:
         # Probe whether the destination is writable before a long render.
@@ -1717,9 +1616,7 @@ def build_pdf(
     for i, copy_type in enumerate(COPY_TYPES):
         if i > 0:
             c.showPage()
-        draw_bol_page(
-            c, form, copy_type, customer_logo, customer_logo2
-        )
+        draw_bol_page(c, form, copy_type)
     c.save()
     serial_start = read_serial_start()
     out = merge_same_name_fields(out)
@@ -1732,10 +1629,4 @@ def build_pdf(
 
 
 if __name__ == "__main__":
-    import argparse
-
-    p = argparse.ArgumentParser(description="Generate Swift Supply BOL PDF.")
-    p.add_argument("--logo", type=Path, help="Customer logo image (PNG/JPG)")
-    p.add_argument("--logo2", type=Path, help="Optional second customer logo (C/O)")
-    args = p.parse_args()
-    print(f"Created: {build_pdf(customer_logo=args.logo, customer_logo2=args.logo2)}")
+    print(f"Created: {build_pdf()}")
