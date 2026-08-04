@@ -1,4 +1,7 @@
-"""CLI: python -m tools.logo_vectorizer --input logo.png --output out.svg [--fill #HEX] [--qa] [--two-stage] [--ai]"""
+"""CLI: python -m tools.logo_vectorizer --input logo.png --output out.svg
+       [--fill #HEX] [--qa] [--two-stage] [--sectional] [--decomposer swift-supply|color]
+       [--ai]
+"""
 
 from __future__ import annotations
 
@@ -10,11 +13,21 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from PIL import Image  # noqa: E402
+
 from tools.logo_vectorizer.ai_advisors import AIConfig  # noqa: E402
 from tools.logo_vectorizer.ai_advisors.orchestrator import resolve_providers  # noqa: E402
 from tools.logo_vectorizer.ensemble import vectorize_ensemble_file  # noqa: E402
 from tools.logo_vectorizer.env_loader import load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
+from tools.logo_vectorizer.sectional import (  # noqa: E402
+    rasterize_svg,
+    vectorize_sectional,
+)
+from tools.logo_vectorizer.sections import (  # noqa: E402
+    decompose_by_color,
+    decompose_swift_supply,
+)
 from tools.logo_vectorizer.two_stage import run_two_stage  # noqa: E402
 
 
@@ -39,6 +52,37 @@ def main() -> int:
         default="gemini,claude,openai",
         help="Comma-separated AI providers to use (default: all available)",
     )
+    parser.add_argument(
+        "--sectional",
+        action="store_true",
+        help="Sectional trace: manual-quality Bezier fitter per named region",
+    )
+    parser.add_argument(
+        "--decomposer",
+        default="swift-supply",
+        choices=("swift-supply", "color"),
+        help="Section decomposer for --sectional mode",
+    )
+    parser.add_argument(
+        "--render-png",
+        type=Path,
+        help="After tracing, rasterize the SVG to PNG at this path",
+    )
+    parser.add_argument(
+        "--render-width",
+        type=int,
+        help="Width (px) for --render-png output",
+    )
+    parser.add_argument(
+        "--render-background",
+        default="white",
+        help="Background for --render-png (color or 'transparent')",
+    )
+    parser.add_argument(
+        "--sections-dir",
+        type=Path,
+        help="If set with --sectional, write each layer to its own SVG here",
+    )
     args = parser.parse_args()
 
     if not args.input.is_file():
@@ -46,6 +90,46 @@ def main() -> int:
         return 1
 
     out = args.output or args.input.with_suffix(".svg")
+
+    if args.sectional:
+        img = Image.open(args.input).convert("RGBA")
+        if args.decomposer == "swift-supply":
+            sections = decompose_swift_supply(img)
+        else:
+            sections = decompose_by_color(img)
+        result = vectorize_sectional(img, sections)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(result.svg, encoding="utf-8")
+        print(
+            f"Sectional trace -> {out} ({out.stat().st_size} bytes)\n"
+            f"  sections={len(result.per_section)} anchors~{result.total_anchors()}"
+        )
+        for st in result.per_section:
+            print(
+                f"    {st.section.name:22s} d={len(st.combined_d):>6d}b "
+                f"contours={st.trace.contour_count:3d} holes={st.trace.hole_count:2d}"
+            )
+        if args.sections_dir is not None:
+            args.sections_dir.mkdir(parents=True, exist_ok=True)
+            from tools.logo_vectorizer.sectional import compose_sectional_svg
+
+            for st in result.per_section:
+                single = compose_sectional_svg(
+                    [st], source_size=result.source_size
+                )
+                (args.sections_dir / f"{st.section.name}.svg").write_text(
+                    single, encoding="utf-8"
+                )
+            print(f"  per-section SVGs -> {args.sections_dir}")
+        if args.render_png is not None:
+            rasterize_svg(
+                out,
+                args.render_png,
+                width=args.render_width,
+                background=args.render_background,
+            )
+            print(f"  rendered PNG -> {args.render_png}")
+        return 0
 
     if args.two_stage:
         qa_crop = args.qa_crop or out.with_name(out.stem + "_qa_p_crop.png")

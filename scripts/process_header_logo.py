@@ -19,6 +19,11 @@ from tools.logo_vectorizer.embed import write_embedded_png_svg  # noqa: E402
 from tools.logo_vectorizer.ensemble import vectorize_ensemble  # noqa: E402
 from tools.logo_vectorizer.env_loader import gemini_configured, load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
+from tools.logo_vectorizer.sectional import (  # noqa: E402
+    rasterize_svg,
+    vectorize_sectional,
+)
+from tools.logo_vectorizer.sections import decompose_swift_supply  # noqa: E402
 from tools.logo_vectorizer.two_stage import run_two_stage  # noqa: E402
 
 DEFAULT_SRC = (
@@ -464,12 +469,88 @@ def process_logo(src: Path, dest: Path, target_width: int = TARGET_WIDTH) -> Non
     print(f"Wrote {dest} ({out.width}x{out.height}) from {src.name}")
 
 
+def export_document_logo(
+    source_png: Path,
+    *,
+    out_svg: Path,
+    out_png: Path,
+    render_width: int = 2987,
+    per_section_dir: Path | None = None,
+) -> dict[str, Path]:
+    """
+    Manual-quality sectional vectorization of the Swift full lockup.
+
+    - Traces SWIFT-orange, drop shadow, SUPPLY, and both bars as separate
+      named layers via the manual Bezier fitter.
+    - Writes the composed SVG (source of truth) and rasterizes the PNG from
+      that SVG at ``render_width`` for use on generated documents.
+    """
+    from PIL import Image as _PILImage
+
+    img = _PILImage.open(source_png).convert("RGBA")
+    sections = decompose_swift_supply(img)
+    result = vectorize_sectional(img, sections)
+    out_svg.parent.mkdir(parents=True, exist_ok=True)
+    out_svg.write_text(result.svg, encoding="utf-8")
+
+    if per_section_dir is not None:
+        from tools.logo_vectorizer.sectional import compose_sectional_svg
+
+        per_section_dir.mkdir(parents=True, exist_ok=True)
+        for st in result.per_section:
+            single = compose_sectional_svg([st], source_size=result.source_size)
+            (per_section_dir / f"{st.section.name}.svg").write_text(
+                single, encoding="utf-8"
+            )
+
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    rasterize_svg(out_svg, out_png, width=render_width, background="transparent")
+    print(
+        f"Document logo -> {out_svg} ({out_svg.stat().st_size} bytes, "
+        f"{result.total_anchors()} anchors, "
+        f"{len(result.per_section)} sections)"
+    )
+    print(f"Document PNG  -> {out_png} ({out_png.stat().st_size} bytes)")
+    return {"svg": out_svg, "png": out_png}
+
+
 def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     brand_mode = "--brand" in sys.argv
+    document_mode = "--document" in sys.argv
     trace_vector = "--trace-vector" in sys.argv
 
     explicit = Path(args[0]) if args else None
+
+    if document_mode:
+        # For the sectional lockup we prefer an explicit path (or the copy
+        # under `assets/brand/swift_supply_source.png`) rather than the
+        # wordmark source.
+        candidates = [
+            explicit,
+            ROOT / "assets" / "brand" / "swift_supply_source.png",
+        ]
+        src = next((p for p in candidates if p and p.is_file()), None)
+        if src is None:
+            print("Document source PNG not found.", file=sys.stderr)
+            return 1
+        out_svg = BRAND_DIR / "swift_supply_logo_document.svg"
+        out_png = BRAND_DIR / "swift_supply_logo_document.png"
+        per_section_dir = BRAND_DIR / "_document_sections"
+        export_document_logo(
+            src,
+            out_svg=out_svg,
+            out_png=out_png,
+            render_width=2987,
+            per_section_dir=per_section_dir,
+        )
+        # Sync into the Flutter bundle so PDFs can load it.
+        mobile_dest = ROOT / "mobile" / "assets" / "images" / out_png.name
+        if mobile_dest.parent.exists():
+            mobile_dest.write_bytes(out_png.read_bytes())
+            print(f"Synced       -> {mobile_dest}")
+        return 0
+
     try:
         src = _pick_source(explicit)
     except ValueError:
