@@ -265,84 +265,68 @@ def draw_image_in_box(
     return w, h
 
 
-def _uniform_logo_height(logos: list[Path], slot_w: float, max_h: float) -> float:
-    common_h = max_h
-    for path in logos:
-        if not path.exists():
-            continue
-        img = ImageReader(str(path))
-        iw, ih = img.getSize()
-        scale = min(slot_w / iw, max_h / ih)
-        h = ih * scale
-        if h < common_h:
-            common_h = h
-    return common_h
+# Customer logo layout — matches mobile/lib/pdf/shipping_label_pdf.dart.
+CUSTOMER_LOGO_TARGET_H = 62.24
+CUSTOMER_LOGO_GAP = 20.0
+CUSTOMER_LOGO_TO_SWIFT_GAP = 12.0
 
 
-def _draw_logo_at_height(
-    c: canvas.Canvas,
-    path: Path,
-    slot_x: float,
-    slot_y: float,
-    slot_w: float,
-    slot_h: float,
-    target_h: float,
-) -> None:
-    if not path.exists():
-        return
-    img = ImageReader(str(path))
+def _swift_rendered_width(logo_path: Path, max_w: float, max_h: float) -> float:
+    if not logo_path.exists():
+        return 0.0
+    img = ImageReader(str(logo_path))
     iw, ih = img.getSize()
-    scale = target_h / ih
-    w, h = iw * scale, target_h
-    if w > slot_w:
-        scale = slot_w / iw
-        w, h = slot_w, ih * scale
-    c.drawImage(
-        img,
-        slot_x + (slot_w - w) / 2,
-        slot_y + (slot_h - h),
-        w,
-        h,
-        mask="auto",
-        preserveAspectRatio=True,
-    )
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    scale = min(max_w / iw, max_h / ih)
+    return iw * scale
 
 
-def draw_customer_logos_header(
+def _valid_logos(paths: list[Path]) -> list[tuple[Path, float, float]]:
+    out: list[tuple[Path, float, float]] = []
+    for p in paths:
+        if not p or not p.exists():
+            continue
+        img = ImageReader(str(p))
+        iw, ih = img.getSize()
+        if iw > 0 and ih > 0:
+            out.append((p, float(iw), float(ih)))
+    return out
+
+
+def draw_customer_logo_row(
     c: canvas.Canvas,
     logos: list[Path],
+    left_x: float,
     logo_bottom: float,
-    band_h: float,
+    band_top: float,
+    target_h: float,
+    avail_w: float,
+    gap: float = CUSTOMER_LOGO_GAP,
 ) -> None:
-    logos = [p for p in logos if p and p.exists()][:2]
-    if not logos:
+    """Left-align 1–2 customer logos at target_h with a 20 pt gap; scale
+    both down proportionally if the row overflows avail_w."""
+    valid = _valid_logos(logos)[:2]
+    if not valid or avail_w <= 0:
         return
-    # Match Swift header mark: y = logo_bottom + 2, height = band_h - 4 (62.24 pt).
-    swift_y_offset = 2
-    swift_logo_h = band_h - 4
-    pad = 4
-    dual_gap = 8
-    area_w = COL_W * 0.95
-    area_x = MX + pad
-    area_y = logo_bottom + swift_y_offset
-    area_h = swift_logo_h
-    inner_w = area_w - pad * 2
-
-    if len(logos) == 1:
-        _draw_logo_at_height(c, logos[0], area_x, area_y, inner_w, area_h, swift_logo_h)
-        return
-
-    slot_w = (inner_w - dual_gap) / len(logos)
-    for i, path in enumerate(logos):
-        _draw_logo_at_height(
-            c,
-            path,
-            area_x + i * (slot_w + dual_gap),
-            area_y,
-            slot_w,
-            area_h,
-            swift_logo_h,
+    h = target_h
+    widths = [iw / ih * h for _, iw, ih in valid]
+    total = sum(widths) + gap * (len(valid) - 1)
+    if total > avail_w:
+        scale = avail_w / total
+        h *= scale
+        widths = [w * scale for w in widths]
+    band_center = (band_top + logo_bottom) / 2
+    y = band_center - h / 2
+    x = left_x
+    for i, (path, _, _) in enumerate(valid):
+        c.drawImage(
+            ImageReader(str(path)),
+            x, y, widths[i], h,
+            mask="auto",
+            preserveAspectRatio=True,
         )
+        x += widths[i] + gap
 
 
 def draw_header(
@@ -360,8 +344,27 @@ def draw_header(
         logos.append(customer_logo)
     if customer_logo2:
         logos.append(customer_logo2)
+
+    swift_max_w = COL_W * 0.95
+    swift_max_h = band_h - 4
+    swift_w = _swift_rendered_width(LOGO_PATH, swift_max_w, swift_max_h)
+    swift_left_x = MX + CONTENT_W - swift_w
+    avail_for_customer = (
+        swift_left_x - CUSTOMER_LOGO_TO_SWIFT_GAP - MX
+        if swift_w > 0
+        else CONTENT_W
+    )
+
     if logos:
-        draw_customer_logos_header(c, logos, logo_bottom, band_h)
+        draw_customer_logo_row(
+            c,
+            logos,
+            MX,
+            logo_bottom,
+            y_top,
+            CUSTOMER_LOGO_TARGET_H,
+            avail_for_customer,
+        )
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)
@@ -375,7 +378,7 @@ def draw_header(
 
     if LOGO_PATH.exists():
         draw_image_fit(
-            c, LOGO_PATH, MX + CONTENT_W, logo_bottom + 2, COL_W * 0.95, band_h - 4, right=True
+            c, LOGO_PATH, MX + CONTENT_W, logo_bottom + 2, swift_max_w, swift_max_h, right=True
         )
 
     air_under_logos = 0.36 * inch

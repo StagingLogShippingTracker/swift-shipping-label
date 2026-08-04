@@ -460,76 +460,78 @@ class ShippingLabelPdf {
     c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
   }
 
-  void _drawCustomerLogoAtHeight(
-    PdfGraphics c,
-    PdfImage image,
-    double slotX,
-    double slotY,
-    double slotW,
-    double slotH,
-    double targetH,
-  ) {
-    final iw = image.width.toDouble();
-    final ih = image.height.toDouble();
-    if (iw <= 0 || ih <= 0) return;
-    var scale = targetH / ih;
-    var w = iw * scale;
-    var h = targetH;
-    if (w > slotW) {
-      scale = slotW / iw;
-      w = slotW;
-      h = ih * scale;
-    }
-    c.drawImage(
-      image,
-      slotX + (slotW - w) / 2,
-      slotY + (slotH - h),
-      w,
-      h,
-    );
+  /// Customer-logo target height on Shipping & Receiving.
+  /// Matches the Swift header mark exactly (bandH - 4 == 62.24 pt).
+  static const customerLogoTargetH = 62.24;
+
+  /// Horizontal breathing gap between Logo 1 and Logo 2.
+  static const customerLogoGap = 20.0;
+
+  /// Small breathing gap between the customer-logo row and Swift.
+  static const customerLogoToSwiftGap = 12.0;
+
+  /// Compute Swift's rendered width when fit into a [maxW]×[maxH] box.
+  double _swiftRenderedWidth(PdfImage? logo, double maxW, double maxH) {
+    if (logo == null) return 0;
+    final iw = logo.width.toDouble();
+    final ih = logo.height.toDouble();
+    if (iw <= 0 || ih <= 0) return 0;
+    final scale = (maxW / iw < maxH / ih) ? maxW / iw : maxH / ih;
+    return iw * scale;
   }
 
-  void _drawCustomerLogosInHeader(
+  /// Left-align 1–2 customer logos at fixed [targetH] height with a 20 pt
+  /// gap. Widths come from source aspect ratio (nativeW/nativeH * targetH).
+  /// If the row exceeds [availW], both logos scale down proportionally so
+  /// they share the same reduced height and preserve aspect ratios.
+  ///
+  /// Layout formulas (matches Shipping/Receiving spec):
+  ///   logo1_x = mx
+  ///   logo1_w = ih>0 ? iw/ih * H : 0
+  ///   logo2_x = logo1_x + logo1_w + gap        (gap = 20)
+  ///   logo2_w = ih>0 ? iw/ih * H : 0
+  ///   if (logo1_w + logo2_w + gap) > availW:
+  ///     scale = availW / total;  H *= scale; logo1_w *= scale; logo2_w *= scale
+  void _drawCustomerLogoRow(
     PdfGraphics c,
     List<PdfImage> logos,
+    double leftX,
     double logoBottom,
-    double bandH,
-  ) {
-    // Match Swift header mark: y = logoBottom + 2, height = bandH - 4 (62.24 pt).
-    const swiftYOffset = 2.0;
-    final swiftLogoH = bandH - 4;
-    const pad = 4.0;
-    const dualGap = 8.0;
-    final areaW = colW * 0.95;
-    final areaX = mx + pad;
-    final areaY = logoBottom + swiftYOffset;
-    final areaH = swiftLogoH;
-    final innerW = areaW - pad * 2;
+    double bandTop,
+    double targetH,
+    double availW, {
+    double gap = customerLogoGap,
+  }) {
+    final valid = <PdfImage>[];
+    for (final l in logos) {
+      final iw = l.width.toDouble();
+      final ih = l.height.toDouble();
+      if (iw > 0 && ih > 0) valid.add(l);
+    }
+    if (valid.isEmpty || availW <= 0) return;
 
-    if (logos.length == 1) {
-      _drawCustomerLogoAtHeight(
-        c,
-        logos[0],
-        areaX,
-        areaY,
-        innerW,
-        areaH,
-        swiftLogoH,
-      );
-      return;
+    var h = targetH;
+    final widths = <double>[
+      for (final l in valid) l.width / l.height * h,
+    ];
+    var combined = widths.fold<double>(0, (a, b) => a + b) +
+        gap * (valid.length - 1);
+    if (combined > availW) {
+      final scale = availW / combined;
+      h *= scale;
+      for (var i = 0; i < widths.length; i++) {
+        widths[i] *= scale;
+      }
     }
 
-    final slotW = (innerW - dualGap) / logos.length;
-    for (var i = 0; i < logos.length; i++) {
-      _drawCustomerLogoAtHeight(
-        c,
-        logos[i],
-        areaX + i * (slotW + dualGap),
-        areaY,
-        slotW,
-        areaH,
-        swiftLogoH,
-      );
+    // Vertically center within the header band (bandTop..logoBottom).
+    final bandCenter = (bandTop + logoBottom) / 2;
+    final y = bandCenter - h / 2;
+
+    var x = leftX;
+    for (var i = 0; i < valid.length; i++) {
+      c.drawImage(valid[i], x, y, widths[i], h);
+      x += widths[i] + gap;
     }
   }
 
@@ -546,8 +548,28 @@ class ShippingLabelPdf {
     final logoBottom = yTop - bandH;
     final logos = customerLogos.take(maxCustomerLogos).toList();
 
+    // Swift wordmark on the right (aspect-preserving fit into colW*0.95 × bandH-4).
+    final swiftMaxW = colW * 0.95;
+    final swiftMaxH = bandH - 4;
+    final swiftW = _swiftRenderedWidth(swiftLogo, swiftMaxW, swiftMaxH);
+    final swiftLeftX = mx + contentW - swiftW;
+
+    // Available width for customer logos: from left margin to Swift's left edge,
+    // minus a small breathing gap. If Swift is absent, use the full band width.
+    final availForCustomer = swiftW > 0
+        ? (swiftLeftX - customerLogoToSwiftGap - mx)
+        : contentW;
+
     if (logos.isNotEmpty) {
-      _drawCustomerLogosInHeader(c, logos, logoBottom, bandH);
+      _drawCustomerLogoRow(
+        c,
+        logos,
+        mx,
+        logoBottom,
+        yTop,
+        customerLogoTargetH,
+        availForCustomer,
+      );
     } else {
       c
         ..setStrokeColor(ruleSoft)
@@ -571,14 +593,14 @@ class ShippingLabelPdf {
       );
     }
 
-    if (swiftLogo != null) {
+    if (swiftLogo != null && swiftW > 0) {
       _drawImageFit(
         c,
         swiftLogo,
         mx + contentW,
         logoBottom + 2,
-        colW * 0.95,
-        bandH - 4,
+        swiftMaxW,
+        swiftMaxH,
         right: true,
       );
     }
