@@ -17,6 +17,7 @@ from PIL import Image  # noqa: E402
 
 from tools.logo_vectorizer.ai_advisors import AIConfig  # noqa: E402
 from tools.logo_vectorizer.ai_advisors.orchestrator import resolve_providers  # noqa: E402
+from tools.logo_vectorizer.customer_recreate import recreate_customer_logo  # noqa: E402
 from tools.logo_vectorizer.ensemble import vectorize_ensemble_file  # noqa: E402
 from tools.logo_vectorizer.env_loader import load_env  # noqa: E402
 from tools.logo_vectorizer.qa import verify_p_counters  # noqa: E402
@@ -83,6 +84,20 @@ def main() -> int:
         type=Path,
         help="If set with --sectional, write each layer to its own SVG here",
     )
+    parser.add_argument(
+        "--recreate-customer",
+        action="store_true",
+        help=(
+            "Recreate a customer logo: strip background, cluster colors, "
+            "manually-quality trace each color group, emit SVG + PNG."
+        ),
+    )
+    parser.add_argument(
+        "--max-colors",
+        type=int,
+        default=6,
+        help="Maximum palette size for --recreate-customer (default 6)",
+    )
     args = parser.parse_args()
 
     if not args.input.is_file():
@@ -90,6 +105,27 @@ def main() -> int:
         return 1
 
     out = args.output or args.input.with_suffix(".svg")
+
+    if args.recreate_customer:
+        png_out = args.render_png or out.with_suffix(".png")
+        result = recreate_customer_logo(
+            args.input,
+            output_svg=out,
+            output_png=png_out,
+            max_colors=args.max_colors,
+            render_width=args.render_width or 2000,
+            render_background=args.render_background or "transparent",
+        )
+        print(
+            f"Recreate -> {out} ({out.stat().st_size} bytes)\n"
+            f"  sections={result.section_count} "
+            f"palette=[{', '.join(result.palette_hex)}]\n"
+            f"  bg_stripped={result.background_stripped} "
+            f"anchors~{result.total_anchors}"
+        )
+        if result.png_path is not None:
+            print(f"  PNG -> {result.png_path} ({result.png_path.stat().st_size} bytes)")
+        return 0
 
     if args.sectional:
         img = Image.open(args.input).convert("RGBA")

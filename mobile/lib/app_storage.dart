@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'label_data.dart';
 import 'logo_image_process.dart';
+import 'logo_recreate.dart';
 
 /// App-private storage for presets, logos, and generated PDFs.
 class AppStorage {
@@ -183,21 +184,42 @@ class AppStorage {
     return files;
   }
 
-  Future<File> importLogo(File source, {String? preferredName}) async {
+  Future<File> importLogo(
+    File source, {
+    String? preferredName,
+    bool recreate = false,
+    void Function(String)? onLog,
+  }) async {
     final raw = await source.readAsBytes();
     return importLogoBytes(
       raw,
       preferredName: preferredName ?? p.basename(source.path),
+      recreate: recreate,
+      onLog: onLog,
     );
   }
 
-  /// Save processed logo bytes into [logosDir] (unique filename, always PNG).
+  /// Save logo bytes into [logosDir] with unique filename.
+  ///
+  /// - `recreate == false` (default): keep the raster as-is. We still run the
+  ///   lightweight [LogoImageProcessor] fast path, which trims flat margins
+  ///   and, when a solid-color background dominates the corners, drops it to
+  ///   transparent. It is intentionally conservative — if the raster is
+  ///   already transparent, or the corners disagree, the input passes through
+  ///   unchanged.
+  /// - `recreate == true`: hand the raster to the premium Python vectorizer
+  ///   (`tools/logo_vectorizer --recreate-customer`). This strips background
+  ///   robustly, clusters colors, traces each color group with the
+  ///   manual-quality Bezier fitter, and returns a PNG derived from the
+  ///   composed SVG. When Python or the tools folder aren't available we
+  ///   fall back to the fast-path bytes with a diagnostic on `onLog`.
   Future<File> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
+    bool recreate = false,
+    void Function(String)? onLog,
   }) async {
     await logosDir.create(recursive: true);
-    final processed = LogoImageProcessor.process(Uint8List.fromList(bytes));
 
     var stem = p.basenameWithoutExtension(preferredName.trim());
     if (stem.isEmpty) stem = 'logo';
@@ -211,7 +233,58 @@ class AppStorage {
         n++;
       }
     }
-    await dest.writeAsBytes(processed, flush: true);
+
+    List<int> outputBytes = bytes;
+    Uint8List? recreatedSvg;
+    var usedRecreate = false;
+
+    if (recreate && await LogoRecreate.isAvailable()) {
+      Directory? work;
+      try {
+        onLog?.call('Recreate: launching premium vectorizer…');
+        work = await Directory.systemTemp.createTemp('swift_recreate_');
+        final srcFile = File(p.join(work.path, 'source_$stem.png'));
+        await srcFile.writeAsBytes(bytes, flush: true);
+        final result = await LogoRecreate.run(
+          srcFile,
+          scratchDir: work,
+          onLog: onLog,
+        );
+        outputBytes = result.pngBytes;
+        recreatedSvg = result.svgBytes == null
+            ? null
+            : Uint8List.fromList(result.svgBytes!);
+        usedRecreate = true;
+        onLog?.call('Recreate: success');
+      } catch (e) {
+        onLog?.call('Recreate failed, kept original: $e');
+        outputBytes = bytes;
+        usedRecreate = false;
+      } finally {
+        if (work != null) {
+          try {
+            await work.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+    } else if (recreate) {
+      onLog?.call(await LogoRecreate.diagnostic());
+    }
+
+    // Non-recreate path: keep the lightweight, conservative fast trim.
+    // Recreate path: the vectorizer already outputs a clean transparent PNG,
+    // so skip the fast-path processor.
+    final finalBytes = usedRecreate
+        ? Uint8List.fromList(outputBytes)
+        : LogoImageProcessor.process(Uint8List.fromList(outputBytes));
+
+    await dest.writeAsBytes(finalBytes, flush: true);
+    if (recreatedSvg != null) {
+      final svgPath = p.setExtension(dest.path, '.svg');
+      try {
+        await File(svgPath).writeAsBytes(recreatedSvg, flush: true);
+      } catch (_) {}
+    }
     return dest;
   }
 

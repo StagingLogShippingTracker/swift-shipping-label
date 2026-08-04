@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -157,6 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _busy = false;
   bool _findingLogo = false;
   bool _showManualLogoUpload = false;
+  /// When true, next logo import runs through the premium Python vectorizer
+  /// (bg strip + manual-quality trace). Default false — raster stored as-is
+  /// (with the light [LogoImageProcessor] fast trim already applied).
+  bool _recreateLogo = false;
+  bool _recreatingLogo = false;
   LabelKind _kind = LabelKind.shipping;
   /// Which BOL copy pages to generate (all selected by default).
   bool _bolStoreCopy = true;
@@ -495,10 +501,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
+    final recreate = _recreateLogo;
+    if (recreate) setState(() => _recreatingLogo = true);
     final importedPaths = <String>[];
-    for (final path in paths) {
-      final imported = await widget.storage.importLogo(File(path));
-      importedPaths.add(imported.path);
+    try {
+      for (final path in paths) {
+        final imported = await widget.storage.importLogo(
+          File(path),
+          recreate: recreate,
+          onLog: (line) => debugPrint('[recreate] $line'),
+        );
+        importedPaths.add(imported.path);
       if (createPresets) {
         final name = widget.storage.safeCustomerName(
           p.basenameWithoutExtension(imported.path),
@@ -514,6 +527,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+      }
+    } finally {
+      if (recreate && mounted) setState(() => _recreatingLogo = false);
     }
     await widget.storage.savePresets();
     if (createPresets) {
@@ -541,13 +557,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_logoPaths.length >= maxCustomerLogos) return;
     final paths = await _pickImages(multiple: false);
     if (paths.isEmpty) return;
-    final imported = await widget.storage.importLogo(File(paths.first));
-    setState(() {
-      if (_logoPaths.length < maxCustomerLogos &&
-          !_logoPaths.contains(imported.path)) {
-        _logoPaths.add(imported.path);
-      }
-    });
+    final recreate = _recreateLogo;
+    if (recreate) setState(() => _recreatingLogo = true);
+    try {
+      final imported = await widget.storage.importLogo(
+        File(paths.first),
+        recreate: recreate,
+        onLog: (line) => debugPrint('[recreate] $line'),
+      );
+      setState(() {
+        if (_logoPaths.length < maxCustomerLogos &&
+            !_logoPaths.contains(imported.path)) {
+          _logoPaths.add(imported.path);
+        }
+      });
+    } finally {
+      if (recreate && mounted) setState(() => _recreatingLogo = false);
+    }
   }
 
   Future<void> _findLogoOnWeb() async {
@@ -774,10 +800,19 @@ class _HomeScreenState extends State<HomeScreen> {
         nameCtrl.text.trim().isEmpty ? 'logo' : nameCtrl.text.trim(),
       );
       final ext = LogoFinder.extensionForBytes(chosen.bytes);
-      final file = await widget.storage.importLogoBytes(
-        chosen.bytes,
-        preferredName: '$base$ext',
-      );
+      final recreate = _recreateLogo;
+      if (recreate) setState(() => _recreatingLogo = true);
+      final File file;
+      try {
+        file = await widget.storage.importLogoBytes(
+          chosen.bytes,
+          preferredName: '$base$ext',
+          recreate: recreate,
+          onLog: (line) => debugPrint('[recreate] $line'),
+        );
+      } finally {
+        if (recreate && mounted) setState(() => _recreatingLogo = false);
+      }
       if (!mounted) return;
       setState(() {
         if (_logoPaths.length < maxCustomerLogos &&
@@ -811,12 +846,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _replaceLogoAt(int index) async {
     final paths = await _pickImages(multiple: false);
     if (paths.isEmpty) return;
-    final imported = await widget.storage.importLogo(File(paths.first));
-    setState(() {
-      if (index >= 0 && index < _logoPaths.length) {
-        _logoPaths[index] = imported.path;
-      }
-    });
+    final recreate = _recreateLogo;
+    if (recreate) setState(() => _recreatingLogo = true);
+    try {
+      final imported = await widget.storage.importLogo(
+        File(paths.first),
+        recreate: recreate,
+        onLog: (line) => debugPrint('[recreate] $line'),
+      );
+      setState(() {
+        if (index >= 0 && index < _logoPaths.length) {
+          _logoPaths[index] = imported.path;
+        }
+      });
+    } finally {
+      if (recreate && mounted) setState(() => _recreatingLogo = false);
+    }
   }
 
   Future<List<Uint8List>> _loadSelectedLogoBytes() async {
@@ -1697,12 +1742,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                       if (_logoPaths.isNotEmpty) const SizedBox(height: 12),
+                      // "Recreate" runs the premium Python vectorizer on the
+                      // next logo picked/found. Unchecked keeps the raster
+                      // as-is (with the current light fast-path trim).
+                      _RecreateCheckbox(
+                        value: _recreateLogo,
+                        busy: _recreatingLogo,
+                        onChanged: (v) =>
+                            setState(() => _recreateLogo = v ?? false),
+                      ),
+                      const SizedBox(height: 8),
                       // Two clear choices (tagger-style): web find vs manual upload
                       Row(
                         children: [
                           Expanded(
                             child: FilledButton.tonalIcon(
                               onPressed: (_findingLogo ||
+                                      _recreatingLogo ||
                                       _logoPaths.length >= maxCustomerLogos)
                                   ? null
                                   : _findLogoOnWeb,
@@ -2057,6 +2113,80 @@ class _Card extends StatelessWidget {
               child,
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact "Recreate" toggle rendered above the logo action buttons.
+///
+/// When checked, the next logo import (web find OR manual upload) is
+/// routed through the premium Python vectorizer, producing a bg-stripped
+/// vector SVG + a crisp PNG. When unchecked, the raster is stored as-is
+/// (with only the existing light `LogoImageProcessor` fast-trim applied).
+class _RecreateCheckbox extends StatelessWidget {
+  const _RecreateCheckbox({
+    required this.value,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final bool busy;
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: busy ? null : () => onChanged(!value),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: busy
+                  ? const CircularProgressIndicator(strokeWidth: 2)
+                  : Checkbox(
+                      value: value,
+                      onChanged: onChanged,
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Recreate (vectorize & clean background)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: SwiftColors.ink,
+                    ),
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'Runs the premium tracer on the next logo you find or '
+                    'upload: strips background, remakes it as clean vectors, '
+                    'stores SVG + crisp PNG. Slower — ~10–30 s. Windows only; '
+                    'Android skips this and keeps the original.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: SwiftColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -30,4 +30,21 @@ $legacy = Join-Path $Root "dist\Swift Shipping Label"
 if (Test-Path $legacy) { Remove-Item $legacy -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Copy-Item $built $out -Recurse
+
+# Bundle tools/ so the "Recreate" premium vectorizer (Python) is reachable
+# from the packaged Windows app. `mobile\lib\logo_recreate.dart` probes for
+# tools/logo_vectorizer/__main__.py next to the exe.
+$toolsSrc = Join-Path $Root "tools"
+$toolsDst = Join-Path $out "tools"
+if (Test-Path $toolsSrc) {
+    if (Test-Path $toolsDst) { Remove-Item $toolsDst -Recurse -Force }
+    Copy-Item $toolsSrc $toolsDst -Recurse -Force
+    # Trim heavy caches so the zip stays small.
+    Get-ChildItem $toolsDst -Recurse -Directory -Filter "__pycache__" |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem $toolsDst -Recurse -Directory -Filter ".cache" |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "Bundled tools/ (customer logo Recreate vectorizer)"
+}
+
 Write-Host "Windows app: $out\swift_shipping_label.exe"
