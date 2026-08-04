@@ -109,37 +109,26 @@ def _paint(
     dx: int = 0,
     dy: int = 0,
 ) -> None:
-    """Paint the alpha silhouette from ``src[y0..y1]`` onto ``dst`` at (+dx, +dy)."""
+    """Paint the alpha silhouette from ``src[y0..y1]`` onto ``dst`` at (+dx, +dy).
+
+    Any silhouette pixel above the ink threshold is written as a fully opaque fill
+    so layered passes (e.g. orange SWIFT over its black shadow) never show through.
+    """
     w, h = src.size
     src_px = src.load()
     dst_px = dst.load()
+    new_r, new_g, new_b = color
     for y in range(y0, y1 + 1):
         yd = y + dy
         if yd < 0 or yd >= h:
             continue
         for x in range(w):
-            a = src_px[x, y][3]
-            if a < 16:
+            if src_px[x, y][3] < 16:
                 continue
             xd = x + dx
             if xd < 0 or xd >= w:
                 continue
-            # Alpha-over the new colored pixel on top of the current dst pixel.
-            new_r, new_g, new_b = color
-            dr, dg, db, da = dst_px[xd, yd]
-            src_a = a / 255.0
-            out_a = src_a + (da / 255.0) * (1.0 - src_a)
-            if out_a <= 0:
-                continue
-            out_r = int(round((new_r * src_a + dr * (da / 255.0) * (1.0 - src_a)) / out_a))
-            out_g = int(round((new_g * src_a + dg * (da / 255.0) * (1.0 - src_a)) / out_a))
-            out_b = int(round((new_b * src_a + db * (da / 255.0) * (1.0 - src_a)) / out_a))
-            dst_px[xd, yd] = (
-                max(0, min(255, out_r)),
-                max(0, min(255, out_g)),
-                max(0, min(255, out_b)),
-                max(0, min(255, int(round(out_a * 255)))),
-            )
+            dst_px[xd, yd] = (new_r, new_g, new_b, 255)
 
 
 def build_shadowed_orange_logo(
