@@ -224,27 +224,15 @@ class LogoFinder {
     }
 
     final ranked = _rankAndDedupe(merged, ctx);
-    final downloaded = <LogoDownloadedCandidate>[];
 
-    for (final c in ranked.take(_maxCandidatesToDownload)) {
-      if (downloaded.length >= pickerMaxResults) break;
-      final dl = await _downloadImage(Uri.parse(c.url), source: c.source);
-      if (!dl.ok) continue;
-      final finalScore = c.score + _bytesBonus(dl.bytes!);
-      if (finalScore < _minDownloadedScore) continue;
-      downloaded.add(
-        LogoDownloadedCandidate(
-          bytes: dl.bytes!,
-          source: c.source,
-          url: c.url,
-          score: finalScore,
-        ),
-      );
-    }
+    // Download candidates in parallel batches so "All sources" merges as
+    // well as any single engine (top ~20 by score after byte bonus).
+    final toTry = ranked.take(_maxCandidatesToDownload).toList();
+    final downloaded = await _downloadCandidatesParallel(toTry, ctx);
 
     if (downloaded.isNotEmpty) {
       downloaded.sort((a, b) => b.score.compareTo(a.score));
-      return downloaded;
+      return filterForPicker(downloaded);
     }
 
     for (final d in domainList.take(3)) {
@@ -267,6 +255,39 @@ class LogoFinder {
     }
 
     return const [];
+  }
+
+  Future<List<LogoDownloadedCandidate>> _downloadCandidatesParallel(
+    List<LogoCandidate> candidates,
+    _RelevanceContext ctx,
+  ) async {
+    if (candidates.isEmpty) return const [];
+
+    const batchSize = 8;
+    final out = <LogoDownloadedCandidate>[];
+
+    for (var start = 0; start < candidates.length; start += batchSize) {
+      if (out.length >= pickerMaxResults) break;
+      final batch = candidates.skip(start).take(batchSize);
+      final results = await Future.wait(
+        batch.map((c) async {
+          final dl = await _downloadImage(Uri.parse(c.url), source: c.source);
+          if (!dl.ok) return null;
+          final finalScore = c.score + _bytesBonus(dl.bytes!);
+          if (finalScore < _minDownloadedScore) return null;
+          return LogoDownloadedCandidate(
+            bytes: dl.bytes!,
+            source: c.source,
+            url: c.url,
+            score: finalScore,
+          );
+        }),
+      );
+      for (final item in results) {
+        if (item != null) out.add(item);
+      }
+    }
+    return out;
   }
 
   Future<LogoFindResult> find({

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'label_data.dart';
 import 'logo_image_process.dart';
+import 'logo_import_options.dart';
 import 'logo_recreate.dart';
 
 /// App-private storage for presets, logos, and generated PDFs.
@@ -188,6 +189,7 @@ class AppStorage {
     File source, {
     String? preferredName,
     bool recreate = false,
+    LogoImportOptions? options,
     void Function(String)? onLog,
   }) async {
     final raw = await source.readAsBytes();
@@ -195,6 +197,7 @@ class AppStorage {
       raw,
       preferredName: preferredName ?? p.basename(source.path),
       recreate: recreate,
+      options: options,
       onLog: onLog,
     );
   }
@@ -220,6 +223,7 @@ class AppStorage {
     List<int> bytes, {
     required String preferredName,
     bool recreate = false,
+    LogoImportOptions? options,
     void Function(String)? onLog,
   }) async {
     await logosDir.create(recursive: true);
@@ -237,7 +241,38 @@ class AppStorage {
       }
     }
 
-    List<int> outputBytes = bytes;
+    final importOptions = options ??
+        (recreate
+            ? LogoImportOptions.forRecreate()
+            : LogoImportOptions.standard());
+
+    var working = Uint8List.fromList(bytes);
+
+    // Apply manual crop before recreate / raster processing.
+    if (importOptions.cropMode == LogoCropMode.manual &&
+        importOptions.manualCropRect != null) {
+      working = LogoImageProcessor.processWithOptions(
+        working,
+        LogoImportOptions.standard(
+          removeBackground: false,
+          cropMode: LogoCropMode.manual,
+          manualCropRect: importOptions.manualCropRect,
+        ),
+      );
+    }
+
+    // Auto-crop trims empty margins before recreate tracing.
+    if (recreate && importOptions.cropMode == LogoCropMode.auto) {
+      working = LogoImageProcessor.processWithOptions(
+        working,
+        LogoImportOptions.standard(
+          removeBackground: false,
+          cropMode: LogoCropMode.auto,
+        ),
+      );
+    }
+
+    List<int> outputBytes = working;
     Uint8List? recreatedSvg;
     var usedRecreate = false;
 
@@ -247,7 +282,7 @@ class AppStorage {
         onLog?.call('Recreate: launching premium vectorizer…');
         work = await Directory.systemTemp.createTemp('swift_recreate_');
         final srcFile = File(p.join(work.path, 'source_$stem.png'));
-        await srcFile.writeAsBytes(bytes, flush: true);
+        await srcFile.writeAsBytes(working, flush: true);
         final result = await LogoRecreate.run(
           srcFile,
           scratchDir: work,
@@ -261,7 +296,7 @@ class AppStorage {
         onLog?.call('Recreate: success');
       } catch (e) {
         onLog?.call('Recreate failed, kept original: $e');
-        outputBytes = bytes;
+        outputBytes = working;
         usedRecreate = false;
       } finally {
         if (work != null) {
@@ -274,12 +309,19 @@ class AppStorage {
       onLog?.call(await LogoRecreate.diagnostic());
     }
 
-    // Non-recreate path: keep the lightweight, conservative fast trim.
-    // Recreate path: the vectorizer already outputs a clean transparent PNG,
-    // so skip the fast-path processor.
+    // Non-recreate path: apply raster options (bg removal, auto-crop).
+    // Recreate path: vectorizer already outputs clean transparent PNG.
     final finalBytes = usedRecreate
         ? Uint8List.fromList(outputBytes)
-        : LogoImageProcessor.process(Uint8List.fromList(outputBytes));
+        : LogoImageProcessor.processWithOptions(
+            Uint8List.fromList(outputBytes),
+            importOptions.cropMode == LogoCropMode.manual
+                ? LogoImportOptions.standard(
+                    removeBackground: importOptions.removeBackground,
+                    cropMode: LogoCropMode.auto,
+                  )
+                : importOptions,
+          );
 
     await dest.writeAsBytes(finalBytes, flush: true);
     if (recreatedSvg != null) {

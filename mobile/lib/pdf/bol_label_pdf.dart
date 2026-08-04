@@ -1074,7 +1074,7 @@ class BolLabelPdf {
       return iw / ih * rowH;
     }
     const stackGap = 4.0;
-    final slotH = (rowH - stackGap) / 2;
+    var slotH = (rowH - stackGap) / 2;
     var maxW = 0.0;
     for (final l in logos) {
       final iw = l.width.toDouble();
@@ -1124,12 +1124,21 @@ class BolLabelPdf {
       return;
     }
 
-    // Dual logos: stack vertically inside the same 59.04 pt band so the
-    // header keeps its overall height. Each slot is half of logoH minus a
-    // 4pt gap, and each logo renders at that per-slot target height so
-    // both share the same visual weight.
+    // Dual logos: stack vertically at equal per-slot height inside the band.
+    // Scale down uniformly if the widest natural width exceeds the frame.
     const stackGap = 4.0;
-    final slotH = (logoH - stackGap) / 2;
+    var slotH = (logoH - stackGap) / 2;
+    var maxNaturalW = 0.0;
+    for (final l in logos) {
+      final iw = l.width.toDouble();
+      final ih = l.height.toDouble();
+      if (iw <= 0 || ih <= 0) continue;
+      final w = iw / ih * slotH;
+      if (w > maxNaturalW) maxNaturalW = w;
+    }
+    if (maxNaturalW > frameW && maxNaturalW > 0) {
+      slotH *= frameW / maxNaturalW;
+    }
     for (var i = 0; i < logos.length; i++) {
       _drawLogoAtHeight(
         c,

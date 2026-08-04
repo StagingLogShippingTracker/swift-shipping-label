@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:image/image.dart' as img;
+
+import 'logo_import_options.dart';
 
 /// Smart crop + solid-background removal for customer logos.
 ///
@@ -19,7 +22,14 @@ class LogoImageProcessor {
   static const safeInset = 1;
 
   /// Decode, trim empty margins, remove solid backgrounds, re-encode PNG.
-  static Uint8List process(Uint8List input) {
+  static Uint8List process(Uint8List input) =>
+      processWithOptions(input, LogoImportOptions.standard());
+
+  /// Apply [options]: optional manual crop, bg removal, auto margin trim.
+  static Uint8List processWithOptions(
+    Uint8List input,
+    LogoImportOptions options,
+  ) {
     final decoded = img.decodeImage(input);
     if (decoded == null) return input;
 
@@ -27,18 +37,41 @@ class LogoImageProcessor {
         ? decoded.clone()
         : decoded.convert(numChannels: 4);
 
-    final bg = _hasMeaningfulTransparency(image)
-        ? null
-        : _estimateBackgroundColor(image);
+    if (options.cropMode == LogoCropMode.manual &&
+        options.manualCropRect != null) {
+      image = _applyManualCrop(image, options.manualCropRect!);
+    }
+
+    final bg = options.removeBackground && !_hasMeaningfulTransparency(image)
+        ? _estimateBackgroundColor(image)
+        : null;
 
     if (bg != null) {
       _removeSolidBackground(image, bg);
     }
 
-    image = _trimEmptyMargins(image, bg);
-    image = _addPadding(image);
+    if (options.cropMode == LogoCropMode.auto) {
+      image = _trimEmptyMargins(image, bg);
+      image = _addPadding(image);
+    }
 
     return Uint8List.fromList(img.encodePng(image));
+  }
+
+  static img.Image _applyManualCrop(img.Image image, Rect normalized) {
+    final left = (normalized.left * image.width).round().clamp(0, image.width - 1);
+    final top = (normalized.top * image.height).round().clamp(0, image.height - 1);
+    final right =
+        (normalized.right * image.width).round().clamp(left + 1, image.width);
+    final bottom =
+        (normalized.bottom * image.height).round().clamp(top + 1, image.height);
+    return img.copyCrop(
+      image,
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    );
   }
 
   /// True when border pixels are already mostly transparent (good PNG).

@@ -13,6 +13,7 @@ import 'signature_pad.dart';
 import 'signature_sync.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
+import 'logo_import_options.dart';
 import 'pdf/bol_label_pdf.dart';
 import 'pdf/shipping_label_pdf.dart';
 import 'platform_io.dart';
@@ -157,7 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<String> _logoPaths = [];
   bool _busy = false;
   bool _findingLogo = false;
-  bool _showManualLogoUpload = false;
   /// When true, next logo import runs through the premium Python vectorizer
   /// (bg strip + manual-quality trace). Default false — raster stored as-is
   /// (with the light [LogoImageProcessor] fast trim already applied).
@@ -472,107 +472,140 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<String>> _pickImages({required bool multiple}) =>
       pickImagePaths(multiple: multiple);
 
-  Future<void> _importLogos() async {
-    final paths = await _pickImages(multiple: true);
-    if (paths.isEmpty) return;
+  Future<void> _importBytesWithPrompt(
+    Uint8List bytes, {
+    required String preferredName,
+    void Function(String path)? onImported,
+  }) async {
     if (!mounted) return;
-
-    final createPresets = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Create presets?'),
-            content: Text(
-              'Import ${paths.length} logo(s).\n\n'
-              'Also create a customer preset from each file name?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Logos only'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Create presets'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (!mounted) return;
+    final options = await showLogoImportEditDialog(
+      context,
+      previewBytes: bytes,
+      recreate: _recreateLogo,
+    );
+    if (options == null || !mounted) return;
 
     final recreate = _recreateLogo;
     if (recreate) setState(() => _recreatingLogo = true);
-    final importedPaths = <String>[];
     try {
-      for (final path in paths) {
-        final imported = await widget.storage.importLogo(
-          File(path),
-          recreate: recreate,
-          onLog: (line) => debugPrint('[recreate] $line'),
-        );
-        importedPaths.add(imported.path);
-      if (createPresets) {
-        final name = widget.storage.safeCustomerName(
-          p.basenameWithoutExtension(imported.path),
-        );
-        final storageKey = AppStorage.presetStorageKey(_kind, name);
-        widget.storage.presets.putIfAbsent(
-          storageKey,
-          () => CustomerPreset(
-            name: name,
-            kind: _kind,
-            logoFileNames: [p.basename(imported.path)],
-            fields: {LabelFields.customer: name.toUpperCase()},
-          ),
-        );
-      }
+      final file = await widget.storage.importLogoBytes(
+        bytes,
+        preferredName: preferredName,
+        recreate: recreate,
+        options: options,
+        onLog: (line) => debugPrint('[recreate] $line'),
+      );
+      if (!mounted) return;
+      if (onImported != null) {
+        onImported(file.path);
+      } else {
+        setState(() {
+          if (_logoPaths.length < maxCustomerLogos &&
+              !_logoPaths.contains(file.path)) {
+            _logoPaths.add(file.path);
+          }
+        });
       }
     } finally {
       if (recreate && mounted) setState(() => _recreatingLogo = false);
-    }
-    await widget.storage.savePresets();
-    if (createPresets) {
-      for (final path in importedPaths) {
-        final name = widget.storage.safeCustomerName(
-          p.basenameWithoutExtension(path),
-        );
-        await _pushPresetQuietly(_kind, name);
-      }
-    }
-    setState(() {
-      for (final path in importedPaths) {
-        if (_logoPaths.length >= maxCustomerLogos) break;
-        if (!_logoPaths.contains(path)) _logoPaths.add(path);
-      }
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported ${paths.length} logo(s).')),
-      );
     }
   }
 
-  Future<void> _addLogoSlot() async {
+  Future<void> _browseAndImportLogo() async {
     if (_logoPaths.length >= maxCustomerLogos) return;
     final paths = await _pickImages(multiple: false);
-    if (paths.isEmpty) return;
-    final recreate = _recreateLogo;
-    if (recreate) setState(() => _recreatingLogo = true);
-    try {
-      final imported = await widget.storage.importLogo(
-        File(paths.first),
-        recreate: recreate,
-        onLog: (line) => debugPrint('[recreate] $line'),
+    if (paths.isEmpty || !mounted) return;
+    final source = File(paths.first);
+    final bytes = await source.readAsBytes();
+    await _importBytesWithPrompt(
+      bytes,
+      preferredName: p.basename(source.path),
+    );
+  }
+
+  Future<void> _addFromStorageAndImport() async {
+    if (_logoPaths.length >= maxCustomerLogos || !mounted) return;
+    final logos = widget.storage.listLogos();
+    if (logos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No logos in storage yet — use Browse.')),
       );
-      setState(() {
-        if (_logoPaths.length < maxCustomerLogos &&
-            !_logoPaths.contains(imported.path)) {
-          _logoPaths.add(imported.path);
-        }
-      });
-    } finally {
-      if (recreate && mounted) setState(() => _recreatingLogo = false);
+      return;
+    }
+
+    final picked = await showDialog<File>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add from storage'),
+        content: SizedBox(
+          width: 420,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 360),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final f in logos)
+                  if (!_logoPaths.contains(f.path))
+                    ListTile(
+                      leading: Image.file(
+                        f,
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.image_outlined),
+                      ),
+                      title: Text(p.basename(f.path)),
+                      onTap: () => Navigator.pop(ctx, f),
+                    ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    await _importBytesWithPrompt(
+      bytes,
+      preferredName: p.basename(picked.path),
+    );
+  }
+
+  Future<void> _showUploadManuallyMenu() async {
+    if (_logoPaths.length >= maxCustomerLogos || _recreatingLogo) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Upload manually'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'storage'),
+            child: const ListTile(
+              leading: Icon(Icons.folder_open),
+              title: Text('Add from Storage'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'browse'),
+            child: const ListTile(
+              leading: Icon(Icons.folder_outlined),
+              title: Text('Browse'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (action == 'storage') {
+      await _addFromStorageAndImport();
+    } else if (action == 'browse') {
+      await _browseAndImportLogo();
     }
   }
 
@@ -717,7 +750,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         );
-        setState(() => _showManualLogoUpload = true);
+        setState(() => _findingLogo = false);
         return;
       }
 
@@ -800,26 +833,11 @@ class _HomeScreenState extends State<HomeScreen> {
         nameCtrl.text.trim().isEmpty ? 'logo' : nameCtrl.text.trim(),
       );
       final ext = LogoFinder.extensionForBytes(chosen.bytes);
-      final recreate = _recreateLogo;
-      if (recreate) setState(() => _recreatingLogo = true);
-      final File file;
-      try {
-        file = await widget.storage.importLogoBytes(
-          chosen.bytes,
-          preferredName: '$base$ext',
-          recreate: recreate,
-          onLog: (line) => debugPrint('[recreate] $line'),
-        );
-      } finally {
-        if (recreate && mounted) setState(() => _recreatingLogo = false);
-      }
+      await _importBytesWithPrompt(
+        chosen.bytes,
+        preferredName: '$base$ext',
+      );
       if (!mounted) return;
-      setState(() {
-        if (_logoPaths.length < maxCustomerLogos &&
-            !_logoPaths.contains(file.path)) {
-          _logoPaths.add(file.path);
-        }
-      });
       final hint = chosen.hint.isEmpty ? '' : '\n${chosen.hint}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Logo from ${chosen.source}.$hint')),
@@ -828,10 +846,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Web find failed: $e. Upload manually instead.'),
+            content: Text('Web find failed: $e. Try Upload manually.'),
           ),
         );
-        setState(() => _showManualLogoUpload = true);
       }
     } finally {
       if (mounted) setState(() => _findingLogo = false);
@@ -846,22 +863,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _replaceLogoAt(int index) async {
     final paths = await _pickImages(multiple: false);
     if (paths.isEmpty) return;
-    final recreate = _recreateLogo;
-    if (recreate) setState(() => _recreatingLogo = true);
-    try {
-      final imported = await widget.storage.importLogo(
-        File(paths.first),
-        recreate: recreate,
-        onLog: (line) => debugPrint('[recreate] $line'),
-      );
-      setState(() {
-        if (index >= 0 && index < _logoPaths.length) {
-          _logoPaths[index] = imported.path;
-        }
-      });
-    } finally {
-      if (recreate && mounted) setState(() => _recreatingLogo = false);
-    }
+    final source = File(paths.first);
+    final bytes = await source.readAsBytes();
+    await _importBytesWithPrompt(
+      bytes,
+      preferredName: p.basename(source.path),
+      onImported: (path) {
+        setState(() {
+          if (index >= 0 && index < _logoPaths.length) {
+            _logoPaths[index] = path;
+          }
+        });
+      },
+    );
   }
 
   Future<List<Uint8List>> _loadSelectedLogoBytes() async {
@@ -1511,7 +1525,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final logos = widget.storage.listLogos();
     final presetNames = widget.storage.presetDisplayNamesFor(_kind);
     final groups = switch (_kind) {
       LabelKind.receiving => _receivingGroups,
@@ -1781,78 +1794,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _logoPaths.length >= maxCustomerLogos
+                              onPressed: _logoPaths.length >= maxCustomerLogos ||
+                                      _recreatingLogo
                                   ? null
-                                  : () => setState(
-                                        () => _showManualLogoUpload =
-                                            !_showManualLogoUpload,
-                                      ),
+                                  : _showUploadManuallyMenu,
                               icon: const Icon(Icons.upload_file, size: 18),
-                              label: Text(
-                                _showManualLogoUpload
-                                    ? 'Hide upload'
-                                    : 'Upload manually',
-                              ),
+                              label: const Text('Upload manually'),
                             ),
                           ),
                         ],
                       ),
-                      if (_showManualLogoUpload) ...[
-                        const SizedBox(height: 12),
-                        if (_logoPaths.length < maxCustomerLogos &&
-                            logos.isNotEmpty)
-                          DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              'logo-pick-${_logoPaths.length}-${logos.length}',
-                            ),
-                            initialValue: null,
-                            decoration: InputDecoration(
-                              labelText: _logoPaths.isEmpty
-                                  ? 'ADD FROM STORAGE'
-                                  : 'ADD C/O FROM STORAGE',
-                            ),
-                            items: [
-                              for (final f in logos)
-                                if (!_logoPaths.contains(f.path))
-                                  DropdownMenuItem(
-                                    value: f.path,
-                                    child: Text(p.basename(f.path)),
-                                  ),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() {
-                                if (_logoPaths.length < maxCustomerLogos &&
-                                    !_logoPaths.contains(v)) {
-                                  _logoPaths.add(v);
-                                }
-                              });
-                            },
-                          ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: _importLogos,
-                                child: const Text('Import…'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed:
-                                    _logoPaths.length >= maxCustomerLogos
-                                        ? null
-                                        : _addLogoSlot,
-                                child: Text(
-                                  _logoPaths.isEmpty ? 'Browse…' : 'Add C/O…',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                     ],
                   ),
                 ),
