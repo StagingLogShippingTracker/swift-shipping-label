@@ -524,8 +524,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addFromStorageAndImport() async {
-    if (_logoPaths.length >= maxCustomerLogos || !mounted) return;
-    final logos = widget.storage.listLogos();
+    if (!mounted) return;
+    var logos = widget.storage.listLogos();
     if (logos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No logos in storage yet — use Browse.')),
@@ -533,41 +533,132 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final atLogoLimit = _logoPaths.length >= maxCustomerLogos;
     final picked = await showDialog<File>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add from storage'),
-        content: SizedBox(
-          width: 420,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final f in logos)
-                  if (!_logoPaths.contains(f.path))
-                    ListTile(
-                      leading: Image.file(
-                        f,
-                        width: 44,
-                        height: 44,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.image_outlined),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          logos = widget.storage.listLogos();
+          return AlertDialog(
+            title: const Text('Add from storage'),
+            content: SizedBox(
+              width: 420,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: logos.isEmpty
+                    ? const Text('No logos in storage.')
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (atLogoLimit)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Logo slots full — delete below or remove a '
+                                'selected logo to import another.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: SwiftColors.muted.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ),
+                          Flexible(
+                            child: ListView(
+                              shrinkWrap: true,
+                              children: [
+                                for (final f in logos)
+                                  ListTile(
+                                    leading: Image.file(
+                                      f,
+                                      width: 44,
+                                      height: 44,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image_outlined),
+                                    ),
+                                    title: Text(p.basename(f.path)),
+                                    subtitle: _logoPaths.contains(f.path)
+                                        ? const Text(
+                                            'Selected on this label',
+                                            style: TextStyle(fontSize: 11),
+                                          )
+                                        : null,
+                                    enabled: !atLogoLimit &&
+                                        !_logoPaths.contains(f.path),
+                                    onTap: !atLogoLimit &&
+                                            !_logoPaths.contains(f.path)
+                                        ? () => Navigator.pop(ctx, f)
+                                        : null,
+                                    trailing: IconButton(
+                                      tooltip: 'Delete from storage',
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () async {
+                                        final name = p.basename(f.path);
+                                        final ok = await showDialog<bool>(
+                                          context: ctx,
+                                          builder: (confirmCtx) => AlertDialog(
+                                            title: const Text('Delete logo'),
+                                            content: Text(
+                                              'Delete “$name” from storage? '
+                                              'Presets that used this logo will '
+                                              'skip it on next load.',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(confirmCtx, false),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              FilledButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(confirmCtx, true),
+                                                child: const Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (ok != true || !ctx.mounted) return;
+                                        final deleted =
+                                            await widget.storage.deleteStoredLogo(f);
+                                        if (!ctx.mounted) return;
+                                        if (!deleted) {
+                                          ScaffoldMessenger.of(ctx).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Could not delete “$name”.',
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        setState(() {
+                                          _logoPaths.remove(f.path);
+                                        });
+                                        setDialogState(() {});
+                                        if (!ctx.mounted) return;
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Deleted “$name”.')),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      title: Text(p.basename(f.path)),
-                      onTap: () => Navigator.pop(ctx, f),
-                    ),
-              ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (picked == null || !mounted) return;
@@ -579,7 +670,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showUploadManuallyMenu() async {
-    if (_logoPaths.length >= maxCustomerLogos || _recreatingLogo) return;
+    if (_recreatingLogo) return;
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(

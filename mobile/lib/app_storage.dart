@@ -185,6 +185,43 @@ class AppStorage {
     return files;
   }
 
+  /// Delete a stored customer logo raster and optional SVG sidecar.
+  ///
+  /// Also removes [fileName] from any presets that reference it.
+  /// Returns true when the raster file was deleted.
+  Future<bool> deleteStoredLogo(File file) async {
+    final logosRoot = p.normalize(logosDir.path);
+    final target = p.normalize(file.path);
+    if (!p.isWithin(logosRoot, target)) return false;
+    final fileName = p.basename(file.path);
+    final svg = File(p.setExtension(file.path, '.svg'));
+    try {
+      if (await file.exists()) await file.delete();
+      if (await svg.exists()) await svg.delete();
+    } catch (_) {
+      return false;
+    }
+    await _removeLogoFromPresets(fileName);
+    return true;
+  }
+
+  Future<void> _removeLogoFromPresets(String fileName) async {
+    var changed = false;
+    for (final entry in presets.entries.toList()) {
+      final preset = entry.value;
+      if (!preset.logoFileNames.contains(fileName)) continue;
+      presets[entry.key] = CustomerPreset(
+        name: preset.name,
+        kind: preset.kind,
+        fields: preset.fields,
+        logoFileNames:
+            preset.logoFileNames.where((n) => n != fileName).toList(),
+      );
+      changed = true;
+    }
+    if (changed) await savePresets();
+  }
+
   Future<File> importLogo(
     File source, {
     String? preferredName,
