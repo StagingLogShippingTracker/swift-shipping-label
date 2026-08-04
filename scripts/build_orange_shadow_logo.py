@@ -1,9 +1,14 @@
 """Build the multi-color orange Swift Supply logo with SUPPLY in black and a hard
 black drop shadow behind SWIFT.
 
-Reads the existing single-color silhouette at
-``assets/brand/swift_supply_logo_orange.png`` (SWIFT + SUPPLY + top/bottom bars, all
-orange, alpha-cut), then:
+Brand asset naming (``assets/brand/``):
+- ``swift_supply_logo_orange_solid.{png,svg}`` — archived all-orange wordmark
+  (SWIFT + SUPPLY + bars in #CE4E30; no black shadow or black SUPPLY). Preserved
+  for future use; not used on generated documents.
+- ``swift_supply_logo_orange.{png,svg}`` — current document logo (shadow + black
+  SUPPLY). Synced to ``mobile/assets/images/swift_supply_logo_orange.png``.
+
+Reads the solid all-orange PNG, then:
 
 1. Splits it into row bands (top bar / SWIFT / SUPPLY / bottom bar).
 2. Keeps the bars in the app orange (#CE4E30).
@@ -24,6 +29,9 @@ from typing import Iterable, List, Tuple
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+ORANGE_SOLID_PNG = ROOT / "assets" / "brand" / "swift_supply_logo_orange_solid.png"
+ORANGE_SOLID_SVG = ROOT / "assets" / "brand" / "swift_supply_logo_orange_solid.svg"
+# Legacy alias kept in sync with ORANGE_SOLID_PNG for older scripts.
 SILHOUETTE_PNG = ROOT / "assets" / "brand" / "swift_supply_logo_orange_silhouette.png"
 ORANGE_PNG = ROOT / "assets" / "brand" / "swift_supply_logo_orange.png"
 ORANGE_SVG = ROOT / "assets" / "brand" / "swift_supply_logo_orange.svg"
@@ -193,6 +201,29 @@ def _write_preview(src_png: Path, dst_png: Path, target_width: int = 1200) -> No
     print(f"Wrote {dst_png}")
 
 
+def _ensure_solid_archive() -> Path:
+    """Return the all-orange source PNG, recovering from legacy paths if needed."""
+    if ORANGE_SOLID_PNG.is_file():
+        return ORANGE_SOLID_PNG
+    if SILHOUETTE_PNG.is_file():
+        ORANGE_SOLID_PNG.write_bytes(SILHOUETTE_PNG.read_bytes())
+        print(f"Archived solid -> {ORANGE_SOLID_PNG}")
+        return ORANGE_SOLID_PNG
+    # First shadow build — current orange PNG may still be all-orange.
+    ORANGE_SOLID_PNG.write_bytes(ORANGE_PNG.read_bytes())
+    print(f"Archived solid -> {ORANGE_SOLID_PNG}")
+    return ORANGE_SOLID_PNG
+
+
+def _sync_solid_svg(solid_png: Path) -> None:
+    from tools.logo_vectorizer.embed import write_embedded_png_svg
+
+    w, hh = write_embedded_png_svg(solid_png, ORANGE_SOLID_SVG)
+    print(f"Wrote {ORANGE_SOLID_SVG} (embed-png {w}x{hh})")
+    SILHOUETTE_PNG.write_bytes(solid_png.read_bytes())
+    print(f"Synced legacy -> {SILHOUETTE_PNG}")
+
+
 def _sync_svg_and_previews(src_png: Path) -> None:
     from tools.logo_vectorizer.embed import write_embedded_png_svg
 
@@ -213,13 +244,9 @@ def main() -> int:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    if not SILHOUETTE_PNG.is_file():
-        # First run — assume the current colored PNG has not been shadowed yet
-        # and archive it as the silhouette source of truth.
-        SILHOUETTE_PNG.write_bytes(ORANGE_PNG.read_bytes())
-        print(f"Archived silhouette -> {SILHOUETTE_PNG}")
-
-    build_shadowed_orange_logo(SILHOUETTE_PNG, ORANGE_PNG)
+    solid = _ensure_solid_archive()
+    _sync_solid_svg(solid)
+    build_shadowed_orange_logo(solid, ORANGE_PNG)
     _sync_svg_and_previews(ORANGE_PNG)
     return 0
 

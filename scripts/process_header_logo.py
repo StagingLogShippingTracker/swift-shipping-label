@@ -393,7 +393,12 @@ def export_brand_assets(
     trace_vector: bool = False,
     two_stage: bool = True,
 ) -> dict[str, Path]:
-    """Write high-res brand PNG/SVG exports plus chat-friendly previews."""
+    """Write high-res brand PNG/SVG exports plus chat-friendly previews.
+
+    Document PDFs use ``swift_supply_logo_orange`` (shadow + black SUPPLY via
+    ``scripts/build_orange_shadow_logo.py``). The all-orange archive lives at
+    ``swift_supply_logo_orange_solid.{png,svg}`` — do not overwrite with shadow.
+    """
     white = render_white_logo(src, BRAND_TARGET_WIDTH)
     orange = recolor_logo(white, APP_ORANGE_RGB)
 
@@ -401,6 +406,7 @@ def export_brand_assets(
     outputs: dict[str, Path] = {
         "white_png": BRAND_DIR / "swift_supply_logo_white.png",
         "white_svg": BRAND_DIR / "swift_supply_logo_white.svg",
+        # Shadow build overwrites orange_png/svg — run build_orange_shadow_logo after.
         "orange_png": BRAND_DIR / "swift_supply_logo_orange.png",
         "orange_svg": BRAND_DIR / "swift_supply_logo_orange.svg",
         "white_preview": BRAND_DIR / "swift_supply_logo_white_preview.png",
