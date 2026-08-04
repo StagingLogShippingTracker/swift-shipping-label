@@ -44,12 +44,7 @@ COL_W = (CONTENT_W - GUTTER) / 2
 ROOT = app_dir()
 BUNDLE = bundle_dir()
 OUT_PATH = ROOT / "Swift Supply Shipping Label.pdf"
-# Document logo (SWIFT + shadow + SUPPLY + orange bars) — vectorized as
-# `swift_supply_logo_document.svg` and rasterized from that SVG. The plain
-# `swift_supply_logo_orange.png` wordmark is kept for the app header/UI.
-LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_document.png"
-if not LOGO_PATH.exists():
-    LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
+LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
 CUSTOMER_LOGO_SAMPLE = ROOT / "sample_customer_logo.png"
 if not CUSTOMER_LOGO_SAMPLE.exists():
     alt = BUNDLE / "sample_customer_logo.png"

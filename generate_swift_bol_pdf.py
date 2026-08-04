@@ -88,11 +88,7 @@ from app_paths import bundle_dir
 OUT_PATH = Path(__file__).resolve().parent / "Swift Supply Bill of Lading.pdf"
 SERIAL_PATH = OUT_PATH.with_name("bol_serial.txt")
 XLSM_PATH = Path(r"C:\Users\Brice\OneDrive\Documents\Swift Waybill Document.xlsm")
-# Document logo (SWIFT + shadow + SUPPLY + orange bars) rasterized from
-# `swift_supply_logo_document.svg`. Falls back to the wordmark if missing.
-_DOC_LOGO = bundle_dir() / "assets" / "brand" / "swift_supply_logo_document.png"
-_WORDMARK = bundle_dir() / "assets" / "brand" / "swift_supply_logo_orange.png"
-LOGO_PATH = _DOC_LOGO if _DOC_LOGO.exists() else _WORDMARK
+LOGO_PATH = bundle_dir() / "assets" / "brand" / "swift_supply_logo_orange.png"
 
 
 def _safe_replace(tmp: Path, pdf_path: Path) -> Path:

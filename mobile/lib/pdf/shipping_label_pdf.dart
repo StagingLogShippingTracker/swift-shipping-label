@@ -62,22 +62,13 @@ class ShippingLabelPdf {
     Future<pw.Font> font(String path) async =>
         pw.Font.ttf(await rootBundle.load(path));
 
-    // Document lockup (SWIFT + shadow + SUPPLY + orange bars) rasterized from
-    // `swift_supply_logo_document.svg`. Falls back to the plain orange wordmark
-    // when the document asset isn't shipped yet.
     Uint8List? logoBytes;
     try {
-      final data = await rootBundle
-          .load('assets/images/swift_supply_logo_document.png');
+      final data =
+          await rootBundle.load('assets/images/swift_supply_logo_orange.png');
       logoBytes = data.buffer.asUint8List();
     } catch (_) {
-      try {
-        final data = await rootBundle
-            .load('assets/images/swift_supply_logo_orange.png');
-        logoBytes = data.buffer.asUint8List();
-      } catch (_) {
-        logoBytes = null;
-      }
+      logoBytes = null;
     }
 
     _instance = ShippingLabelPdf._(

@@ -46,11 +46,7 @@ COL_W = (CONTENT_W - GUTTER) / 2
 ROOT = app_dir()
 BUNDLE = bundle_dir()
 OUT_PATH = ROOT / "Swift Supply Receiving Label.pdf"
-# Document logo (SWIFT + shadow + SUPPLY + orange bars) rasterized from
-# `swift_supply_logo_document.svg`. Falls back to the wordmark if missing.
-LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_document.png"
-if not LOGO_PATH.exists():
-    LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
+LOGO_PATH = BUNDLE / "assets" / "brand" / "swift_supply_logo_orange.png"
 FONTS_DIR = BUNDLE / "fonts"
 
 FONT = "Oswald"

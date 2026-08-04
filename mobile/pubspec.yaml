@@ -1,7 +1,7 @@
 ﻿name: swift_shipping_label
 description: Swift Oilfield Supply â€” Document Generator (Shipping, Receiving, Bill of Lading).
 publish_to: "none"
-version: 1.1.31+49
+version: 1.1.32+50
 
 environment:
   sdk: ^3.12.2
@@ -29,7 +29,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/swift_supply_logo_orange.png
-    - assets/images/swift_supply_logo_document.png
     - assets/images/swift_supply_header_white.png
     - assets/images/sample_customer_logo.png
   fonts:
