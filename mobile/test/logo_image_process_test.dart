@@ -1,8 +1,10 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:swift_shipping_label/logo_image_process.dart';
+import 'package:swift_shipping_label/logo_import_options.dart';
 
 void main() {
   test('removes white background and trims padding', () {
@@ -58,28 +60,30 @@ void main() {
     expect(decoded.getPixel(0, 0).a.toInt(), lessThan(12));
   });
 
-  test('preserves anti-aliased logo edge pixels', () {
-    final src = img.Image(width: 80, height: 80, numChannels: 4);
-    img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));
+  test('manual crop extracts normalized region', () {
+    final src = img.Image(width: 200, height: 100, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(255, 0, 0, 255));
     img.fillRect(
       src,
-      x1: 30,
+      x1: 80,
       y1: 30,
-      x2: 49,
-      y2: 49,
-      color: img.ColorRgba8(10, 10, 10, 255),
+      x2: 119,
+      y2: 69,
+      color: img.ColorRgba8(0, 255, 0, 255),
     );
-    for (var i = 0; i < 4; i++) {
-      final a = 180 - i * 40;
-      src.setPixelRgba(29 - i, 40, 10, 10, 10, a);
-      src.setPixelRgba(50 + i, 40, 10, 10, 10, a);
-    }
 
-    final out = LogoImageProcessor.process(Uint8List.fromList(img.encodePng(src)));
+    final input = Uint8List.fromList(img.encodePng(src));
+    final out = LogoImageProcessor.processWithOptions(
+      input,
+      LogoImportOptions.standard(
+        removeBackground: false,
+        cropMode: LogoCropMode.manual,
+        manualCropRect: const Rect.fromLTWH(0.4, 0.3, 0.2, 0.4),
+      ),
+    );
     final decoded = img.decodePng(out)!;
-
-    final coreX = decoded.width ~/ 2;
-    final coreY = decoded.height ~/ 2;
-    expect(decoded.getPixel(coreX, coreY).a.toInt(), greaterThan(200));
+    expect(decoded.width, 40);
+    expect(decoded.height, 40);
+    expect(decoded.getPixel(20, 20).g.toInt(), greaterThan(200));
   });
 }

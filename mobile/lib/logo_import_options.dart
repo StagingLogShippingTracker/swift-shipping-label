@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
+import 'logo_crop_geometry.dart';
 import 'theme.dart';
 
 /// How to crop a logo before import.
@@ -216,6 +218,18 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
   }
 }
 
+enum _CropDragMode {
+  move,
+  left,
+  right,
+  top,
+  bottom,
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight,
+}
+
 /// Interactive normalized crop rectangle over [bytes].
 class _ManualCropEditor extends StatefulWidget {
   const _ManualCropEditor({
@@ -233,18 +247,127 @@ class _ManualCropEditor extends StatefulWidget {
 }
 
 class _ManualCropEditorState extends State<_ManualCropEditor> {
+  static const _minCrop = 0.05;
+  static const _handleRadius = 8.0;
+  static const _edgeHit = 12.0;
+
+  late Size _imageSize;
   late Rect _rect;
+  _CropDragMode? _dragMode;
+  Rect? _dragStartRect;
+  Offset? _panStartNormalized;
 
   @override
   void initState() {
     super.initState();
-    _rect = widget.initialRect ?? const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8);
+    final decoded = img.decodeImage(widget.bytes);
+    _imageSize = decoded != null
+        ? Size(decoded.width.toDouble(), decoded.height.toDouble())
+        : const Size(1, 1);
+    _rect = LogoCropGeometry.clampNormalized(
+      widget.initialRect ?? const Rect.fromLTWH(0.05, 0.05, 0.9, 0.9),
+      minSize: _minCrop,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => widget.onChanged(_rect));
   }
 
   void _update(Rect r) {
-    setState(() => _rect = r);
-    widget.onChanged(r);
+    final next = LogoCropGeometry.clampNormalized(r, minSize: _minCrop);
+    setState(() => _rect = next);
+    widget.onChanged(next);
+  }
+
+  _CropDragMode? _hitTest(Offset local, Size containerSize) {
+    final displayRect =
+        LogoCropGeometry.normalizedToDisplay(_rect, containerSize, _imageSize);
+    final corners = <(_CropDragMode, Offset)>[
+      (_CropDragMode.topLeft, displayRect.topLeft),
+      (_CropDragMode.topRight, displayRect.topRight),
+      (_CropDragMode.bottomLeft, displayRect.bottomLeft),
+      (_CropDragMode.bottomRight, displayRect.bottomRight),
+    ];
+    for (final (mode, point) in corners) {
+      if ((local - point).distance <= _handleRadius + 4) return mode;
+    }
+
+    if ((local.dx - displayRect.left).abs() <= _edgeHit &&
+        local.dy >= displayRect.top - _edgeHit &&
+        local.dy <= displayRect.bottom + _edgeHit) {
+      return _CropDragMode.left;
+    }
+    if ((local.dx - displayRect.right).abs() <= _edgeHit &&
+        local.dy >= displayRect.top - _edgeHit &&
+        local.dy <= displayRect.bottom + _edgeHit) {
+      return _CropDragMode.right;
+    }
+    if ((local.dy - displayRect.top).abs() <= _edgeHit &&
+        local.dx >= displayRect.left - _edgeHit &&
+        local.dx <= displayRect.right + _edgeHit) {
+      return _CropDragMode.top;
+    }
+    if ((local.dy - displayRect.bottom).abs() <= _edgeHit &&
+        local.dx >= displayRect.left - _edgeHit &&
+        local.dx <= displayRect.right + _edgeHit) {
+      return _CropDragMode.bottom;
+    }
+    if (displayRect.contains(local)) return _CropDragMode.move;
+    return null;
+  }
+
+  Rect _applyDrag(Rect start, Offset normalizedDelta, _CropDragMode mode) {
+    var left = start.left;
+    var top = start.top;
+    var right = start.right;
+    var bottom = start.bottom;
+
+    switch (mode) {
+      case _CropDragMode.move:
+        left += normalizedDelta.dx;
+        top += normalizedDelta.dy;
+        right += normalizedDelta.dx;
+        bottom += normalizedDelta.dy;
+      case _CropDragMode.left:
+        left += normalizedDelta.dx;
+      case _CropDragMode.right:
+        right += normalizedDelta.dx;
+      case _CropDragMode.top:
+        top += normalizedDelta.dy;
+      case _CropDragMode.bottom:
+        bottom += normalizedDelta.dy;
+      case _CropDragMode.topLeft:
+        left += normalizedDelta.dx;
+        top += normalizedDelta.dy;
+      case _CropDragMode.topRight:
+        right += normalizedDelta.dx;
+        top += normalizedDelta.dy;
+      case _CropDragMode.bottomLeft:
+        left += normalizedDelta.dx;
+        bottom += normalizedDelta.dy;
+      case _CropDragMode.bottomRight:
+        right += normalizedDelta.dx;
+        bottom += normalizedDelta.dy;
+    }
+
+    if (right - left < _minCrop) {
+      if (mode == _CropDragMode.left ||
+          mode == _CropDragMode.topLeft ||
+          mode == _CropDragMode.bottomLeft) {
+        left = right - _minCrop;
+      } else {
+        right = left + _minCrop;
+      }
+    }
+    if (bottom - top < _minCrop) {
+      if (mode == _CropDragMode.top ||
+          mode == _CropDragMode.topLeft ||
+          mode == _CropDragMode.topRight) {
+        top = bottom - _minCrop;
+      } else {
+        bottom = top + _minCrop;
+      }
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
   }
 
   @override
@@ -255,27 +378,55 @@ class _ManualCropEditorState extends State<_ManualCropEditor> {
         return SizedBox(
           height: maxH,
           child: GestureDetector(
-            onPanUpdate: (d) {
+            behavior: HitTestBehavior.opaque,
+            onPanStart: (d) {
               final box = context.findRenderObject() as RenderBox?;
               if (box == null) return;
-              final size = box.size;
-              final dx = d.delta.dx / size.width;
-              final dy = d.delta.dy / size.height;
-              var next = _rect.shift(Offset(dx, dy));
-              next = Rect.fromLTWH(
-                next.left.clamp(0.0, 1.0 - next.width),
-                next.top.clamp(0.0, 1.0 - next.height),
-                next.width,
-                next.height,
+              final mode = _hitTest(d.localPosition, box.size);
+              if (mode == null) return;
+              _dragMode = mode;
+              _dragStartRect = _rect;
+              _panStartNormalized = LogoCropGeometry.displayToNormalized(
+                d.localPosition,
+                box.size,
+                _imageSize,
               );
-              _update(next);
+            },
+            onPanUpdate: (d) {
+              final box = context.findRenderObject() as RenderBox?;
+              if (box == null ||
+                  _dragMode == null ||
+                  _dragStartRect == null ||
+                  _panStartNormalized == null) {
+                return;
+              }
+              final current = LogoCropGeometry.displayToNormalized(
+                d.localPosition,
+                box.size,
+                _imageSize,
+              );
+              final totalDelta = current - _panStartNormalized!;
+              _update(_applyDrag(_dragStartRect!, totalDelta, _dragMode!));
+            },
+            onPanEnd: (_) {
+              _dragMode = null;
+              _dragStartRect = null;
+              _panStartNormalized = null;
+            },
+            onPanCancel: () {
+              _dragMode = null;
+              _dragStartRect = null;
+              _panStartNormalized = null;
             },
             child: Stack(
               fit: StackFit.expand,
               children: [
                 Image.memory(widget.bytes, fit: BoxFit.contain),
                 CustomPaint(
-                  painter: _CropOverlayPainter(normalizedRect: _rect),
+                  painter: _CropOverlayPainter(
+                    normalizedRect: _rect,
+                    imageSize: _imageSize,
+                  ),
                 ),
                 Positioned(
                   right: 4,
@@ -297,37 +448,83 @@ class _ManualCropEditorState extends State<_ManualCropEditor> {
 }
 
 class _CropOverlayPainter extends CustomPainter {
-  _CropOverlayPainter({required this.normalizedRect});
+  _CropOverlayPainter({
+    required this.normalizedRect,
+    required this.imageSize,
+  });
 
   final Rect normalizedRect;
+  final Size imageSize;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(
-      normalizedRect.left * size.width,
-      normalizedRect.top * size.height,
-      normalizedRect.width * size.width,
-      normalizedRect.height * size.height,
+    final imageRect = LogoCropGeometry.containImageRect(size, imageSize);
+    final cropRect = LogoCropGeometry.normalizedToDisplay(
+      normalizedRect,
+      size,
+      imageSize,
     );
-    final shade = Paint()..color = const Color(0x88000000);
+    final shade = Paint()..color = const Color(0xAA000000);
+
+    // Dim letterbox margins outside the image.
     canvas.drawPath(
       Path.combine(
         PathOperation.difference,
         Path()..addRect(Offset.zero & size),
-        Path()..addRect(rect),
+        Path()..addRect(imageRect),
       ),
       shade,
     );
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..color = SwiftColors.accent
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+
+    // Dim area outside crop window but inside the image.
+    canvas.save();
+    canvas.clipRect(imageRect);
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(imageRect),
+        Path()..addRect(cropRect),
+      ),
+      shade,
     );
+    canvas.restore();
+
+    final border = Paint()
+      ..color = SwiftColors.accent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawRect(cropRect, border);
+
+    // Rule-of-thirds guides inside crop window.
+    final guide = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (var i = 1; i <= 2; i++) {
+      final x = cropRect.left + cropRect.width * i / 3;
+      final y = cropRect.top + cropRect.height * i / 3;
+      canvas.drawLine(Offset(x, cropRect.top), Offset(x, cropRect.bottom), guide);
+      canvas.drawLine(Offset(cropRect.left, y), Offset(cropRect.right, y), guide);
+    }
+
+    final handleFill = Paint()..color = SwiftColors.accent;
+    final handleStroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final point in [
+      cropRect.topLeft,
+      cropRect.topRight,
+      cropRect.bottomLeft,
+      cropRect.bottomRight,
+    ]) {
+      canvas.drawCircle(point, 7, handleFill);
+      canvas.drawCircle(point, 7, handleStroke);
+    }
   }
 
   @override
   bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) =>
-      oldDelegate.normalizedRect != normalizedRect;
+      oldDelegate.normalizedRect != normalizedRect ||
+      oldDelegate.imageSize != imageSize;
 }
