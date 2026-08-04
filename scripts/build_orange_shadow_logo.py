@@ -3,18 +3,21 @@ black drop shadow behind SWIFT.
 
 Brand asset naming (``assets/brand/``):
 - ``swift_supply_logo_orange_solid.{png,svg}`` — archived all-orange wordmark
-  (SWIFT + SUPPLY + bars in #CE4E30; no black shadow or black SUPPLY). Preserved
-  for future use; not used on generated documents.
+  (SWIFT + SUPPLY + bars in #CE4E30; no black shadow, no black SUPPLY, no
+  outlines). Preserved for future use; not used on generated documents.
 - ``swift_supply_logo_orange.{png,svg}`` — current document logo (shadow + black
-  SUPPLY). Synced to ``mobile/assets/images/swift_supply_logo_orange.png``.
+  SUPPLY + thin black outlines around the orange bars and each SWIFT letter).
+  Synced to ``mobile/assets/images/swift_supply_logo_orange.png``.
 
 Reads the solid all-orange PNG, then:
 
 1. Splits it into row bands (top bar / SWIFT / SUPPLY / bottom bar).
-2. Keeps the bars in the app orange (#CE4E30).
-3. Recolors the SUPPLY rows to solid black.
-4. Composites a hard-edge black drop shadow (offset bottom-right) behind SWIFT and
-   paints SWIFT in orange on top of it.
+2. Keeps the bars in the app orange (#CE4E30) with a thin black outline drawn
+   underneath (morphological dilate of the bar mask).
+3. Recolors the SUPPLY rows to solid black (no outline).
+4. Composites a hard-edge black drop shadow (offset bottom-right) behind SWIFT,
+   draws a thin black outline (dilated SWIFT mask) so each letter reads with a
+   clean stroke, then paints SWIFT in orange on top.
 
 Writes the same PNG path back and regenerates the base64 embed-PNG SVG so the whole
 document pipeline (PDFs, Flutter, previews) picks up the new artwork with no other
@@ -26,7 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 ORANGE_SOLID_PNG = ROOT / "assets" / "brand" / "swift_supply_logo_orange_solid.png"
@@ -47,6 +50,13 @@ BLACK = (0, 0, 0)
 # without swallowing the letterforms.
 SHADOW_DX = 28
 SHADOW_DY = 28
+
+# Thin black outline around the orange bars and each SWIFT letter. Implemented as
+# a morphological dilation of the shape's alpha mask painted black under the
+# orange fill, leaving a visible ring at the perimeter. 6 px on the 2987×910
+# master reads as a clean logo outline (~1% of SWIFT letter height) — not a
+# heavy border. SUPPLY has no outline (stays black), matching the brief.
+OUTLINE_PX = 6
 
 # Row-band detection thresholds tuned to the current 2987×910 silhouette but
 # expressed as fractions so re-runs at different sizes still work.
@@ -108,35 +118,41 @@ def _find_text_bands(
     return bands
 
 
-def _paint(
-    dst: Image.Image,
-    src: Image.Image,
-    color: Tuple[int, int, int],
-    y0: int,
-    y1: int,
-    dx: int = 0,
-    dy: int = 0,
-) -> None:
-    """Paint the alpha silhouette from ``src[y0..y1]`` onto ``dst`` at (+dx, +dy).
-
-    Any silhouette pixel above the ink threshold is written as a fully opaque fill
-    so layered passes (e.g. orange SWIFT over its black shadow) never show through.
-    """
+def _band_mask(src: Image.Image, y0: int, y1: int) -> Image.Image:
+    """Full-canvas binary L mask (255 opaque, 0 clear) for rows ``y0..y1``."""
     w, h = src.size
-    src_px = src.load()
-    dst_px = dst.load()
-    new_r, new_g, new_b = color
-    for y in range(y0, y1 + 1):
-        yd = y + dy
-        if yd < 0 or yd >= h:
-            continue
-        for x in range(w):
-            if src_px[x, y][3] < 16:
-                continue
-            xd = x + dx
-            if xd < 0 or xd >= w:
-                continue
-            dst_px[xd, yd] = (new_r, new_g, new_b, 255)
+    alpha = src.split()[3]
+    band = alpha.crop((0, y0, w, y1 + 1)).point(lambda a: 255 if a >= 16 else 0)
+    mask = Image.new("L", (w, h), 0)
+    mask.paste(band, (0, y0))
+    return mask
+
+
+def _dilate(mask: Image.Image, radius: int) -> Image.Image:
+    """Morphologically dilate a binary L mask by ``radius`` pixels."""
+    if radius <= 0:
+        return mask
+    size = 2 * radius + 1
+    return mask.filter(ImageFilter.MaxFilter(size))
+
+
+def _translate(mask: Image.Image, dx: int, dy: int) -> Image.Image:
+    """Shift a full-canvas L mask by (dx, dy), zero-padding the exposed edges."""
+    if dx == 0 and dy == 0:
+        return mask
+    shifted = Image.new("L", mask.size, 0)
+    shifted.paste(mask, (dx, dy))
+    return shifted
+
+
+def _paint_mask(
+    dst: Image.Image,
+    mask: Image.Image,
+    color: Tuple[int, int, int],
+) -> None:
+    """Paint solid ``color`` (fully opaque) onto ``dst`` wherever ``mask`` > 0."""
+    fill = Image.new("RGBA", dst.size, (*color, 255))
+    dst.paste(fill, (0, 0), mask)
 
 
 def build_shadowed_orange_logo(
@@ -145,8 +161,10 @@ def build_shadowed_orange_logo(
     *,
     shadow_dx: int = SHADOW_DX,
     shadow_dy: int = SHADOW_DY,
+    outline_px: int = OUTLINE_PX,
 ) -> Tuple[Band, Band, List[Band]]:
-    """Compose SWIFT (orange + hard shadow) + SUPPLY (black) + bars (orange)."""
+    """Compose SWIFT (orange + hard shadow + outline) + SUPPLY (black) + bars
+    (orange + outline)."""
     src = Image.open(src_png).convert("RGBA")
     w, h = src.size
     px = src.load()
@@ -171,16 +189,29 @@ def build_shadowed_orange_logo(
     print(f"  SUPPLY band: rows {supply_band[0]}..{supply_band[1]}")
     print(f"  bottom bar : rows {bottom_bar[0]}..{bottom_bar[1]}")
     print(f"  shadow     : dx={shadow_dx}, dy={shadow_dy}")
+    print(f"  outline    : {outline_px} px (dilated black under orange fill)")
 
     out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
 
-    _paint(out, src, APP_ORANGE, top_bar[0], top_bar[1])
-    _paint(out, src, APP_ORANGE, bottom_bar[0], bottom_bar[1])
+    top_mask = _band_mask(src, top_bar[0], top_bar[1])
+    bottom_mask = _band_mask(src, bottom_bar[0], bottom_bar[1])
+    swift_mask = _band_mask(src, swift_band[0], swift_band[1])
+    supply_mask = _band_mask(src, supply_band[0], supply_band[1])
 
-    _paint(out, src, BLACK, swift_band[0], swift_band[1], dx=shadow_dx, dy=shadow_dy)
-    _paint(out, src, APP_ORANGE, swift_band[0], swift_band[1])
+    # Bars: dilated black outline behind orange fill (top + bottom).
+    _paint_mask(out, _dilate(top_mask, outline_px), BLACK)
+    _paint_mask(out, _dilate(bottom_mask, outline_px), BLACK)
+    _paint_mask(out, top_mask, APP_ORANGE)
+    _paint_mask(out, bottom_mask, APP_ORANGE)
 
-    _paint(out, src, BLACK, supply_band[0], supply_band[1])
+    # SWIFT: hard drop shadow (offset), then dilated black outline, then orange
+    # fill. Outline sits under the fill so each letter reads with a clean stroke.
+    _paint_mask(out, _translate(swift_mask, shadow_dx, shadow_dy), BLACK)
+    _paint_mask(out, _dilate(swift_mask, outline_px), BLACK)
+    _paint_mask(out, swift_mask, APP_ORANGE)
+
+    # SUPPLY: solid black, no outline.
+    _paint_mask(out, supply_mask, BLACK)
 
     dst_png.parent.mkdir(parents=True, exist_ok=True)
     out.save(dst_png, optimize=True)
