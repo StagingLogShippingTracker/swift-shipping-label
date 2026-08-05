@@ -341,7 +341,8 @@ class ShippingLabelPdf {
     _bumper(c, pageH - my + 4);
 
     final footY = my + 6;
-    final pieceTop = footY + 70;
+    // Clearance above footer for the tall 48pt piece-count band.
+    final pieceTop = footY + pieceBandRowH + 28;
 
     var y = _drawHeader(c, fonts, customerLogos, swiftLogo, options: options);
     final pair = _drawIdentityPair(c, fonts, y, sample);
@@ -475,13 +476,16 @@ class ShippingLabelPdf {
     c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
   }
 
-  /// Customer-logo target height on Shipping & Receiving (fixed 55 pt).
-  static const customerLogoTargetH = 55.0;
+  /// Customer/C/O logo default height on Shipping & Receiving (pt).
+  static const customerLogoTargetH = 62.24;
+
+  /// Keep logos clear of the orange header frames (top bumper / band edges).
+  static const customerLogoBandInset = 2.0;
 
   /// Horizontal gap between Logo 1 and Logo 2 (C/O).
   static const customerLogoGap = 10.0;
 
-  /// Breathing gap between the customer-logo row and Swift.
+  /// Breathing gap between the customer-logo row and Swift (never overlap).
   static const customerLogoToSwiftGap = 12.0;
 
   double _swiftRenderedWidth(PdfImage? logo, double maxW, double maxH) {
@@ -493,9 +497,9 @@ class ShippingLabelPdf {
     return iw * scale;
   }
 
-  /// Left-align 1–2 customer logos at fixed [targetH] with [gap] between.
-  /// Widths = nativeW/nativeH × H. If row exceeds [availW], scale down
-  /// proportionally so both share the same reduced height.
+  /// Uniform height for 1–2 customer logos: start at [targetH], then downscale
+  /// together if the row is wider than [availW] or taller than the orange-bar
+  /// band. Never changes Swift's reserved position/size.
   void _drawCustomerLogoRow(
     PdfGraphics c,
     List<PdfImage> logos,
@@ -514,48 +518,50 @@ class ShippingLabelPdf {
     }
     if (valid.isEmpty || availW <= 0) return;
 
-    var h = targetH;
+    final bandInnerH =
+        (bandTop - logoBottom - 2 * customerLogoBandInset).clamp(1.0, 10000.0);
+    var h = targetH > bandInnerH ? bandInnerH : targetH;
+    if (h <= 0) return;
+
     final widths = <double>[
-      for (final l in valid) l.width / l.height * h,
+      for (final l in valid) l.width.toDouble() / l.height.toDouble() * h,
     ];
-    var combined = widths.fold<double>(0, (a, b) => a + b) +
-        gap * (valid.length - 1);
+    var combined =
+        widths.fold<double>(0, (a, b) => a + b) + gap * (valid.length - 1);
     if (combined > availW) {
       final scale = availW / combined;
       h *= scale;
       for (var i = 0; i < widths.length; i++) {
         widths[i] *= scale;
       }
+      combined = availW;
     }
 
-    // Same horizontal band as Swift (vertically centered in header band).
+    // Re-clamp height if width shrink left them still outside the band.
+    if (h > bandInnerH) {
+      final scale = bandInnerH / h;
+      h = bandInnerH;
+      for (var i = 0; i < widths.length; i++) {
+        widths[i] *= scale;
+      }
+    }
+
     final bandCenter = (bandTop + logoBottom) / 2;
-    final y = bandCenter - h / 2;
+    var y = bandCenter - h / 2;
+    final minY = logoBottom + customerLogoBandInset;
+    final maxY = bandTop - customerLogoBandInset - h;
+    if (y < minY) y = minY;
+    if (maxY >= minY && y > maxY) y = maxY;
 
     var x = leftX;
+    final rightLimit = leftX + availW;
     for (var i = 0; i < valid.length; i++) {
-      c.drawImage(valid[i], x, y, widths[i], h);
-      x += widths[i] + gap;
+      final w = widths[i];
+      // Hard stop: never draw past the reserved Swift / frame edge.
+      if (x + w > rightLimit + 0.01) break;
+      c.drawImage(valid[i], x, y, w, h);
+      x += w + gap;
     }
-  }
-
-  void _drawCustomerLogosInHeader(
-    PdfGraphics c,
-    List<PdfImage> logos,
-    double logoBottom,
-    double bandH,
-    double bandTop,
-    double availW,
-  ) {
-    _drawCustomerLogoRow(
-      c,
-      logos,
-      mx,
-      logoBottom,
-      bandTop,
-      customerLogoTargetH,
-      availW,
-    );
   }
 
   double _drawHeader(
@@ -571,22 +577,27 @@ class ShippingLabelPdf {
     final bandH = 0.92 * inch;
     final logoBottom = yTop - bandH;
     final logos = customerLogos.take(maxCustomerLogos).toList();
-    final logoH = customerLogoTargetH * options.logoScale;
 
+    final bandInnerH = bandH - 2 * customerLogoBandInset;
+    var logoH = customerLogoTargetH * options.logoScale;
+    if (logoH > bandInnerH) logoH = bandInnerH;
+
+    // Swift size/position is computed first and never moved for customer logos.
     final swiftMaxW = colW * 0.95;
     final swiftMaxH = bandH - 4;
     final swiftW = options.showSwiftLogo
         ? _swiftRenderedWidth(swiftLogo, swiftMaxW, swiftMaxH)
         : 0.0;
-    final swiftLeftX = mx + contentW - swiftW;
 
     final place = options.showCustomerLogos
         ? options.logoPlacement
         : PdfLogoPlacement.hidden;
 
     if (place == PdfLogoPlacement.left && logos.isNotEmpty) {
+      // Customer logos sit left of Swift; avail width stops before Swift.
+      final swiftLeftX = mx + contentW - swiftW;
       final availForCustomer = swiftW > 0
-          ? (swiftLeftX - customerLogoToSwiftGap - mx)
+          ? (swiftLeftX - customerLogoToSwiftGap - mx).clamp(0.0, contentW)
           : contentW;
       _drawCustomerLogoRow(
         c,
@@ -598,9 +609,12 @@ class ShippingLabelPdf {
         availForCustomer,
       );
     } else if (place == PdfLogoPlacement.right && logos.isNotEmpty) {
-      // Customer logos on the right; Swift stays left-ish of remaining space.
-      final avail = contentW * 0.42;
-      final startX = mx + contentW - avail;
+      // Swift stays on the left; customer logos use the remaining right span.
+      final swiftRightEdge = mx + swiftW;
+      final startX = swiftW > 0
+          ? swiftRightEdge + customerLogoToSwiftGap
+          : mx + contentW * 0.58;
+      final avail = (mx + contentW - startX).clamp(0.0, contentW);
       _drawCustomerLogoRow(
         c,
         logos,
@@ -629,23 +643,33 @@ class ShippingLabelPdf {
       final drawX = place == PdfLogoPlacement.right
           ? mx
           : (mx + contentW - w);
-      final bandCenter = (yTop + logoBottom) / 2;
-      c.drawImage(swiftLogo, drawX, bandCenter - h / 2, w, h);
+      // Center between top thick bumper bottom and thin accent top.
+      final yTopBarBottom = pageH - my + 4;
+      final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
+      final ruleY = logoBottom - airUnderLogos;
+      const ruleH = 2.5;
+      final ruleDrawY = ruleY - 0.5;
+      final yBottomBarTop = ruleDrawY + ruleH;
+      final gap = yTopBarBottom - yBottomBarTop;
+      final yLogoBottom = yBottomBarTop + (gap - h) / 2;
+      c.drawImage(swiftLogo, drawX, yLogoBottom, w, h);
     }
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
+      final belowTop = logoBottom - customerLogoBandInset;
+      final belowBottom = logoBottom - logoH - 4;
       _drawCustomerLogoRow(
         c,
         logos,
         mx,
-        logoBottom - logoH - 4,
-        logoBottom,
-        logoH * 0.9,
+        belowBottom,
+        belowTop,
+        logoH,
         contentW,
       );
     }
 
-    // Rule under logos + optional RECEIVING chip.
+    // Rule under logos + optional RECEIVING chip (fixed Y — not shifted by logos).
     final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
     final ruleY = logoBottom - airUnderLogos;
     c.setFillColor(swift);
@@ -998,8 +1022,17 @@ class ShippingLabelPdf {
     y -= heroH + 12;
 
     final loc = sample.get(LabelFields.location);
-    final locSize = fitWrappedSize(loc, colW - 4, fonts.calibriBold);
-    final locH = fieldHeightFor(loc, fonts.calibriBold, size: locSize);
+    // Fixed font size — multi-line addresses grow the box instead of shrinking text.
+    const locSize = entrySize;
+    final baseLocH = fieldHeightFor(
+      loc,
+      fonts.calibriBold,
+      size: locSize,
+      maxLines: 8,
+      minH: 22,
+    );
+    // Former Attn band space is given to Location (~2× height).
+    final locH = baseLocH * 2;
     _microLabel(c, fonts, rx, y, 'Location');
     y -= 3;
     if (loc.isNotEmpty) {
@@ -1017,28 +1050,7 @@ class ShippingLabelPdf {
       );
     }
     _hairline(c, rx, y - locH - 1, colW);
-    y -= locH + 12;
-
-    final attn = sample.get(LabelFields.attn);
-    final attnSize = fitSingleLineSize(attn, colW - 4, fonts.calibriBold);
-    final attnH = attnSize + 10 < 26 ? 26.0 : attnSize + 10;
-    _microLabel(c, fonts, rx, y, 'Attn');
-    y -= 3;
-    if (attn.isNotEmpty) {
-      _drawValue(
-        c,
-        fonts,
-        attn,
-        rx,
-        y - attnH,
-        colW,
-        attnH,
-        fontSize: attnSize,
-        font: fonts.calibriBold,
-      );
-    }
-    _hairline(c, rx, y - attnH - 1, colW);
-    return y - attnH - 12;
+    return y - locH - 12;
   }
 
   (double, double) _drawIdentityPair(
@@ -1095,6 +1107,19 @@ class ShippingLabelPdf {
       multiline: true,
     );
 
+    // Attn sits under Project (left column); Special Instructions absorbs the
+    // remaining vertical room and shrinks when PO/Project grow.
+    yL = _fieldRow(
+      c,
+      fonts,
+      yL,
+      'Attn',
+      LabelFields.attn,
+      lx,
+      colW,
+      sample,
+    );
+
     final yR = _drawHero(c, fonts, y, sample);
     return (yL, yR);
   }
@@ -1149,7 +1174,9 @@ class ShippingLabelPdf {
     _microLabel(c, fonts, lx, yLeft, 'Special Instructions');
     final notesTop = yLeft - 4;
     final notesFloor = bandBottom + 20;
-    final notesH = (notesTop - notesFloor).clamp(48.0, 10000.0);
+    // Shrinks when PO / Project / Attn push yLeft down — absorbs expansion
+    // without overflowing the piece band.
+    final notesH = (notesTop - notesFloor).clamp(36.0, 10000.0);
     c.setFillColor(notesBg);
     _fillRect(c, lx, notesTop - notesH, colW, notesH);
     c.setFillColor(swift);
@@ -1180,15 +1207,38 @@ class ShippingLabelPdf {
     }
   }
 
+  /// Piece-count / page-number digits (e.g. "2 of 28").
+  static const pieceCountSize = 48.0;
+  static const pieceOfSize = 22.0;
+  static const pieceBandPadV = 8.0;
+  static const pieceBandBoxPadH = 10.0;
+  /// Label strip above the digits + digit line-box + pads.
+  static const pieceBandLabelStrip = 14.0;
+  static const pieceBandValueH = pieceCountSize + 10.0;
+  static const pieceBandRowH =
+      pieceBandLabelStrip + pieceBandValueH + pieceBandPadV * 2 + 4.0;
+
   void _drawPieceBand(
     PdfGraphics c,
     _ResolvedFonts fonts,
     double y,
     ShippingLabelData sample,
   ) {
-    const rowH = 38.0;
+    const rowH = pieceBandRowH;
     const gap = 12.0;
     final half = (contentW - gap) / 2;
+
+    double countBoxW(String val) {
+      final measure = val.isNotEmpty ? val : '88';
+      final tw = stringWidth(fonts.calibriBold, measure, pieceCountSize);
+      final raw = tw + pieceBandBoxPadH * 2;
+      // Prefer room for 3-digit totals; never exceed half the cell.
+      final prefer = stringWidth(fonts.calibriBold, '888', pieceCountSize) +
+          pieceBandBoxPadH * 2;
+      final maxW = half * 0.38;
+      final target = raw < prefer ? prefer : raw;
+      return target > maxW ? maxW : target;
+    }
 
     void cell(double x, String label, String prefix) {
       c.setFillColor(pieceFill);
@@ -1198,36 +1248,35 @@ class ShippingLabelPdf {
         ..setLineWidth(0.6);
       _strokeRRect(c, x, y - rowH, half, rowH, 4);
 
+      // Micro-label along the top edge so 48pt digits have full width below.
       c
         ..setFillColor(labelC)
         ..setFont(fonts.oswaldMedium, 7.5);
-      var cx = x + 12;
-      final cellMid = y - rowH / 2;
-      final labelMidY = cellMid - 2.5;
+      var cx = x + 10;
+      final labelY = y - 11;
       for (final ch in _chars(label.toUpperCase())) {
-        c.drawString(fonts.oswaldMedium, 7.5, ch, cx, labelMidY);
+        c.drawString(fonts.oswaldMedium, 7.5, ch, cx, labelY);
         cx += stringWidth(fonts.oswaldMedium, ch, 7.5) + 0.7;
       }
-
-      const box = 34.0;
-      const ofW = 28.0;
-      const blockW = box * 2 + ofW;
-      final fx = x + (half - blockW) / 2;
 
       final numVal = sample.get('${prefix}_num');
       final ofVal = sample.get('${prefix}_of');
 
-      const valueH = 20.0;
-      final valueY = cellMid - valueH / 2;
-      final underlineY = valueY - 1;
+      final numBox = countBoxW(numVal);
+      final ofBox = countBoxW(ofVal);
+      const ofText = 'OF';
+      final ofW =
+          stringWidth(fonts.oswaldBold, ofText, pieceOfSize) + 20;
+      final blockW = numBox + ofW + ofBox;
+      final fx = x + (half - blockW) / 2;
 
-      final numSz = fitSingleLineSize(
-        numVal,
-        box - 4,
-        fonts.calibriBold,
-        preferred: entrySize,
-        minSize: 11,
-      );
+      const valueH = pieceBandValueH;
+      // Digit band sits under the label strip, vertically padded.
+      final valueTop = y - pieceBandLabelStrip - pieceBandPadV;
+      final valueY = valueTop - valueH;
+      final cellMid = valueY + valueH / 2;
+      final underlineY = valueY - 2;
+
       if (numVal.isNotEmpty) {
         _drawValue(
           c,
@@ -1235,50 +1284,43 @@ class ShippingLabelPdf {
           numVal,
           fx,
           valueY,
-          box,
+          numBox,
           valueH,
-          fontSize: numSz,
+          fontSize: pieceCountSize,
           font: fonts.calibriBold,
           centered: true,
         );
       }
-      _hairline(c, fx, underlineY, box);
+      _hairline(c, fx, underlineY, numBox);
 
       c
         ..setFillColor(swift)
-        ..setFont(fonts.oswaldBold, 11);
-      const ofText = 'OF';
-      final ofTw = stringWidth(fonts.oswaldBold, ofText, 11);
+        ..setFont(fonts.oswaldBold, pieceOfSize);
+      final ofTw = stringWidth(fonts.oswaldBold, ofText, pieceOfSize);
+      final ofY = cellMid - pieceOfSize / 2 + 1;
       c.drawString(
         fonts.oswaldBold,
-        11,
+        pieceOfSize,
         ofText,
-        fx + box + ofW / 2 - ofTw / 2,
-        labelMidY,
+        fx + numBox + ofW / 2 - ofTw / 2,
+        ofY,
       );
 
-      final ofSz = fitSingleLineSize(
-        ofVal,
-        box - 4,
-        fonts.calibriBold,
-        preferred: entrySize,
-        minSize: 11,
-      );
       if (ofVal.isNotEmpty) {
         _drawValue(
           c,
           fonts,
           ofVal,
-          fx + box + ofW,
+          fx + numBox + ofW,
           valueY,
-          box,
+          ofBox,
           valueH,
-          fontSize: ofSz,
+          fontSize: pieceCountSize,
           font: fonts.calibriBold,
           centered: true,
         );
       }
-      _hairline(c, fx + box + ofW, underlineY, box);
+      _hairline(c, fx + numBox + ofW, underlineY, ofBox);
     }
 
     cell(mx, 'Pallet / Crate', 'pallet');

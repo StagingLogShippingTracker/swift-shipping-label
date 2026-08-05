@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'app_config.dart';
+import 'gemini_client.dart';
 import 'logo_recreate_cloud.dart';
 import 'logo_recreate_native.dart';
 
@@ -224,9 +225,22 @@ class LogoRecreate {
         // Match Fly/Android: transparent PNG (CLI default is white).
         '--render-background',
         'transparent',
+        // Enable Gemini assist when GEMINI_API_KEY is available in the env.
+        '--ai',
+        '--ai-providers',
+        'gemini',
       ],
       workingDirectory: packageParent.path,
       runInShell: false,
+      environment: {
+        ...Platform.environment,
+        if (GeminiClient.resolveApiKey().isNotEmpty)
+          'GEMINI_API_KEY': GeminiClient.resolveApiKey(),
+        if (AppConfig.geminiProjectNumber.isNotEmpty)
+          'GEMINI_PROJECT_NUMBER': AppConfig.geminiProjectNumber,
+        if (AppConfig.geminiModel.isNotEmpty)
+          'GEMINI_MODEL': AppConfig.geminiModel,
+      },
     );
 
     final stdoutBuf = StringBuffer();

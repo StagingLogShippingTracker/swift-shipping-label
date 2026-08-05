@@ -681,6 +681,8 @@ def recreate_customer_logo(
     render_width: int = 2000,
     render_background: str = "transparent",
     progress: Callable[[str], None] | None = None,
+    use_ai: bool | None = None,
+    ai_providers: list[str] | None = None,
 ) -> RecreateResult:
     """
     Full "Recreate" pipeline for a customer logo raster.
@@ -689,6 +691,9 @@ def recreate_customer_logo(
     - Clusters foreground into up to `max_colors` colors.
     - Traces each color group with the manual-quality Bezier fitter.
     - Composes a layered SVG and, if requested, a PNG derivative.
+
+    When Gemini (or other AI advisors) are configured, optionally inspects the
+    raster first for brand colors / layout hints that tune clustering.
     """
 
     def _log(msg: str) -> None:
@@ -707,6 +712,48 @@ def recreate_customer_logo(
     with Image.open(input_path) as src:
         src.load()
         img = src.convert("RGBA")
+
+    # Auto-enable AI when a Gemini key is present unless explicitly disabled.
+    ai_hints = None
+    if use_ai is None:
+        try:
+            from tools.logo_vectorizer.env_loader import load_env, gemini_configured
+
+            load_env()
+            use_ai = gemini_configured()
+        except Exception:
+            use_ai = False
+    if use_ai:
+        try:
+            from tools.logo_vectorizer.ai_advisors.orchestrator import (
+                analyze_source_multi,
+                resolve_providers,
+            )
+
+            providers = resolve_providers(ai_providers or ["gemini"])
+            if providers:
+                _log(f"[recreate] Gemini/AI source analysis ({', '.join(providers)})")
+                ai_hints = analyze_source_multi(img, providers)
+                if ai_hints is not None:
+                    if ai_hints.brand_name:
+                        _log(f"[recreate] AI brand_name={ai_hints.brand_name}")
+                    if ai_hints.font_family_guess:
+                        _log(
+                            f"[recreate] AI font_family={ai_hints.font_family_guess}"
+                        )
+                    if ai_hints.dominant_colors_hex:
+                        _log(
+                            "[recreate] AI colors="
+                            + ",".join(ai_hints.dominant_colors_hex)
+                        )
+                        # Prefer AI color count when it is a tighter palette.
+                        suggested = len(ai_hints.dominant_colors_hex)
+                        if 1 <= suggested <= max_colors:
+                            max_colors = max(suggested, 2)
+                    if ai_hints.layout_summary:
+                        _log(f"[recreate] AI layout={ai_hints.layout_summary}")
+        except Exception as exc:
+            _log(f"[recreate] AI assist skipped: {exc}")
 
     _log("[recreate] stripping background")
     stripped_img, stripped = strip_background(img)
@@ -737,10 +784,18 @@ def recreate_customer_logo(
     )
 
     svg_path = output_svg
+    final_svg = result.svg
+    if ai_hints and (ai_hints.brand_name or ai_hints.notes or ai_hints.dominant_colors_hex):
+        meta = (
+            f"<!-- gemini brand={ai_hints.brand_name} "
+            f"font={ai_hints.font_family_guess} "
+            f"colors={','.join(ai_hints.dominant_colors_hex)} -->\n"
+        )
+        final_svg = meta + final_svg
     if svg_path is not None:
         svg_path = Path(svg_path)
         svg_path.parent.mkdir(parents=True, exist_ok=True)
-        svg_path.write_text(result.svg, encoding="utf-8")
+        svg_path.write_text(final_svg, encoding="utf-8")
         _log(f"[recreate] wrote SVG -> {svg_path}")
 
     png_path = None
@@ -756,7 +811,7 @@ def recreate_customer_logo(
             tmp = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".svg", delete=False, encoding="utf-8"
             )
-            tmp.write(result.svg)
+            tmp.write(final_svg)
             tmp.close()
             svg_source = Path(tmp.name)
             cleanup_tmp = svg_source
@@ -772,16 +827,23 @@ def recreate_customer_logo(
             if cleanup_tmp is not None:
                 cleanup_tmp.unlink(missing_ok=True)
 
+    notes = list(analysis.notes) if analysis else []
+    if ai_hints is not None:
+        if ai_hints.brand_name:
+            notes.append(f"gemini_brand={ai_hints.brand_name}")
+        if ai_hints.font_family_guess:
+            notes.append(f"gemini_font={ai_hints.font_family_guess}")
+
     return RecreateResult(
         svg_path=svg_path,
         png_path=png_path,
-        svg_text=result.svg,
+        svg_text=final_svg,
         section_count=len(result.per_section),
         palette_hex=[_hex(c) for c in palette],
         source_size=result.source_size,
         background_stripped=stripped,
         total_anchors=result.total_anchors(),
-        notes=list(analysis.notes) if analysis else [],
+        notes=notes,
     )
 
 

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
+import 'gemini_client.dart';
 
 /// Which web source(s) to query when finding a customer logo.
 enum LogoSearchEngine {
@@ -146,16 +147,34 @@ class LogoFinder {
   static const _minUrlCandidateScore = 24;
   static const _minDownloadedScore = 26;
   static const _pickerMinScore = 24;
+  /// Per-request timeout so one blocked engine cannot stall All Sources.
+  static const _requestTimeout = Duration(seconds: 5);
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
   static const _browserUa =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  /// Desktop Chrome-like headers for HTML scrapers (Google / Bing / DDG / BOTW).
   static Map<String, String> get _browserHeaders => {
         'User-Agent': _browserUa,
         'Accept':
-            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Sec-Ch-Ua':
+            '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+      };
+
+  static Map<String, String> _browserHeadersFor(Uri uri) => {
+        ..._browserHeaders,
+        'Referer': '${uri.scheme}://${uri.host}/',
       };
 
   /// Ranked list for the picker UI — top [pickerMaxResults] by score, with light
@@ -180,47 +199,80 @@ class LogoFinder {
     final dom = _normalizeDomain(domain);
     if (name.isEmpty && dom.isEmpty) return const [];
 
-    final domainList = _uniqueDomains(name, dom);
+    final domainList = await _resolveDomains(name, dom);
     final ctx = _RelevanceContext.from(name, domainList);
-    final query = name.isEmpty ? 'logo' : '$name logo';
     final useAll = engine == LogoSearchEngine.all;
     final use = (LogoSearchEngine e) => useAll || engine == e;
 
+    // Each source is independently trapped — one failure must not zero out All Sources.
     final futures = <Future<List<LogoCandidate>>>[];
     if (use(LogoSearchEngine.clearbit)) {
-      futures.add(Future.value(_clearbitUrlCandidates(domainList, ctx)));
+      futures.add(
+        _safeSource(() async => _clearbitUrlCandidates(domainList, ctx)),
+      );
     }
     if (use(LogoSearchEngine.retoolClearbit)) {
-      futures.add(_retoolClearbitCandidates(domainList, ctx));
+      futures.add(
+        _safeSource(() => _retoolClearbitCandidates(domainList, ctx)),
+      );
     }
     if (use(LogoSearchEngine.logoDev)) {
-      futures.add(Future.value(_logoDevCandidates(domainList, ctx)));
+      futures.add(
+        _safeSource(() async => _logoDevCandidates(domainList, ctx)),
+      );
     }
     if (use(LogoSearchEngine.brandfetch)) {
-      futures.add(Future.value(_brandfetchCandidates(domainList, ctx)));
+      futures.add(
+        _safeSource(() async => _brandfetchCandidates(domainList, ctx)),
+      );
     }
     if (use(LogoSearchEngine.bing)) {
-      futures.add(_bingImageSearch(query, ctx));
+      futures.add(_safeSource(() => _bingImageSearch(ctx)));
     }
     if (use(LogoSearchEngine.google)) {
-      futures.add(_googleImageSearch(query, ctx));
+      futures.add(_safeSource(() => _googleImageSearch(ctx)));
     }
     if (use(LogoSearchEngine.brandsOfTheWorld) && name.isNotEmpty) {
-      futures.add(_brandsOfTheWorldSearch(name, ctx));
+      futures.add(
+        _safeSource(() => _brandsOfTheWorldSearch(name, ctx)),
+      );
     }
     if (use(LogoSearchEngine.tineye)) {
-      futures.add(_tineyeSearch(query, ctx));
+      futures.add(_safeSource(() => _tineyeSearch(ctx)));
     }
     if (use(LogoSearchEngine.wikipediaDuckDuckGo) && name.isNotEmpty) {
-      futures.add(_wikipediaCandidates(name, ctx));
-      futures.add(_duckDuckGoCandidates('$name logo', ctx));
+      futures.add(_safeSource(() => _wikipediaCandidates(name, ctx)));
+      futures.add(
+        _safeSource(() => _duckDuckGoCandidates(ctx)),
+      );
+      futures.add(
+        _safeSource(() => _duckDuckGoImageSearch(ctx)),
+      );
     }
 
-    final urlLists = await Future.wait(futures);
+    // Fail-safe aggregation: never let a single rejected future cancel the rest.
+    final urlLists = await Future.wait(
+      futures.map(
+        (f) => f.catchError((Object _, StackTrace __) => <LogoCandidate>[]),
+      ),
+    );
 
     final merged = <LogoCandidate>[];
     for (final list in urlLists) {
       merged.addAll(list);
+    }
+
+    // Always include Google Favicon as a last-resort URL candidate when we have domains.
+    if (useAll || use(LogoSearchEngine.google) || use(LogoSearchEngine.clearbit)) {
+      for (final d in domainList.take(3)) {
+        merged.add(
+          LogoCandidate(
+            url: 'https://www.google.com/s2/favicons?sz=256&domain_url=$d',
+            source: 'Google Favicon ($d)',
+            score: 28 + _domainMatchBonus(d, ctx),
+          ),
+        );
+      }
     }
 
     final ranked = _rankAndDedupe(merged, ctx);
@@ -235,11 +287,12 @@ class LogoFinder {
       return filterForPicker(downloaded);
     }
 
+    // Favicon byte download fallback (may be tiny — keep as last ditch).
     for (final d in domainList.take(3)) {
       final fav = await _downloadImage(
         Uri.parse('https://www.google.com/s2/favicons?sz=256&domain_url=$d'),
         source: 'Favicon ($d)',
-        minBytes: 800,
+        minBytes: 400,
       );
       if (fav.ok) {
         return [
@@ -257,6 +310,20 @@ class LogoFinder {
     return const [];
   }
 
+  /// Isolate one engine/source so errors never propagate to All Sources.
+  Future<List<LogoCandidate>> _safeSource(
+    Future<List<LogoCandidate>> Function() run,
+  ) async {
+    try {
+      return await run().timeout(
+        _requestTimeout * 3,
+        onTimeout: () => <LogoCandidate>[],
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<List<LogoDownloadedCandidate>> _downloadCandidatesParallel(
     List<LogoCandidate> candidates,
     _RelevanceContext ctx,
@@ -265,23 +332,69 @@ class LogoFinder {
 
     const batchSize = 8;
     final out = <LogoDownloadedCandidate>[];
+    final gemini = GeminiClient.isConfigured ? GeminiClient(client: _client) : null;
 
     for (var start = 0; start < candidates.length; start += batchSize) {
       if (out.length >= pickerMaxResults) break;
-      final batch = candidates.skip(start).take(batchSize);
+      final batch = candidates.skip(start).take(batchSize).toList();
       final results = await Future.wait(
         batch.map((c) async {
-          final dl = await _downloadImage(Uri.parse(c.url), source: c.source);
-          if (!dl.ok) return null;
-          final finalScore = c.score + _bytesBonus(dl.bytes!);
-          if (finalScore < _minDownloadedScore) return null;
-          return LogoDownloadedCandidate(
-            bytes: dl.bytes!,
-            source: c.source,
-            url: c.url,
-            score: finalScore,
-          );
-        }),
+          try {
+            final uri = Uri.tryParse(c.url);
+            if (uri == null || !uri.hasScheme) return null;
+            final isFavicon = c.source.toLowerCase().contains('favicon');
+            final dl = await _downloadImage(
+              uri,
+              source: c.source,
+              minBytes: isFavicon ? 400 : 1200,
+            );
+            if (!dl.ok) return null;
+
+            // Gemini vision gate — discard photos / junk scraped as "logos".
+            // Fail-open when Gemini is unavailable so warehouse workflows continue.
+            if (gemini != null && !isFavicon) {
+              try {
+                final verdict = await gemini.validateLogoCandidate(
+                  dl.bytes!,
+                  companyHint: ctx.companyName,
+                );
+                if (verdict != null && !verdict.shouldKeep) {
+                  return null;
+                }
+                if (verdict != null && verdict.confidenceScore >= 0.7) {
+                  // Small bonus for high-confidence validated logos.
+                  final finalScore =
+                      c.score + _bytesBonus(dl.bytes!) + 6;
+                  if (finalScore < _minDownloadedScore) return null;
+                  return LogoDownloadedCandidate(
+                    bytes: dl.bytes!,
+                    source: '${c.source} · Gemini',
+                    url: c.url,
+                    score: finalScore,
+                  );
+                }
+              } catch (_) {
+                // Fail open.
+              }
+            }
+
+            final finalScore = c.score + _bytesBonus(dl.bytes!);
+            if (!isFavicon && finalScore < _minDownloadedScore) return null;
+            return LogoDownloadedCandidate(
+              bytes: dl.bytes!,
+              source: c.source,
+              url: c.url,
+              score: finalScore,
+              hint: isFavicon
+                  ? 'Low-resolution favicon — upload a better logo if needed.'
+                  : '',
+            );
+          } catch (_) {
+            return null;
+          }
+        }).map(
+          (f) => f.catchError((Object _, StackTrace __) => null),
+        ),
       );
       for (final item in results) {
         if (item != null) out.add(item);
@@ -407,38 +520,45 @@ class LogoFinder {
     }
   }
 
-  Future<List<LogoCandidate>> _bingImageSearch(
-    String query,
-    _RelevanceContext ctx,
-  ) async {
+  Future<List<LogoCandidate>> _bingImageSearch(_RelevanceContext ctx) async {
     try {
-      final quoted =
-          ctx.companyName.isNotEmpty ? '"${ctx.companyName}" logo' : query;
-      final encoded = Uri.encodeQueryComponent(quoted);
-      final referer = 'https://www.bing.com/images/search?q=$encoded';
-      final headers = {..._browserHeaders, 'Referer': referer};
-
       final urls = <String>{};
+      final queries = _imageSearchQueries(ctx);
 
-      final asyncUri = Uri.parse(
-        'https://www.bing.com/images/async?q=$encoded&first=0&count=30&relp=30',
-      );
-      final asyncRes = await _client
-          .get(asyncUri, headers: headers)
-          .timeout(const Duration(seconds: 14));
-      if (asyncRes.statusCode == 200) {
-        urls.addAll(_parseBingMurls(asyncRes.body));
-      }
+      for (final q in queries) {
+        if (urls.length >= 24) break;
+        try {
+          final encoded = Uri.encodeQueryComponent(q);
+          final referer = 'https://www.bing.com/images/search?q=$encoded';
+          final headers = {
+            ..._browserHeaders,
+            'Referer': referer,
+            'Sec-Fetch-Site': 'same-origin',
+          };
 
-      if (urls.length < 4) {
-        final pageUri = Uri.parse(
-          'https://www.bing.com/images/search?q=$encoded&qft=+filterui:photo-photo',
-        );
-        final pageRes = await _client
-            .get(pageUri, headers: headers)
-            .timeout(const Duration(seconds: 14));
-        if (pageRes.statusCode == 200) {
-          urls.addAll(_parseBingMurls(pageRes.body));
+          final asyncUri = Uri.parse(
+            'https://www.bing.com/images/async?q=$encoded&first=0&count=35&relp=35&tsc=ImageBasicHover',
+          );
+          final asyncRes = await _client
+              .get(asyncUri, headers: headers)
+              .timeout(_requestTimeout);
+          if (asyncRes.statusCode == 200) {
+            urls.addAll(_parseBingMurls(asyncRes.body));
+          }
+
+          if (urls.length < 6) {
+            final pageUri = Uri.parse(
+              'https://www.bing.com/images/search?q=$encoded&form=HDRSC2&first=1',
+            );
+            final pageRes = await _client
+                .get(pageUri, headers: headers)
+                .timeout(_requestTimeout);
+            if (pageRes.statusCode == 200) {
+              urls.addAll(_parseBingMurls(pageRes.body));
+            }
+          }
+        } catch (_) {
+          continue;
         }
       }
 
@@ -446,8 +566,8 @@ class LogoFinder {
         urls,
         source: 'Bing Images',
         ctx: ctx,
-        sourceBonus: -6,
-        minScore: 34,
+        sourceBonus: -4,
+        minScore: 30,
       );
     } catch (_) {
       return const [];
@@ -467,28 +587,34 @@ class LogoFinder {
     }
   }
 
-  Future<List<LogoCandidate>> _googleImageSearch(
-    String query,
-    _RelevanceContext ctx,
-  ) async {
+  Future<List<LogoCandidate>> _googleImageSearch(_RelevanceContext ctx) async {
     try {
       final urls = <String>{};
-      final queries = _googleSearchQueries(ctx, query);
+      final queries = _imageSearchQueries(ctx);
 
+      // Independent per-query fetches — one blocked query must not cancel others.
       await Future.wait(
-        queries.map((q) => _fetchGoogleImageUrls(q, urls, basicHtml: false)),
+        queries.take(5).map(
+              (q) => _fetchGoogleImageUrls(q, urls, basicHtml: false).catchError(
+                    (Object _, StackTrace __) {},
+                  ),
+            ),
       );
 
       if (urls.length < 4) {
-        for (final q in queries.take(3)) {
-          await _fetchGoogleImageUrls(q, urls, basicHtml: true);
-        }
+        await Future.wait(
+          queries.take(4).map(
+                (q) => _fetchGoogleImageUrls(q, urls, basicHtml: true).catchError(
+                      (Object _, StackTrace __) {},
+                    ),
+              ),
+        );
       }
 
-      if (urls.isEmpty && ctx.domains.isNotEmpty) {
-        for (final d in ctx.domains.take(2)) {
-          urls.add('https://www.google.com/s2/favicons?domain=$d&sz=256');
-          urls.add('https://logo.clearbit.com/$d');
+      // Newer Google Images UI (`udm=2`) as an extra fallback.
+      if (urls.length < 4) {
+        for (final q in queries.take(3)) {
+          await _fetchGoogleUdmImageUrls(q, urls);
         }
       }
 
@@ -497,31 +623,36 @@ class LogoFinder {
         source: 'Google Images',
         ctx: ctx,
         sourceBonus: 16,
-        minScore: 26,
+        minScore: 24,
       );
     } catch (_) {
       return const [];
     }
   }
 
-  static List<String> _googleSearchQueries(
-    _RelevanceContext ctx,
-    String fallbackQuery,
-  ) {
+  /// Flexible query ladder: unquoted first (works for "Keyera"), then quoted /
+  /// domain-scoped variants. Avoids over-rigid `"Name" logo` as the only attempt.
+  static List<String> _imageSearchQueries(_RelevanceContext ctx) {
     final name = ctx.companyName.trim();
-    if (name.isEmpty) return [fallbackQuery];
+    if (name.isEmpty) {
+      if (ctx.domains.isEmpty) return const ['logo'];
+      final d = ctx.domains.first;
+      return ['$d logo', 'site:$d logo', '${d.split('.').first} logo'];
+    }
 
     final out = <String>{
+      '$name logo',
+      '$name logo png',
+      '$name company logo',
+      '$name brand logo',
       '"$name" logo',
       '"$name" logo png',
-      '$name logo png',
-      '$name logo',
-      '$name brand logo',
+      '$name official logo',
     };
-    for (final d in ctx.domains.take(3)) {
+    for (final d in ctx.domains.take(4)) {
       out.add('site:$d logo');
       out.add('$name logo site:$d');
-      out.add('"$name" logo site:$d');
+      out.add('${d.split('.').first} logo');
     }
     return out.toList();
   }
@@ -538,15 +669,33 @@ class LogoFinder {
         'hl': 'en',
         'gl': 'us',
         'ijn': '0',
+        'safe': 'off',
       };
       if (basicHtml) params['gbv'] = '1';
 
       final uri = Uri.https('www.google.com', '/search', params);
       final res = await _client
-          .get(uri, headers: _browserHeaders)
-          .timeout(const Duration(seconds: 14));
+          .get(uri, headers: _browserHeadersFor(uri))
+          .timeout(_requestTimeout);
       if (res.statusCode != 200) return;
 
+      _extractGoogleImageUrls(res.body, urls);
+    } catch (_) {}
+  }
+
+  Future<void> _fetchGoogleUdmImageUrls(String q, Set<String> urls) async {
+    try {
+      final uri = Uri.https('www.google.com', '/search', {
+        'q': q,
+        'udm': '2',
+        'hl': 'en',
+        'gl': 'us',
+        'safe': 'off',
+      });
+      final res = await _client
+          .get(uri, headers: _browserHeadersFor(uri))
+          .timeout(_requestTimeout);
+      if (res.statusCode != 200) return;
       _extractGoogleImageUrls(res.body, urls);
     } catch (_) {}
   }
@@ -557,17 +706,27 @@ class LogoFinder {
       RegExp(r'\\"ou\\":\\"(https?://[^\\"]+)\\"'),
       RegExp(r'\["ou","(https?://[^"]+)"\]'),
       RegExp(r'"ou":\s*"(https?://[^"]+)"'),
+      RegExp(r'"originalUrl":"(https?://[^"]+)"'),
+      RegExp(r'"imageUrl":"(https?://[^"]+)"'),
       RegExp(r'imgurl=(https?://[^&"]+)'),
       RegExp(r'imgrefurl=(https?://[^&"]+)'),
       RegExp(r',"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"'),
       RegExp(r'\[\s*"(https?://[^"]+\.(?:png|jpe?g|webp))"'),
+      RegExp(r'data-src="(https?://[^"]+)"'),
+      RegExp(r'data-iurl="(https?://[^"]+)"'),
     ]) {
       for (final m in pattern.allMatches(html)) {
         final raw = m.group(1);
         if (raw == null) continue;
-        final decoded =
-            Uri.decodeComponent(raw.replaceAll(r'\\/', '/').replaceAll(r'\\u003d', '='));
-        if (decoded.startsWith('http')) urls.add(decoded);
+        final decoded = Uri.decodeComponent(
+          raw
+              .replaceAll(r'\\/', '/')
+              .replaceAll(r'\\u003d', '=')
+              .replaceAll(r'\u003d', '='),
+        );
+        if (decoded.startsWith('http') && !_isGoogleThumbnail(decoded)) {
+          urls.add(decoded);
+        }
       }
     }
 
@@ -584,7 +743,7 @@ class LogoFinder {
     ).allMatches(html)) {
       final u = m.group(1)!;
       if (_isGoogleThumbnail(u)) continue;
-      urls.add(u.replaceAll(r'\\u003d', '='));
+      urls.add(u.replaceAll(r'\\u003d', '=').replaceAll(r'\u003d', '='));
     }
   }
 
@@ -639,8 +798,8 @@ class LogoFinder {
         'search_api_views_fulltext': name,
       });
       final res = await _client
-          .get(searchUri, headers: _browserHeaders)
-          .timeout(const Duration(seconds: 14));
+          .get(searchUri, headers: _browserHeadersFor(searchUri))
+          .timeout(_requestTimeout);
       if (res.statusCode != 200) return const [];
 
       final html = res.body;
@@ -661,23 +820,24 @@ class LogoFinder {
         slugs.add(m.group(1)!);
       }
 
-      for (final slug in slugs.take(3)) {
-        final detailUri = Uri.parse('https://www.brandsoftheworld.com$slug');
-        try {
-          final detail = await _client
-              .get(detailUri, headers: _browserHeaders)
-              .timeout(const Duration(seconds: 10));
-          if (detail.statusCode != 200) continue;
-          for (final m in RegExp(
-            r'https://d1yjjnpx0p53s8\.cloudfront\.net/styles/[^"''>\s]+',
-          ).allMatches(detail.body)) {
-            final url = m.group(0)!;
-            if (!url.contains('aotw-envelope')) urls.add(url);
-          }
-        } catch (_) {
-          continue;
-        }
-      }
+      await Future.wait(
+        slugs.take(3).map((slug) async {
+          try {
+            final detailUri =
+                Uri.parse('https://www.brandsoftheworld.com$slug');
+            final detail = await _client
+                .get(detailUri, headers: _browserHeadersFor(detailUri))
+                .timeout(_requestTimeout);
+            if (detail.statusCode != 200) return;
+            for (final m in RegExp(
+              r'https://d1yjjnpx0p53s8\.cloudfront\.net/styles/[^"''>\s]+',
+            ).allMatches(detail.body)) {
+              final url = m.group(0)!;
+              if (!url.contains('aotw-envelope')) urls.add(url);
+            }
+          } catch (_) {}
+        }).map((f) => f.catchError((Object _, StackTrace __) {})),
+      );
 
       return _urlCandidatesFromSet(
         urls,
@@ -690,27 +850,27 @@ class LogoFinder {
     }
   }
 
-  Future<List<LogoCandidate>> _tineyeSearch(
-    String query,
-    _RelevanceContext ctx,
-  ) async {
+  Future<List<LogoCandidate>> _tineyeSearch(_RelevanceContext ctx) async {
     try {
-      final q = ctx.companyName.isNotEmpty
-          ? '"${ctx.companyName}" logo'
-          : query;
-      final uri = Uri.https('tineye.com', '/search', {'query': q});
-      final res = await _client
-          .get(uri, headers: _browserHeaders)
-          .timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) return const [];
-
       final urls = <String>{};
-      for (final m in RegExp(
-        r'https?://[^"''>\s]+\.(?:png|jpg|jpeg|webp)(?:[^"''>\s]*)',
-      ).allMatches(res.body)) {
-        final url = m.group(0)!;
-        if (_isAcceptableLogoUrl(url) && !url.contains('tineye.com')) {
-          urls.add(url);
+      for (final q in _imageSearchQueries(ctx).take(3)) {
+        try {
+          final uri = Uri.https('tineye.com', '/search', {'query': q});
+          final res = await _client
+              .get(uri, headers: _browserHeadersFor(uri))
+              .timeout(_requestTimeout);
+          if (res.statusCode != 200) continue;
+          for (final m in RegExp(
+            r'https?://[^"''>\s]+\.(?:png|jpg|jpeg|webp)(?:[^"''>\s]*)',
+          ).allMatches(res.body)) {
+            final url = m.group(0)!;
+            if (_isAcceptableLogoUrl(url) && !url.contains('tineye.com')) {
+              urls.add(url);
+            }
+          }
+          if (urls.length >= 12) break;
+        } catch (_) {
+          continue;
         }
       }
 
@@ -730,57 +890,76 @@ class LogoFinder {
     _RelevanceContext ctx,
   ) async {
     try {
-      final searchUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-        'action': 'query',
-        'list': 'search',
-        'srsearch': name,
-        'srlimit': '3',
-        'format': 'json',
-        'origin': '*',
-      });
-      final searchRes = await _client
-          .get(searchUri, headers: {'User-Agent': _ua})
-          .timeout(const Duration(seconds: 12));
-      if (searchRes.statusCode != 200) return const [];
-
-      final body = jsonDecode(searchRes.body);
-      final hits = body['query']?['search'];
-      if (hits is! List || hits.isEmpty) return const [];
-
       final out = <LogoCandidate>[];
-      for (final hit in hits.take(3)) {
-        final title = '${hit['title'] ?? ''}';
-        if (title.isEmpty) continue;
-        final titleScore = _textRelevance(title, ctx);
-        if (titleScore < 8) continue;
+      // Try the raw name and a looser company-stripped variant.
+      final searches = <String>{
+        name,
+        name.replaceAll(
+          RegExp(
+            r'\b(inc|incorporated|ltd|limited|llc|corp|corporation|co|company)\b',
+            caseSensitive: false,
+          ),
+          '',
+        ).replaceAll(RegExp(r'\s+'), ' ').trim(),
+      };
 
-        final imgUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-          'action': 'query',
-          'titles': title,
-          'prop': 'pageimages',
-          'pithumbsize': '1200',
-          'piprop': 'thumbnail',
-          'format': 'json',
-          'origin': '*',
-        });
-        final imgRes = await _client
-            .get(imgUri, headers: {'User-Agent': _ua})
-            .timeout(const Duration(seconds: 12));
-        if (imgRes.statusCode != 200) continue;
-        final imgBody = jsonDecode(imgRes.body);
-        final pages = imgBody['query']?['pages'];
-        if (pages is! Map) continue;
-        for (final page in pages.values) {
-          final thumb = page is Map ? page['thumbnail'] : null;
-          final src = thumb is Map ? '${thumb['source'] ?? ''}' : '';
-          if (src.isEmpty || !_isAcceptableLogoUrl(src)) continue;
-          out.add(
-            LogoCandidate(
-              url: src,
-              source: 'Wikipedia ($title)',
-              score: 36 + titleScore + _scoreUrl(src, 'Wikipedia', ctx),
-            ),
-          );
+      for (final term in searches) {
+        if (term.isEmpty) continue;
+        try {
+          final searchUri = Uri.https('en.wikipedia.org', '/w/api.php', {
+            'action': 'query',
+            'list': 'search',
+            'srsearch': term,
+            'srlimit': '5',
+            'format': 'json',
+            'origin': '*',
+          });
+          final searchRes = await _client
+              .get(searchUri, headers: {'User-Agent': _ua, 'Accept': 'application/json'})
+              .timeout(_requestTimeout);
+          if (searchRes.statusCode != 200) continue;
+
+          final body = jsonDecode(searchRes.body);
+          final hits = body['query']?['search'];
+          if (hits is! List || hits.isEmpty) continue;
+
+          for (final hit in hits.take(4)) {
+            final title = '${hit['title'] ?? ''}';
+            if (title.isEmpty) continue;
+            final titleScore = _textRelevance(title, ctx);
+            if (titleScore < 4 && !_looseNameMatch(title, ctx)) continue;
+
+            final imgUri = Uri.https('en.wikipedia.org', '/w/api.php', {
+              'action': 'query',
+              'titles': title,
+              'prop': 'pageimages',
+              'pithumbsize': '1200',
+              'piprop': 'thumbnail',
+              'format': 'json',
+              'origin': '*',
+            });
+            final imgRes = await _client
+                .get(imgUri, headers: {'User-Agent': _ua, 'Accept': 'application/json'})
+                .timeout(_requestTimeout);
+            if (imgRes.statusCode != 200) continue;
+            final imgBody = jsonDecode(imgRes.body);
+            final pages = imgBody['query']?['pages'];
+            if (pages is! Map) continue;
+            for (final page in pages.values) {
+              final thumb = page is Map ? page['thumbnail'] : null;
+              final src = thumb is Map ? '${thumb['source'] ?? ''}' : '';
+              if (src.isEmpty || !_isAcceptableLogoUrl(src)) continue;
+              out.add(
+                LogoCandidate(
+                  url: src,
+                  source: 'Wikipedia ($title)',
+                  score: 36 + titleScore + _scoreUrl(src, 'Wikipedia', ctx),
+                ),
+              );
+            }
+          }
+        } catch (_) {
+          continue;
         }
       }
       return out;
@@ -789,63 +968,170 @@ class LogoFinder {
     }
   }
 
-  Future<List<LogoCandidate>> _duckDuckGoCandidates(
-    String query,
-    _RelevanceContext ctx,
-  ) async {
+  Future<List<LogoCandidate>> _duckDuckGoCandidates(_RelevanceContext ctx) async {
     try {
-      final uri = Uri.https('api.duckduckgo.com', '/', {
-        'q': query,
-        'format': 'json',
-        'pretty': '0',
-        'no_redirect': '1',
-        'no_html': '1',
-      });
-      final res = await _client
-          .get(uri, headers: {'User-Agent': _ua})
-          .timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) return const [];
-
-      final body = jsonDecode(res.body);
       final out = <LogoCandidate>[];
-      final image = '${body['Image'] ?? ''}';
-      if (image.isNotEmpty) {
-        final imgUrl =
-            image.startsWith('http') ? image : 'https://duckduckgo.com$image';
-        if (_isAcceptableLogoUrl(imgUrl)) {
-          out.add(
-            LogoCandidate(
-              url: imgUrl,
-              source: 'DuckDuckGo',
-              score: 30 + _scoreUrl(imgUrl, 'DuckDuckGo', ctx),
-            ),
-          );
-        }
-      }
+      for (final q in _imageSearchQueries(ctx).take(3)) {
+        try {
+          final uri = Uri.https('api.duckduckgo.com', '/', {
+            'q': q,
+            'format': 'json',
+            'pretty': '0',
+            'no_redirect': '1',
+            'no_html': '1',
+          });
+          final res = await _client
+              .get(uri, headers: {
+                'User-Agent': _browserUa,
+                'Accept': 'application/json',
+              })
+              .timeout(_requestTimeout);
+          if (res.statusCode != 200) continue;
 
-      final related = body['RelatedTopics'];
-      if (related is List) {
-        for (final item in related.take(8)) {
-          if (item is! Map) continue;
-          final text = '${item['Text'] ?? ''}';
-          final icon = item['Icon'];
-          final url = icon is Map ? '${icon['URL'] ?? ''}' : '';
-          if (!url.startsWith('http') || !_isAcceptableLogoUrl(url)) continue;
-          out.add(
-            LogoCandidate(
-              url: url,
-              source: 'DuckDuckGo',
-              score: 24 +
-                  _textRelevance(text, ctx) +
-                  _scoreUrl(url, 'DuckDuckGo', ctx),
-            ),
-          );
+          final body = jsonDecode(res.body);
+          final image = '${body['Image'] ?? ''}';
+          if (image.isNotEmpty) {
+            final imgUrl =
+                image.startsWith('http') ? image : 'https://duckduckgo.com$image';
+            if (_isAcceptableLogoUrl(imgUrl)) {
+              out.add(
+                LogoCandidate(
+                  url: imgUrl,
+                  source: 'DuckDuckGo',
+                  score: 30 + _scoreUrl(imgUrl, 'DuckDuckGo', ctx),
+                ),
+              );
+            }
+          }
+
+          // Official website from Instant Answer — useful domain signal.
+          final absUrl = '${body['AbstractURL'] ?? ''}';
+          final absDomain = _normalizeDomain(absUrl);
+          if (absDomain.isNotEmpty) {
+            out.add(
+              LogoCandidate(
+                url: 'https://logo.clearbit.com/$absDomain',
+                source: 'DuckDuckGo → Clearbit ($absDomain)',
+                score: _scoreDomainApi(absDomain, 'Clearbit', ctx) + 4,
+              ),
+            );
+          }
+
+          final related = body['RelatedTopics'];
+          if (related is List) {
+            for (final item in related.take(8)) {
+              if (item is! Map) continue;
+              final text = '${item['Text'] ?? ''}';
+              final icon = item['Icon'];
+              final url = icon is Map ? '${icon['URL'] ?? ''}' : '';
+              if (!url.startsWith('http') || !_isAcceptableLogoUrl(url)) continue;
+              out.add(
+                LogoCandidate(
+                  url: url,
+                  source: 'DuckDuckGo',
+                  score: 24 +
+                      _textRelevance(text, ctx) +
+                      _scoreUrl(url, 'DuckDuckGo', ctx),
+                ),
+              );
+            }
+          }
+          if (out.length >= 8) break;
+        } catch (_) {
+          continue;
         }
       }
       return out;
     } catch (_) {
       return const [];
     }
+  }
+
+  /// DuckDuckGo image HTML endpoint — often less aggressive than Google blocking.
+  Future<List<LogoCandidate>> _duckDuckGoImageSearch(_RelevanceContext ctx) async {
+    try {
+      final urls = <String>{};
+      for (final q in _imageSearchQueries(ctx).take(3)) {
+        try {
+          final uri = Uri.https('duckduckgo.com', '/', {
+            'q': q,
+            'iax': 'images',
+            'ia': 'images',
+          });
+          final res = await _client
+              .get(uri, headers: _browserHeadersFor(uri))
+              .timeout(_requestTimeout);
+          if (res.statusCode != 200) continue;
+
+          // vqd token unlocks the i.js JSON feed.
+          final vqdMatch =
+              RegExp("vqd=['\"]([^'\"]+)['\"]").firstMatch(res.body);
+          final vqd = vqdMatch?.group(1);
+          if (vqd != null && vqd.isNotEmpty) {
+            final feed = Uri.https('duckduckgo.com', '/i.js', {
+              'l': 'us-en',
+              'o': 'json',
+              'q': q,
+              'vqd': vqd,
+              'f': ',,,',
+              'p': '1',
+            });
+            final feedRes = await _client
+                .get(feed, headers: {
+                  ..._browserHeadersFor(feed),
+                  'Accept': 'application/json,text/javascript,*/*',
+                  'Referer': uri.toString(),
+                  'Sec-Fetch-Dest': 'empty',
+                  'Sec-Fetch-Mode': 'cors',
+                  'Sec-Fetch-Site': 'same-origin',
+                })
+                .timeout(_requestTimeout);
+            if (feedRes.statusCode == 200) {
+              try {
+                final body = jsonDecode(feedRes.body);
+                final results = body is Map ? body['results'] : null;
+                if (results is List) {
+                  for (final item in results.take(30)) {
+                    if (item is! Map) continue;
+                    final image = '${item['image'] ?? ''}';
+                    if (image.startsWith('http')) urls.add(image);
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+
+          for (final m in RegExp(
+            r'https?://[^\s"<>]+\.(?:png|jpe?g|webp)(?:\?[^\s"<>]*)?',
+          ).allMatches(res.body)) {
+            final u = m.group(0)!;
+            if (!_isGoogleThumbnail(u)) urls.add(u);
+          }
+          if (urls.length >= 20) break;
+        } catch (_) {
+          continue;
+        }
+      }
+
+      return _urlCandidatesFromSet(
+        urls,
+        source: 'DuckDuckGo Images',
+        ctx: ctx,
+        sourceBonus: 8,
+        minScore: 24,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static bool _looseNameMatch(String text, _RelevanceContext ctx) {
+    final hay = text.toLowerCase();
+    for (final token in ctx.tokens) {
+      if (token.length >= 4 && hay.contains(token)) return true;
+    }
+    final name = ctx.companyName.toLowerCase().trim();
+    return name.isNotEmpty && hay.contains(name);
   }
 
   List<LogoCandidate> _urlCandidatesFromSet(
@@ -996,6 +1282,8 @@ class LogoFinder {
         score += 4;
       case 'DuckDuckGo':
         score += 2;
+      case 'DuckDuckGo Images':
+        score += 5;
     }
     return score;
   }
@@ -1160,10 +1448,12 @@ class LogoFinder {
             uri,
             headers: {
               'User-Agent': _browserUa,
-              'Accept': 'image/*,*/*',
+              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Referer': '${uri.scheme}://${uri.host}/',
             },
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(_requestTimeout);
       if (res.statusCode < 200 || res.statusCode >= 300) {
         return LogoFindResult.fail('HTTP ${res.statusCode} from $source');
       }
@@ -1218,16 +1508,100 @@ class LogoFinder {
     return d;
   }
 
-  static List<String> _uniqueDomains(String name, String dom) {
+  /// Prefer an explicit domain, then guessed TLDs, then DuckDuckGo Instant Answer.
+  Future<List<String>> _resolveDomains(String name, String dom) async {
+    final guessed = _guessDomains(name);
     final domains = <String>[
       if (dom.isNotEmpty) dom,
-      ..._guessDomains(name),
+      ...guessed,
     ];
+
+    if (name.isNotEmpty) {
+      try {
+        final resolved = await _resolveDomainFromDuckDuckGo(name);
+        if (resolved != null &&
+            resolved.isNotEmpty &&
+            _domainLooksCorporate(resolved, name)) {
+          // Insert after an explicit user domain, ahead of pure guesses.
+          domains.insert(dom.isNotEmpty ? 1 : 0, resolved);
+        }
+      } catch (_) {}
+    }
+
     final seen = <String>{};
     return [
       for (final d in domains)
         if (d.isNotEmpty && seen.add(d)) d,
     ];
+  }
+
+  Future<String?> _resolveDomainFromDuckDuckGo(String companyName) async {
+    try {
+      final uri = Uri.https('api.duckduckgo.com', '/', {
+        'q': '$companyName company',
+        'format': 'json',
+        'no_redirect': '1',
+        'no_html': '1',
+      });
+      final res = await _client
+          .get(uri, headers: {
+            'User-Agent': _browserUa,
+            'Accept': 'application/json',
+          })
+          .timeout(_requestTimeout);
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body);
+      if (body is! Map) return null;
+
+      for (final key in ['AbstractURL', 'Redirect', 'OfficialWebsite']) {
+        final domain = _normalizeDomain('${body[key] ?? ''}');
+        if (domain.isNotEmpty && _domainLooksCorporate(domain, companyName)) {
+          return domain;
+        }
+      }
+
+      final related = body['RelatedTopics'];
+      if (related is List) {
+        for (final item in related.take(8)) {
+          if (item is! Map) continue;
+          final firstUrl = '${item['FirstURL'] ?? ''}';
+          final domain = _normalizeDomain(firstUrl);
+          if (domain.isEmpty) continue;
+          if (_domainLooksCorporate(domain, companyName)) return domain;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static bool _domainLooksCorporate(String domain, String companyName) {
+    final host = domain.toLowerCase();
+    const blocked = [
+      'wikipedia.org',
+      'wikidata.org',
+      'wikimedia.org',
+      'facebook.com',
+      'linkedin.com',
+      'twitter.com',
+      'x.com',
+      'instagram.com',
+      'youtube.com',
+      'bloomberg.com',
+      'reuters.com',
+      'crunchbase.com',
+      'glassdoor.',
+      'indeed.com',
+    ];
+    for (final b in blocked) {
+      if (host.contains(b)) return false;
+    }
+    final tokens = _companyTokens(companyName);
+    final stem = host.split('.').first;
+    for (final t in tokens) {
+      if (t.length >= 4 && (stem.contains(t) || t.contains(stem))) return true;
+    }
+    // Allow unknown corporate hosts only when no tokens to compare.
+    return tokens.isEmpty;
   }
 
   static List<String> _guessDomains(String companyName) {
@@ -1254,6 +1628,8 @@ class LogoFinder {
       '.org',
       '.co',
       '.io',
+      '.energy',
+      '.oil',
     ];
     final out = <String>{};
     for (final tld in tlds) {
@@ -1265,6 +1641,12 @@ class LogoFinder {
       out.add('${words.first}${words[1]}.com');
       out.add('${words.first}.com');
       out.add('${words.first}${words[1]}.ca');
+      out.add('${words.first}.ca');
+    } else if (words.length == 1 && words.first.length >= 3) {
+      // Single-token companies (e.g. Keyera) — prioritize common corporate TLDs.
+      out.add('${words.first}.com');
+      out.add('${words.first}.ca');
+      out.add('${words.first}.net');
     }
     return out.toList();
   }

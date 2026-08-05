@@ -1128,24 +1128,54 @@ def draw_meta_strip(c: canvas.Canvas, form, y: float) -> float:
     return bot - GAP
 
 
-def draw_probill_cutout(c: canvas.Canvas, form, logo_x: float, logo_w: float,
-                        logo_top: float, logo_h: float) -> None:
-    """Dashed 'affix probill sticker' box beside the logo (logo position unchanged)."""
-    box_w = 2.35 * inch
-    box_h = min(logo_h, 0.85 * inch)
-    gap = 14
-    # Prefer the right of the logo; fall back to the left if it would clip the margin.
-    right_x = logo_x + logo_w + gap
-    left_x = logo_x - gap - box_w
-    if right_x + box_w <= MARGIN + CONTENT_W - 2:
-        box_x = right_x
-    elif left_x >= MARGIN:
-        box_x = left_x
-    else:
-        box_x = min(max(MARGIN, right_x), MARGIN + CONTENT_W - box_w)
-    box_y = logo_top - logo_h + (logo_h - box_h) / 2
+CUSTOMER_LOGO_TARGET_H = 59.0
+CUSTOMER_TO_PROBILL_GAP = 12.0
+CUSTOMER_CELL_GAP = 8.0
+LOGO_BAND_INSET = 1.0
+PROBILL_BOX_W = 2.35 * inch
+PROBILL_CUT_GAP = 14.0
+MAX_CUSTOMER_LOGOS = 2
 
-    # Cutout look: dashed border + light fill.
+
+def _fit_logo_size(
+    iw: float, ih: float, max_w: float, max_h: float, target_h: float
+) -> tuple[float, float]:
+    """Proportional fit: scale = min(max_w/iw, max_h/ih, target_h/ih)."""
+    if iw <= 0 or ih <= 0 or max_w <= 0 or max_h <= 0:
+        return 0.0, 0.0
+    default_scale = target_h / ih
+    scale = min(max_w / iw, max_h / ih, default_scale)
+    return iw * scale, ih * scale
+
+
+def _probill_box(
+    logo_x: float, logo_w: float, logo_top: float, logo_h: float
+) -> tuple[float, float, float, float]:
+    """Return (x, y, w, h) locked from Swift geometry only."""
+    box_w = PROBILL_BOX_W
+    box_h = min(logo_h, 0.85 * inch)
+    left_x = logo_x - PROBILL_CUT_GAP - box_w
+    right_x = logo_x + logo_w + PROBILL_CUT_GAP
+    if left_x >= MARGIN:
+        box_x = left_x
+    elif right_x + box_w <= MARGIN + CONTENT_W - 2:
+        box_x = right_x
+    else:
+        box_x = min(max(MARGIN, MARGIN), MARGIN + CONTENT_W - box_w)
+    box_y = logo_top - logo_h + (logo_h - box_h) / 2
+    return box_x, box_y, box_w, box_h
+
+
+def draw_probill_cutout(
+    c: canvas.Canvas,
+    form,
+    box_x: float,
+    box_y: float,
+    box_w: float,
+    box_h: float,
+) -> None:
+    """Dashed 'affix probill sticker' box at locked coordinates."""
+    c.saveState()
     c.setFillColor(colors.HexColor("#FAFAFA"))
     c.rect(box_x, box_y, box_w, box_h, stroke=0, fill=1)
     c.setStrokeColor(SWIFT)
@@ -1161,7 +1191,6 @@ def draw_probill_cutout(c: canvas.Canvas, form, logo_x: float, logo_w: float,
     c.setFont("Helvetica", 5)
     c.drawCentredString(box_x + box_w / 2, box_y + box_h - 20, "AFFIX STICKER HERE")
 
-    # Optional handwritten / typed fallback number line inside the cutout.
     put_textfield(
         form, "probill_number",
         box_x + 6, box_y + 6,
@@ -1169,16 +1198,110 @@ def draw_probill_cutout(c: canvas.Canvas, form, logo_x: float, logo_w: float,
         font_size=8, fill=CLEAR,
     )
     hline(c, box_x + 6, box_y + 6, box_w - 12)
+    c.restoreState()
 
 
-def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
+def draw_customer_logos_left(
+    c: canvas.Canvas,
+    logos: list[Path],
+    *,
+    logo_top: float,
+    band_h: float,
+    frame_right_limit: float,
+) -> None:
+    """
+    Draw customer/C/O logos inside a strict left header box:
+    left=MARGIN, right=frame_right_limit, vertically inside the logo band.
+    Isolated with saveState/clip so overflow cannot move Swift/Probill.
+    """
+    valid = [p for p in logos if p and p.exists()][:MAX_CUSTOMER_LOGOS]
+    if not valid:
+        return
+
+    frame_left = MARGIN
+    frame_right = min(frame_right_limit, MARGIN + CONTENT_W)
+    frame_w = frame_right - frame_left
+    if frame_w < 8:
+        return
+
+    frame_top = logo_top - LOGO_BAND_INSET
+    frame_bot = logo_top - band_h + LOGO_BAND_INSET
+    frame_h = frame_top - frame_bot
+    if frame_h <= 1:
+        return
+
+    c.saveState()
+    p = c.beginPath()
+    p.rect(frame_left, frame_bot, frame_w, frame_h)
+    c.clipPath(p, stroke=0, fill=0)
+
+    readers: list[tuple[ImageReader, float, float]] = []
+    for path in valid:
+        img = ImageReader(str(path))
+        iw, ih = img.getSize()
+        if iw > 0 and ih > 0:
+            readers.append((img, float(iw), float(ih)))
+    if not readers:
+        c.restoreState()
+        return
+
+    if len(readers) == 1:
+        img, iw, ih = readers[0]
+        w, h = _fit_logo_size(iw, ih, frame_w, frame_h, CUSTOMER_LOGO_TARGET_H)
+        if w > 0 and h > 0:
+            c.drawImage(
+                img,
+                frame_left + (frame_w - w) / 2,
+                frame_bot + (frame_h - h) / 2,
+                w,
+                h,
+                mask="auto",
+                preserveAspectRatio=True,
+            )
+        c.restoreState()
+        return
+
+    cell_w = (frame_w - CUSTOMER_CELL_GAP) / 2
+    if cell_w < 4:
+        c.restoreState()
+        return
+
+    shared_h = min(CUSTOMER_LOGO_TARGET_H, frame_h)
+    for _, iw, ih in readers:
+        _, h = _fit_logo_size(iw, ih, cell_w, frame_h, shared_h)
+        if 0 < h < shared_h:
+            shared_h = h
+
+    for i, (img, iw, ih) in enumerate(readers):
+        cell_x = frame_left + i * (cell_w + CUSTOMER_CELL_GAP)
+        w, h = _fit_logo_size(iw, ih, cell_w, frame_h, shared_h)
+        if w <= 0 or h <= 0:
+            continue
+        c.drawImage(
+            img,
+            cell_x + (cell_w - w) / 2,
+            frame_bot + (frame_h - h) / 2,
+            w,
+            h,
+            mask="auto",
+            preserveAspectRatio=True,
+        )
+    c.restoreState()
+
+
+def draw_bol_page(
+    c: canvas.Canvas,
+    form,
+    copy_label: str,
+    customer_logos: list[Path] | None = None,
+) -> None:
     """Draw one BOL page. Identical fields/widgets on every page sync by name."""
     draw_watermark(c)
 
     y = PAGE_H - MARGIN - 2
 
-    # Cropped wordmark centered — do not shift when adding the probill cutout.
-    logo_h = 0.82 * inch
+    # Locked Swift wordmark — right edge of the content band.
+    logo_h = CUSTOMER_LOGO_TARGET_H
     logo_x = MARGIN
     logo_w = 0.0
     logo = ensure_logo()
@@ -1186,16 +1309,29 @@ def draw_bol_page(c: canvas.Canvas, form, copy_label: str) -> None:
         img = ImageReader(str(logo))
         iw, ih = img.getSize()
         logo_w = logo_h * iw / ih
-        max_w = CONTENT_W * 0.92
+        max_w = CONTENT_W * 0.42
         if logo_w > max_w:
             logo_w = max_w
             logo_h = logo_w * ih / iw
-        logo_x = (PAGE_W - logo_w) / 2
+        logo_x = PAGE_W - MARGIN - logo_w
+        if logo_x < MARGIN:
+            logo_x = MARGIN
         c.drawImage(img, logo_x, y - logo_h, logo_w, logo_h, mask="auto")
 
-    # Probill sticker cutout — sits beside the logo without moving it.
-    draw_probill_cutout(c, form, logo_x, logo_w, y, logo_h)
-    y -= logo_h + 6
+    # Probill locked from Swift only.
+    box_x, box_y, box_w, box_h = _probill_box(logo_x, logo_w, y, logo_h)
+    static_left = min(logo_x, box_x) if logo_w > 0 else box_x
+    band_h = max(logo_h, CUSTOMER_LOGO_TARGET_H)
+
+    draw_customer_logos_left(
+        c,
+        customer_logos or [],
+        logo_top=y,
+        band_h=band_h,
+        frame_right_limit=static_left - CUSTOMER_TO_PROBILL_GAP,
+    )
+    draw_probill_cutout(c, form, box_x, box_y, box_w, box_h)
+    y -= band_h + 6
 
     band_h = 22
     orange_bar(c, MARGIN, y - band_h, CONTENT_W, band_h, r=3)
@@ -1601,22 +1737,26 @@ def wire_product_total_calculations(pdf_path: Path) -> None:
     return _safe_replace(tmp, pdf_path)
 
 
-def build_pdf() -> Path:
-    out = OUT_PATH
+def build_pdf(
+    out_path: Path | None = None,
+    customer_logos: list[Path] | None = None,
+) -> Path:
+    out = out_path or OUT_PATH
     try:
         # Probe whether the destination is writable before a long render.
         with open(out, "ab"):
             pass
     except PermissionError:
-        out = OUT_PATH.with_name(OUT_PATH.stem + ".new.pdf")
-        print(f"Note: {OUT_PATH.name} is open/locked — writing {out.name} instead.")
+        out = out.with_name(out.stem + ".new.pdf")
+        print(f"Note: {(out_path or OUT_PATH).name} is open/locked — writing {out.name} instead.")
 
+    logos = [p for p in (customer_logos or []) if p and p.exists()][:MAX_CUSTOMER_LOGOS]
     c = canvas.Canvas(str(out), pagesize=letter)
     form = c.acroForm
     for i, copy_type in enumerate(COPY_TYPES):
         if i > 0:
             c.showPage()
-        draw_bol_page(c, form, copy_type)
+        draw_bol_page(c, form, copy_type, customer_logos=logos)
     c.save()
     serial_start = read_serial_start()
     out = merge_same_name_fields(out)
@@ -1629,4 +1769,12 @@ def build_pdf() -> Path:
 
 
 if __name__ == "__main__":
-    print(f"Created: {build_pdf()}")
+    import argparse
+
+    p = argparse.ArgumentParser(description="Swift Supply Bill of Lading PDF")
+    p.add_argument("--logo", type=Path, help="Customer logo (PNG/JPG)")
+    p.add_argument("--logo2", type=Path, help="Optional second (C/O) logo")
+    p.add_argument("--out", type=Path, help="Output PDF path")
+    args = p.parse_args()
+    logos = [x for x in (args.logo, args.logo2) if x]
+    print(f"Created: {build_pdf(out_path=args.out, customer_logos=logos)}")

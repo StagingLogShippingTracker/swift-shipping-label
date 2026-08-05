@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
+import 'gemini_client.dart';
 
 /// HTTP client for cloud Recreate backends (Fly.io Python primary,
 /// Supabase Deno/`vtracer` last resort).
@@ -77,6 +78,26 @@ class LogoRecreateCloud {
     if (bytes.isEmpty) {
       throw StateError('Recreate cloud: empty image bytes');
     }
+
+    // Optional on-device Gemini pre-pass (brand/colors/layout) before upload.
+    if (GeminiClient.isConfigured) {
+      try {
+        final hints = await GeminiClient().analyzeForRecreate(
+          Uint8List.fromList(bytes),
+        );
+        if (hints != null) {
+          onLog?.call(
+            'Recreate (Gemini assist): brand=${hints.brandName} '
+            'font=${hints.fontFamilyGuess} '
+            'colors=${hints.dominantColorsHex.join(",")} '
+            'layout=${hints.layoutSummary}',
+          );
+        }
+      } catch (e) {
+        onLog?.call('Recreate (Gemini assist) skipped: $e');
+      }
+    }
+
     final endpoint = endpointFor(endpointUrl ?? AppConfig.recreateLogoUrl);
     final headers = {
       'apikey': AppConfig.supabaseAnonKey,

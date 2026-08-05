@@ -35,13 +35,14 @@ const _shippingGroups = <(String title, String hint, List<String> keys)>[
       LabelFields.customer,
       LabelFields.poNum,
       LabelFields.project,
+      LabelFields.attn,
       LabelFields.specialInstructions,
     ],
   ),
   (
     'Ship to',
     'Destination the warehouse reads first',
-    [LabelFields.shipTo, LabelFields.location, LabelFields.attn],
+    [LabelFields.shipTo, LabelFields.location],
   ),
   (
     'Swift references',
@@ -1659,10 +1660,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final m = _meta(key);
     final lines = !m.$3
         ? 1
-        : (key == LabelFields.specialInstructions &&
-                _kind == LabelKind.receiving)
-            ? 2
-            : 3;
+        : key == LabelFields.location && _kind == LabelKind.shipping
+            ? 6 // Matches doubled Location band on the shipping PDF.
+            : key == LabelFields.specialInstructions
+                ? 2 // Shorter SI entry; PDF band absorbs PO/Project growth.
+                : 3;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: lines <= 1

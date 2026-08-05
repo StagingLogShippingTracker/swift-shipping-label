@@ -32,6 +32,30 @@ class AppConfig {
     defaultValue: '',
   );
 
+  /// Google Gemini API key for logo validation + recreate assist.
+  /// Prefer runtime env / gitignored `.env` — do not commit secrets.
+  /// Build-time: `--dart-define=GEMINI_API_KEY=...`
+  static const geminiApiKeyDefine = String.fromEnvironment(
+    'GEMINI_API_KEY',
+    defaultValue: '',
+  );
+
+  /// GCP project number associated with the Gemini key (metadata / Fly secrets).
+  static const geminiProjectNumber = String.fromEnvironment(
+    'GEMINI_PROJECT_NUMBER',
+    defaultValue: '308655478522',
+  );
+
+  /// Multimodal model id (default flash).
+  static const geminiModel = String.fromEnvironment(
+    'GEMINI_MODEL',
+    defaultValue: 'gemini-2.0-flash',
+  );
+
+  /// Resolved Gemini API key for local recreate process env injection.
+  /// Prefer [GeminiClient.resolveApiKey] at call sites.
+  static String get geminiApiKey => geminiApiKeyDefine.trim();
+
   /// Primary cloud Recreate — Fly.io Python (`tools.logo_vectorizer`).
   /// Used when online (Android always; Windows when local Python is missing).
   /// Override with `--dart-define=RECREATE_LOGO_URL=...`.

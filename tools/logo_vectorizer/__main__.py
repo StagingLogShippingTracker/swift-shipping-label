@@ -122,6 +122,13 @@ def main() -> int:
             max_colors=args.max_colors,
             render_width=args.render_width or 2000,
             render_background=render_bg or "transparent",
+            # --ai forces on; otherwise auto when GEMINI_API_KEY is set.
+            use_ai=True if args.ai else None,
+            ai_providers=[
+                p.strip()
+                for p in (args.ai_providers or "gemini").split(",")
+                if p.strip()
+            ],
         )
         print(
             f"Recreate -> {out} ({out.stat().st_size} bytes)\n"

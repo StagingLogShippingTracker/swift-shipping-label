@@ -270,15 +270,20 @@ CUSTOMER_LOGO_GAP = 10.0
 CUSTOMER_LOGO_TO_SWIFT_GAP = 12.0
 
 
-def _swift_rendered_width(logo_path: Path, max_w: float, max_h: float) -> float:
-    if not logo_path.exists():
-        return 0.0
+def _swift_rendered_size(logo_path: Path, max_w: float, max_h: float) -> tuple[float, float]:
+    """Return (width, height) after fitting [logo_path] into max_w × max_h."""
+    if not logo_path.exists() or max_w <= 0 or max_h <= 0:
+        return 0.0, 0.0
     img = ImageReader(str(logo_path))
     iw, ih = img.getSize()
     if iw <= 0 or ih <= 0:
-        return 0.0
+        return 0.0, 0.0
     scale = min(max_w / iw, max_h / ih)
-    return iw * scale
+    return iw * scale, ih * scale
+
+
+def _swift_rendered_width(logo_path: Path, max_w: float, max_h: float) -> float:
+    return _swift_rendered_size(logo_path, max_w, max_h)[0]
 
 
 def draw_customer_logo_row(
@@ -345,10 +350,24 @@ def draw_header(
     customer_logo: Path | None = None,
     customer_logo2: Path | None = None,
 ) -> float:
-    """Customer logo left, Swift right — same as shipping. RECEIVING badge on the rule."""
+    """
+    Customer logo left, Swift right — same vertical centering as shipping.
+    Swift sits on the midpoint between the top thick bumper and the thin
+    accent rule. RECEIVING badge rides on the fixed rule.
+    """
+    # Thick top bumper (drawn in draw_label_page): roundRect bottom = this Y.
+    y_top_bar_bottom = PAGE_H - MY + 4
+
     y_top = PAGE_H - MY - 14
     band_h = 0.92 * inch
     logo_bottom = y_top - band_h
+
+    # Fixed thin accent under the header — independent of logo image bounds.
+    air_under_logos = 0.36 * inch
+    rule_y = logo_bottom - air_under_logos
+    rule_h = 2.5
+    rule_draw_y = rule_y - 0.5
+    y_bottom_bar_top = rule_draw_y + rule_h
 
     logos: list[Path] = []
     if customer_logo:
@@ -357,8 +376,9 @@ def draw_header(
         logos.append(customer_logo2)
 
     swift_max_w = COL_W * 0.95
-    swift_max_h = band_h - 4
-    swift_w = _swift_rendered_width(LOGO_PATH, swift_max_w, swift_max_h)
+    gap = y_top_bar_bottom - y_bottom_bar_top
+    swift_max_h = min(band_h - 4, max(gap, 1.0))
+    swift_w, swift_h = _swift_rendered_size(LOGO_PATH, swift_max_w, swift_max_h)
     swift_left_x = MX + CONTENT_W - swift_w
     avail_for_customer = (
         swift_left_x - CUSTOMER_LOGO_TO_SWIFT_GAP - MX if swift_w > 0 else CONTENT_W
@@ -377,15 +397,15 @@ def draw_header(
         c.setFont(FONT_MED, 7.5)
         c.drawCentredString(MX + ph_w / 2, logo_bottom + 14 + ph_h / 2 - 3, "CUSTOMER LOGO")
 
-    if LOGO_PATH.exists() and swift_w > 0:
+    if LOGO_PATH.exists() and swift_w > 0 and swift_h > 0:
+        # Y_logo_bottom = Y_bottom_bar_top + ((Y_top_bar_bottom - Y_bottom_bar_top) - h) / 2
+        y_logo_bottom = y_bottom_bar_top + (gap - swift_h) / 2
         draw_image_fit(
-            c, LOGO_PATH, MX + CONTENT_W, logo_bottom + 2, swift_max_w, swift_max_h, right=True
+            c, LOGO_PATH, MX + CONTENT_W, y_logo_bottom, swift_max_w, swift_max_h, right=True
         )
 
-    air_under_logos = 0.36 * inch
-    rule_y = logo_bottom - air_under_logos
     c.setFillColor(SWIFT)
-    c.roundRect(MX, rule_y - 0.5, CONTENT_W, 2.5, 1.0, stroke=0, fill=1)
+    c.roundRect(MX, rule_draw_y, CONTENT_W, rule_h, 1.0, stroke=0, fill=1)
 
     # Small document-type chip so this never reads as a shipping label
     chip = "RECEIVING"

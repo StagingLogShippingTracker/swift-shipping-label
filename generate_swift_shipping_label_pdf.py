@@ -64,6 +64,15 @@ FONT_BOLD = "Oswald-Bold"
 ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
 ENTRY_SIZE = 18
+PIECE_COUNT_SIZE = 48
+PIECE_OF_SIZE = 22
+PIECE_BAND_PAD_V = 8
+PIECE_BAND_BOX_PAD_H = 10
+PIECE_BAND_LABEL_STRIP = 14
+PIECE_BAND_VALUE_H = PIECE_COUNT_SIZE + 10
+PIECE_BAND_ROW_H = (
+    PIECE_BAND_LABEL_STRIP + PIECE_BAND_VALUE_H + PIECE_BAND_PAD_V * 2 + 4
+)
 ENTRY_HERO = 22
 ENTRY_SO = 36
 ENTRY_NOTES = 18
@@ -379,15 +388,20 @@ CUSTOMER_LOGO_GAP = 10.0
 CUSTOMER_LOGO_TO_SWIFT_GAP = 12.0
 
 
-def _swift_rendered_width(logo_path: Path, max_w: float, max_h: float) -> float:
-    if not logo_path.exists():
-        return 0.0
+def _swift_rendered_size(logo_path: Path, max_w: float, max_h: float) -> tuple[float, float]:
+    """Return (width, height) after fitting [logo_path] into max_w × max_h."""
+    if not logo_path.exists() or max_w <= 0 or max_h <= 0:
+        return 0.0, 0.0
     img = ImageReader(str(logo_path))
     iw, ih = img.getSize()
     if iw <= 0 or ih <= 0:
-        return 0.0
+        return 0.0, 0.0
     scale = min(max_w / iw, max_h / ih)
-    return iw * scale
+    return iw * scale, ih * scale
+
+
+def _swift_rendered_width(logo_path: Path, max_w: float, max_h: float) -> float:
+    return _swift_rendered_size(logo_path, max_w, max_h)[0]
 
 
 def draw_customer_logo_row(
@@ -451,14 +465,25 @@ def draw_customer_logos_header(
 
 def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_logo2: Path | None = None) -> float:
     """
-    Logos stay high under the top bumper. The red rule + body start lower
-    so logos sit optically centered between top bumper and the rule, and the
-    body sits closer to the footer.
+    Customer logos sit in the header band. Swift is vertically centered between
+    the bottom of the top thick orange bumper and the top of the thin orange
+    accent rule — equal margin above and below. The accent rule Y is fixed and
+    never shifts with customer-logo scaling.
     """
+    # Thick top bumper (drawn in draw_label_page): roundRect bottom = this Y.
+    y_top_bar_bottom = PAGE_H - MY + 4
+
     y_top = PAGE_H - MY - 14
-    # Logo band height (Swift mark includes its own bumpers)
+    # Logo band height (customer logos); Swift uses the full inter-bar gap.
     band_h = 0.92 * inch
     logo_bottom = y_top - band_h
+
+    # Fixed thin accent under the header — independent of logo image bounds.
+    air_under_logos = 0.40 * inch
+    rule_y = logo_bottom - air_under_logos
+    rule_h = 2.5
+    rule_draw_y = rule_y - 0.5
+    y_bottom_bar_top = rule_draw_y + rule_h
 
     logos: list[Path] = []
     if customer_logo:
@@ -466,9 +491,11 @@ def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_lo
     if customer_logo2:
         logos.append(customer_logo2)
 
+    # Horizontal size unchanged (right column width). Height capped to the gap.
     swift_max_w = COL_W * 0.95
-    swift_max_h = band_h - 4
-    swift_w = _swift_rendered_width(LOGO_PATH, swift_max_w, swift_max_h)
+    gap = y_top_bar_bottom - y_bottom_bar_top
+    swift_max_h = min(band_h - 4, max(gap, 1.0))
+    swift_w, swift_h = _swift_rendered_size(LOGO_PATH, swift_max_w, swift_max_h)
     swift_left_x = MX + CONTENT_W - swift_w
     avail_for_customer = (
         swift_left_x - CUSTOMER_LOGO_TO_SWIFT_GAP - MX if swift_w > 0 else CONTENT_W
@@ -487,16 +514,15 @@ def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_lo
         c.setFont(FONT_MED, 7.5)
         c.drawCentredString(MX + ph_w / 2, logo_bottom + 14 + ph_h / 2 - 3, "CUSTOMER LOGO")
 
-    if LOGO_PATH.exists() and swift_w > 0:
+    if LOGO_PATH.exists() and swift_w > 0 and swift_h > 0:
+        # Y_logo_bottom = Y_bottom_bar_top + ((Y_top_bar_bottom - Y_bottom_bar_top) - h) / 2
+        y_logo_bottom = y_bottom_bar_top + (gap - swift_h) / 2
         draw_image_fit(
-            c, LOGO_PATH, MX + CONTENT_W, logo_bottom + 2, swift_max_w, swift_max_h, right=True
+            c, LOGO_PATH, MX + CONTENT_W, y_logo_bottom, swift_max_w, swift_max_h, right=True
         )
 
-    # Happy middle: more air than original, less than the over-correction
-    air_under_logos = 0.40 * inch
-    rule_y = logo_bottom - air_under_logos
     c.setFillColor(SWIFT)
-    c.roundRect(MX, rule_y - 0.5, CONTENT_W, 2.5, 1.0, stroke=0, fill=1)
+    c.roundRect(MX, rule_draw_y, CONTENT_W, rule_h, 1.0, stroke=0, fill=1)
     return rule_y - 14
 
 
@@ -757,10 +783,25 @@ def draw_notes_and_meta(
 
 
 def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
-    """Two aligned counters — labels live inside the cells."""
-    row_h = 38
+    """Two aligned counters — 48pt digits under a top micro-label strip."""
+    count_size = PIECE_COUNT_SIZE
+    of_size = PIECE_OF_SIZE
+    value_h = PIECE_BAND_VALUE_H
+    row_h = PIECE_BAND_ROW_H
+    box_pad_h = PIECE_BAND_BOX_PAD_H
+    label_strip = PIECE_BAND_LABEL_STRIP
+    pad_v = PIECE_BAND_PAD_V
     gap = 12
     half = (CONTENT_W - gap) / 2
+
+    def count_box_w(val: str) -> float:
+        measure = val if val else "88"
+        tw = stringWidth(measure, ENTRY_BOLD, count_size)
+        raw = tw + box_pad_h * 2
+        prefer = stringWidth("888", ENTRY_BOLD, count_size) + box_pad_h * 2
+        max_w = half * 0.38
+        target = prefer if raw < prefer else raw
+        return min(target, max_w)
 
     def cell(x: float, label: str, prefix: str) -> None:
         c.setFillColor(PIECE_FILL)
@@ -769,62 +810,61 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
         c.setLineWidth(0.6)
         c.roundRect(x, y - row_h, half, row_h, 4, stroke=1, fill=0)
 
-        # Tracked micro-label, vertically centered on the left
+        # Micro-label along the top edge so 48pt digits have full width below.
         c.setFillColor(LABEL_C)
         c.setFont(FONT_MED, 7.5)
-        cx = x + 12
-        cell_mid = y - row_h / 2
-        label_mid_y = cell_mid - 2.5
+        cx = x + 10
+        label_y = y - 11
         for ch in label.upper():
-            c.drawString(cx, label_mid_y, ch)
+            c.drawString(cx, label_y, ch)
             cx += stringWidth(ch, FONT_MED, 7.5) + 0.7
 
-        box = 34
-        of_w = 28
-        block_w = box * 2 + of_w
+        num_val = sample.get(f"{prefix}_num", "")
+        of_val = sample.get(f"{prefix}_of", "")
+        num_box = count_box_w(num_val)
+        of_box = count_box_w(of_val)
+        of_text = "OF"
+        of_w = stringWidth(of_text, FONT_BOLD, of_size) + 20
+        block_w = num_box + of_w + of_box
         fx = x + (half - block_w) / 2
 
-        value_h = 20
-        value_y = cell_mid - value_h / 2
-        underline_y = value_y - 1
+        value_top = y - label_strip - pad_v
+        value_y = value_top - value_h
+        cell_mid = value_y + value_h / 2
+        underline_y = value_y - 2
 
-        num_sz = fit_single_line_size(
-            sample.get(f"{prefix}_num", ""), box - 4, ENTRY_SIZE, min_size=11
-        )
         put_field(
-            form, f"{prefix}_num", fx, value_y, box, value_h, "", num_sz, fill=WHITE,
+            form, f"{prefix}_num", fx, value_y, num_box, value_h, "", count_size, fill=WHITE,
             font_name="Helvetica-Bold",
         )
-        if sample.get(f"{prefix}_num"):
+        if num_val:
             draw_value(
-                c, sample[f"{prefix}_num"], fx, value_y, box, value_h, num_sz, ENTRY_BOLD, centered=True
+                c, num_val, fx, value_y, num_box, value_h, count_size, ENTRY_BOLD, centered=True
             )
-        hairline(c, fx, underline_y, box, RULE)
+        hairline(c, fx, underline_y, num_box, RULE)
 
         c.setFillColor(SWIFT)
-        c.setFont(FONT_BOLD, 11)
-        c.drawCentredString(fx + box + of_w / 2, label_mid_y, "OF")
+        c.setFont(FONT_BOLD, of_size)
+        of_y = cell_mid - of_size / 2 + 1
+        c.drawCentredString(fx + num_box + of_w / 2, of_y, of_text)
 
-        of_sz = fit_single_line_size(
-            sample.get(f"{prefix}_of", ""), box - 4, ENTRY_SIZE, min_size=11
-        )
         put_field(
-            form, f"{prefix}_of", fx + box + of_w, value_y, box, value_h, "", of_sz, fill=WHITE,
+            form, f"{prefix}_of", fx + num_box + of_w, value_y, of_box, value_h, "", count_size, fill=WHITE,
             font_name="Helvetica-Bold",
         )
-        if sample.get(f"{prefix}_of"):
+        if of_val:
             draw_value(
                 c,
-                sample[f"{prefix}_of"],
-                fx + box + of_w,
+                of_val,
+                fx + num_box + of_w,
                 value_y,
-                box,
+                of_box,
                 value_h,
-                of_sz,
+                count_size,
                 ENTRY_BOLD,
                 centered=True,
             )
-        hairline(c, fx + box + of_w, underline_y, box, RULE)
+        hairline(c, fx + num_box + of_w, underline_y, of_box, RULE)
 
     cell(MX, "Pallet / Crate", "pallet")
     cell(MX + half + gap, "Box", "box")
@@ -842,7 +882,7 @@ def draw_label_page(
 
     # Footer anchored to bottom bumper; piece band sits above with a clear breath
     foot_y = MY + 6
-    piece_top = foot_y + 70
+    piece_top = foot_y + PIECE_BAND_ROW_H + 28
 
     y = draw_header(c, customer_logo, customer_logo2)
     y_l, y_r = draw_identity_pair(c, form, y, sample)

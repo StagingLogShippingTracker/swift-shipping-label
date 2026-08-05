@@ -18,6 +18,16 @@ Used by the Flutter app when online:
 Auth: `Authorization: Bearer <RECREATE_AUTH_TOKEN>` (or `apikey` header).
 The mobile app sends the Supabase anon key; set that as the Fly secret.
 
+## Optional Gemini assist
+
+When `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) is set on the machine / Fly secrets,
+Recreate runs a Gemini vision pre-pass for brand colors, font hints, and layout
+before vectorization. `/health` reports `gemini_configured`.
+
+```bash
+fly secrets set GEMINI_API_KEY="<key>" GEMINI_PROJECT_NUMBER="308655478522" GEMINI_MODEL="gemini-2.0-flash" -a swift-recreate-logo
+```
+
 ## Deploy
 
 From the **repo root** (build context = repo root):

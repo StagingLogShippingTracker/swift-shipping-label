@@ -40,6 +40,20 @@ class BolLabelPdf {
   static const pad = 6.0;
   static const bodyInset = 8.0;
   static const inset = 3.0;
+  /// Default height for uploaded customer/C/O logos on the BOL header (pt).
+  static const customerLogoTargetH = 59.0;
+  /// Safety gap between customer logo frame and Probill / Swift.
+  static const customerToProbillGap = 12.0;
+  /// Legacy alias — same clearance used toward Swift when Probill is absent.
+  static const customerToSwiftGap = customerToProbillGap;
+  /// Gap between dual customer logo cells.
+  static const customerStackGap = 8.0;
+  /// Keep uploaded logos inside the header band (above the orange title bar).
+  static const logoBandInset = 1.0;
+  /// Locked Probill cut-out width (pt).
+  static final probillBoxW = 2.35 * inch;
+  /// Gap between Swift wordmark and Probill cut-out.
+  static const probillCutGap = 14.0;
   static const lineRows = 7;
   static List<String> get itemTypes => BolItemTypes.productTotalLabels;
   static const copyTypes = ['STORE COPY', 'DRIVER COPY', 'CUSTOMER COPY'];
@@ -163,51 +177,45 @@ class BolLabelPdf {
     final pageH = pageFormat.height;
     var y = pageH - margin - 2;
 
-    // Header row: Swift wordmark preferred centered, customer logos sit
-    // to its left at the exact same 59.04 pt (0.82") height. When a wide
-    // customer logo would overlap swift, swift shifts right just enough
-    // to keep both at target height without overlap.
-    var logoH = 0.82 * inch;
-    var logoW = 0.0;
-    var logoX = margin;
-    const customerLogoH = 0.82 * inch;
-    const customerGap = 12.0;
-
-    // 1. Pre-compute how much width the customer logo row needs at
-    //    target height so we can position the Swift wordmark accordingly.
-    final customerReq = _customerLogoRowWidth(customerLogos, customerLogoH);
+    // Header row: Swift + Probill are absolutely locked first. Customer logos
+    // may only occupy the remaining left frame and never move static elements.
+    const swiftBandH = customerLogoTargetH;
+    var swiftH = swiftBandH;
+    var swiftW = 0.0;
+    var swiftX = margin;
 
     if (swiftLogo != null) {
       final iw = swiftLogo.width.toDouble();
       final ih = swiftLogo.height.toDouble();
       if (iw > 0 && ih > 0) {
-        logoW = logoH * iw / ih;
-        final maxW = contentW * 0.92;
-        if (logoW > maxW) {
-          logoW = maxW;
-          logoH = logoW * ih / iw;
+        swiftW = swiftH * iw / ih;
+        final maxW = contentW * 0.42;
+        if (swiftW > maxW) {
+          swiftW = maxW;
+          swiftH = swiftW * ih / iw;
         }
-        // Preferred: swift centered on page.
-        var centered = (pageW - logoW) / 2;
-        // Minimum left position to guarantee the customer row fits
-        // (margin + reserved customer width + gap).
-        final minLeftForCustomer = margin +
-            (customerReq > 0 ? customerReq + customerGap : 0);
-        logoX = centered < minLeftForCustomer ? minLeftForCustomer : centered;
-        // Right-guard: don't push swift off the page.
-        final maxLogoX = pageW - margin - logoW;
-        if (logoX > maxLogoX) logoX = maxLogoX;
-        c.drawImage(swiftLogo, logoX, y - logoH, logoW, logoH);
+        // Locked: right edge of the content band. Never shifts for uploads.
+        swiftX = pageW - margin - swiftW;
+        if (swiftX < margin) swiftX = margin;
+        c.drawImage(swiftLogo, swiftX, y - swiftH, swiftW, swiftH);
       }
     }
 
-    // Draw customer logos at fixed 59.04 pt height. Available width is
-    // the space left of the Swift wordmark (minus gap); with the shift
-    // above, this is always at least [customerReq] when [customerReq]>0.
-    _drawCustomerLogosLeft(c, customerLogos, logoX, y, customerLogoH);
-
-    _probillCutout(c, fonts, d, logoX, logoW, y, logoH);
-    y -= logoH + 6;
+    // Probill locks immediately left of Swift (hardcoded relative to Swift).
+    // Customer logos never feed these coordinates.
+    final probill = _probillBox(swiftX, swiftW, y, swiftH);
+    final staticLeft = swiftW > 0
+        ? math.min(swiftX, probill.x)
+        : probill.x;
+    _drawCustomerLogosLeft(
+      c,
+      customerLogos,
+      logoTop: y,
+      bandH: math.max(swiftH, customerLogoTargetH),
+      frameRightLimit: staticLeft - customerToProbillGap,
+    );
+    _paintProbillCutout(c, fonts, d, probill);
+    y -= math.max(swiftH, customerLogoTargetH) + 6;
 
     // Title band
     const bandH = 22.0;
@@ -790,30 +798,42 @@ class BolLabelPdf {
     }
   }
 
-  void _probillCutout(
-    PdfGraphics c,
-    _Fonts fonts,
-    ShippingLabelData d,
+  /// Locked Probill geometry from Swift only (customer logos never feed this).
+  /// Prefers the slot immediately left of Swift so the left header stays free
+  /// for customer logos; falls back to the right only if left cannot fit.
+  ({double x, double y, double w, double h}) _probillBox(
     double logoX,
     double logoW,
     double logoTop,
     double logoH,
   ) {
-    final boxW = 2.35 * inch;
+    final boxW = probillBoxW;
     final boxH = logoH < 0.85 * inch ? logoH : 0.85 * inch;
-    const cutGap = 14.0;
-    final rightX = logoX + logoW + cutGap;
-    final leftX = logoX - cutGap - boxW;
+    final leftX = logoX - probillCutGap - boxW;
+    final rightX = logoX + logoW + probillCutGap;
+    // Prefer left-of-Swift so customer logos have a stable left frame.
     double boxX;
-    if (rightX + boxW <= margin + contentW - 2) {
-      boxX = rightX;
-    } else if (leftX >= margin) {
+    if (leftX >= margin) {
       boxX = leftX;
+    } else if (rightX + boxW <= margin + contentW - 2) {
+      boxX = rightX;
     } else {
-      boxX = (rightX < margin ? margin : rightX)
-          .clamp(margin, margin + contentW - boxW);
+      boxX = margin.clamp(margin, margin + contentW - boxW);
     }
     final boxY = logoTop - logoH + (logoH - boxH) / 2;
+    return (x: boxX, y: boxY, w: boxW, h: boxH);
+  }
+
+  void _paintProbillCutout(
+    PdfGraphics c,
+    _Fonts fonts,
+    ShippingLabelData d,
+    ({double x, double y, double w, double h}) box,
+  ) {
+    final boxX = box.x;
+    final boxY = box.y;
+    final boxW = box.w;
+    final boxH = box.h;
 
     c
       ..setFillColor(const PdfColor.fromInt(0xFFFAFAFA))
@@ -1037,126 +1057,130 @@ class BolLabelPdf {
     c.drawImage(img, dx, dy, w, h);
   }
 
-  void _drawLogoAtHeight(
-    PdfGraphics c,
+  /// Scale preserving aspect: prefer [targetH], never exceed [maxW]/[maxH].
+  ({double w, double h}) _fitLogoSize(
     PdfImage img,
-    double slotX,
-    double slotY,
-    double slotW,
-    double slotH,
+    double maxW,
+    double maxH,
     double targetH,
   ) {
     final iw = img.width.toDouble();
     final ih = img.height.toDouble();
-    if (iw <= 0 || ih <= 0) return;
-    var scale = targetH / ih;
-    var w = iw * scale;
-    var h = targetH;
-    if (w > slotW) {
-      scale = slotW / iw;
-      w = slotW;
-      h = ih * scale;
+    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) {
+      return (w: 0.0, h: 0.0);
     }
+    final defaultScale = targetH / ih;
+    final scale = math.min(
+      maxW / iw,
+      math.min(maxH / ih, defaultScale),
+    );
+    return (w: iw * scale, h: ih * scale);
+  }
+
+  void _drawLogoInCell(
+    PdfGraphics c,
+    PdfImage img,
+    double cellX,
+    double cellY,
+    double cellW,
+    double cellH,
+    double targetH,
+  ) {
+    final size = _fitLogoSize(img, cellW, cellH, targetH);
+    if (size.w <= 0 || size.h <= 0) return;
     c.drawImage(
       img,
-      slotX + (slotW - w) / 2,
-      slotY + (slotH - h),
-      w,
-      h,
+      cellX + (cellW - size.w) / 2,
+      cellY + (cellH - size.h) / 2,
+      size.w,
+      size.h,
     );
   }
 
-  /// Width required to draw the customer logo row at [rowH] tall in
-  /// natural aspect ratio. Returns 0 when there are no logos. For a
-  /// single logo this is `iw/ih * rowH`. For dual logos (stacked
-  /// vertically at half-height each) it's the wider of the two natural
-  /// widths at that half-height.
-  double _customerLogoRowWidth(List<PdfImage> customerLogos, double rowH) {
-    final logos = customerLogos.take(maxCustomerLogos).toList();
-    if (logos.isEmpty) return 0;
-    if (logos.length == 1) {
-      final iw = logos.first.width.toDouble();
-      final ih = logos.first.height.toDouble();
-      if (iw <= 0 || ih <= 0) return 0;
-      return iw / ih * rowH;
-    }
-    const stackGap = 4.0;
-    var slotH = (rowH - stackGap) / 2;
-    var maxW = 0.0;
-    for (final l in logos) {
-      final iw = l.width.toDouble();
-      final ih = l.height.toDouble();
-      if (iw <= 0 || ih <= 0) continue;
-      final w = iw / ih * slotH;
-      if (w > maxW) maxW = w;
-    }
-    return maxW;
-  }
-
-  /// Up to 2 customer logos in the left header frame only (no Swift/probill shift).
+  /// Uploaded logos only — left of the locked Probill / Swift static zone.
   ///
-  /// Customer logos always render at [logoH] (59.04 pt = 0.82") tall — the
-  /// exact height of the Swift wordmark so the header row is visually
-  /// balanced. Width comes purely from the source aspect ratio; the only
-  /// horizontal cap is the space between the left page margin and the
-  /// Swift wordmark (minus a small breathing gap). No fixed sub-frame cap
-  /// so a naturally wide logo (e.g. EPCOR ~2.6:1) is not squished down.
+  /// Default height [customerLogoTargetH] (59 pt). Wide logos downscale
+  /// proportionally to stay inside [margin, frameRightLimit] × band.
+  /// Dual logos share equal-width cells and an equal pt height.
   void _drawCustomerLogosLeft(
     PdfGraphics c,
-    List<PdfImage> customerLogos,
-    double swiftLogoX,
-    double logoTop,
-    double logoH,
-  ) {
-    final logos = customerLogos.take(maxCustomerLogos).toList();
+    List<PdfImage> customerLogos, {
+    required double logoTop,
+    required double bandH,
+    required double frameRightLimit,
+  }) {
+    final logos = <PdfImage>[];
+    for (final l in customerLogos.take(maxCustomerLogos)) {
+      final iw = l.width.toDouble();
+      final ih = l.height.toDouble();
+      if (iw > 0 && ih > 0) logos.add(l);
+    }
     if (logos.isEmpty) return;
-    // Only cap on the right is the Swift wordmark itself (minus gap).
-    // Absolute floor keeps at least a tiny frame if Swift is unusually wide.
+
     final frameLeft = margin;
-    final frameRight = (swiftLogoX - 12).clamp(frameLeft + 60, double.infinity);
+    final frameRight = math.min(
+      frameRightLimit,
+      margin + contentW,
+    );
     final frameW = frameRight - frameLeft;
-    if (frameW < 60) return;
-    final frameBot = logoTop - logoH;
+    if (frameW < 8) return;
+
+    final frameTop = logoTop - logoBandInset;
+    final frameBot = logoTop - bandH + logoBandInset;
+    final frameH = (frameTop - frameBot).clamp(1.0, 10000.0);
+    if (frameH <= 0) return;
+
+    // Isolate logo drawing so overflow cannot affect Swift / Probill.
+    c.saveContext();
+    c
+      ..drawRect(frameLeft, frameBot, frameW, frameH)
+      ..clipPath();
 
     if (logos.length == 1) {
-      _drawLogoAtHeight(
+      _drawLogoInCell(
         c,
         logos.first,
         frameLeft,
         frameBot,
         frameW,
-        logoH,
-        logoH,
+        frameH,
+        customerLogoTargetH,
       );
+      c.restoreContext();
       return;
     }
 
-    // Dual logos: stack vertically at equal per-slot height inside the band.
-    // Scale down uniformly if the widest natural width exceeds the frame.
-    const stackGap = 4.0;
-    var slotH = (logoH - stackGap) / 2;
-    var maxNaturalW = 0.0;
+    // Dual logos: equal-width grid cells, shared equal pt height.
+    final cellW = (frameW - customerStackGap) / 2;
+    if (cellW < 4) {
+      c.restoreContext();
+      return;
+    }
+
+    var sharedH = customerLogoTargetH;
+    if (sharedH > frameH) sharedH = frameH;
     for (final l in logos) {
-      final iw = l.width.toDouble();
-      final ih = l.height.toDouble();
-      if (iw <= 0 || ih <= 0) continue;
-      final w = iw / ih * slotH;
-      if (w > maxNaturalW) maxNaturalW = w;
+      final fitted = _fitLogoSize(l, cellW, frameH, sharedH);
+      if (fitted.h < sharedH) sharedH = fitted.h;
     }
-    if (maxNaturalW > frameW && maxNaturalW > 0) {
-      slotH *= frameW / maxNaturalW;
+    if (sharedH < 1) {
+      c.restoreContext();
+      return;
     }
+
     for (var i = 0; i < logos.length; i++) {
-      _drawLogoAtHeight(
+      final cellX = frameLeft + i * (cellW + customerStackGap);
+      _drawLogoInCell(
         c,
         logos[i],
-        frameLeft,
-        frameBot + (logos.length - 1 - i) * (slotH + stackGap),
-        frameW,
-        slotH,
-        slotH,
+        cellX,
+        frameBot,
+        cellW,
+        frameH,
+        sharedH,
       );
     }
+    c.restoreContext();
   }
 
   void _radio(PdfGraphics c, double x, double y, double size, bool on) {

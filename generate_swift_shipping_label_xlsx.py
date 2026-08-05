@@ -62,7 +62,7 @@ def build() -> Path:
         21: 6,
         22: 11, 23: 22,
         24: 8,
-        25: 11, 26: 30,
+        25: 64, 26: 8,
         27: 6,
         28: 12,
         29: 10,
@@ -73,7 +73,8 @@ def build() -> Path:
     lab_f = Font(name="Oswald", color=LABEL, size=8)
     val_f = Font(name="Oswald", color=INK, size=13)
     hero_f = Font(name="Oswald", bold=True, color=INK, size=20)
-    of_f = Font(name="Oswald", bold=True, color=SWIFT, size=11)
+    of_f = Font(name="Oswald", bold=True, color=SWIFT, size=22)
+    count_f = Font(name="Oswald", bold=True, color=INK, size=48)
 
     def L(coord, text):
         ws[coord].value = text.upper()
@@ -151,11 +152,15 @@ def build() -> Path:
     ws["A25"].alignment = Alignment(vertical="center", indent=1)
     ws.merge_cells("A25:B25")
     ws["C25"].fill = fill(WHITE)
+    ws["C25"].font = count_f
+    ws["C25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["C25"].border = thin_bottom
     ws["D25"].value = "OF"
     ws["D25"].font = of_f
     ws["D25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["E25"].fill = fill(WHITE)
+    ws["E25"].font = count_f
+    ws["E25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["E25"].border = thin_bottom
 
     ws["G25"].value = "BOX"
@@ -163,11 +168,15 @@ def build() -> Path:
     ws["G25"].alignment = Alignment(vertical="center", indent=1)
     ws.merge_cells("G25:H25")
     ws["I25"].fill = fill(WHITE)
+    ws["I25"].font = count_f
+    ws["I25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["I25"].border = thin_bottom
     ws["J25"].value = "OF"
     ws["J25"].font = of_f
     ws["J25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["K25"].fill = fill(WHITE)
+    ws["K25"].font = count_f
+    ws["K25"].alignment = Alignment(horizontal="center", vertical="center")
     ws["K25"].border = thin_bottom
 
     ws.merge_cells("A27:L27")

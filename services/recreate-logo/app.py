@@ -2,6 +2,9 @@
 
 POST /recreate-logo with raw image bytes; returns the JSON shape expected by
 mobile/lib/logo_recreate_cloud.dart (svg, png_base64, palette_hex, …).
+
+Optional Gemini assist (GEMINI_API_KEY / GOOGLE_API_KEY) inspects the raster
+before vectorization for brand colors / layout hints.
 """
 
 from __future__ import annotations
@@ -16,11 +19,18 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 
 from tools.logo_vectorizer.customer_recreate import recreate_customer_logo
+from tools.logo_vectorizer.env_loader import load_env
 
-app = FastAPI(title="Swift Recreate Logo", version="1.0.0")
+load_env()
+
+app = FastAPI(title="Swift Recreate Logo", version="1.1.0")
 
 AUTH_TOKEN = os.environ.get("RECREATE_AUTH_TOKEN", "").strip()
 MAX_UPLOAD_BYTES = int(os.environ.get("RECREATE_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
+GEMINI_ENABLED = bool(
+    os.environ.get("GEMINI_API_KEY", "").strip()
+    or os.environ.get("GOOGLE_API_KEY", "").strip()
+)
 
 
 def _authorized(request: Request) -> bool:
@@ -37,7 +47,12 @@ def _authorized(request: Request) -> bool:
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    return {"ok": True, "auth_configured": bool(AUTH_TOKEN)}
+    return {
+        "ok": True,
+        "auth_configured": bool(AUTH_TOKEN),
+        "gemini_configured": GEMINI_ENABLED,
+        "gemini_project": os.environ.get("GEMINI_PROJECT_NUMBER", ""),
+    }
 
 
 @app.post("/recreate-logo")
@@ -45,6 +60,7 @@ async def recreate_logo(
     request: Request,
     render_width: int = Query(3000, ge=64, le=8000),
     max_colors: int = Query(6, ge=1, le=16),
+    use_ai: bool = Query(True),
 ) -> JSONResponse:
     if not _authorized(request):
         raise HTTPException(status_code=401, detail="unauthorized")
@@ -78,6 +94,8 @@ async def recreate_logo(
                 max_colors=max_colors,
                 render_width=render_width,
                 render_background="transparent",
+                use_ai=use_ai and GEMINI_ENABLED,
+                ai_providers=["gemini"],
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"recreate failed: {e}") from e
@@ -86,6 +104,7 @@ async def recreate_logo(
             raise HTTPException(status_code=500, detail="recreate produced no PNG")
 
         png_b64 = base64.b64encode(png_out.read_bytes()).decode("ascii")
+        gemini_notes = [n for n in result.notes if n.startswith("gemini_")]
         payload = {
             "svg": result.svg_text,
             "png_base64": png_b64,
@@ -97,6 +116,8 @@ async def recreate_logo(
             "render_width": render_width,
             "total_anchors": result.total_anchors,
             "backend": "python-logo-vectorizer",
+            "gemini_assisted": bool(gemini_notes),
+            "gemini_notes": gemini_notes,
         }
         return JSONResponse(payload)
 
