@@ -39,12 +39,15 @@ $toolsDst = Join-Path $out "tools"
 if (Test-Path $toolsSrc) {
     if (Test-Path $toolsDst) { Remove-Item $toolsDst -Recurse -Force }
     Copy-Item $toolsSrc $toolsDst -Recurse -Force
+    # Never ship secrets from developer machines into portable/installer builds.
+    Get-ChildItem $toolsDst -Recurse -Force -File -Filter ".env" |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     # Trim heavy caches so the zip stays small.
     Get-ChildItem $toolsDst -Recurse -Directory -Filter "__pycache__" |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Get-ChildItem $toolsDst -Recurse -Directory -Filter ".cache" |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "Bundled tools/ (customer logo Recreate vectorizer)"
+    Write-Host "Bundled tools/ (customer logo Recreate vectorizer; .env stripped)"
 }
 
 # Optional on-device Rust fallback (logo_recreate.dll) when already built.
