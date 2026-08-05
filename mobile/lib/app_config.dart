@@ -9,6 +9,10 @@ class AppConfig {
   static const githubReleasesPage =
       'https://github.com/$githubOwner/$githubRepo/releases';
 
+  /// Preferred Windows in-app update asset (Inno Setup installer).
+  static const windowsSetupAsset = 'SwiftDocumentGenerator-Setup.exe';
+
+  /// Legacy portable zip — kept for classification only; in-app Update prefers Setup.
   static const windowsZipAsset = 'SwiftDocumentGenerator-windows.zip';
   static const androidApkAsset = 'SwiftDocumentGenerator-android.apk';
 

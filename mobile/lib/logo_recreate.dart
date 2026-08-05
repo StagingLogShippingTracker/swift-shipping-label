@@ -63,6 +63,18 @@ class LogoRecreate {
         'Supabase vtracer last-resort only (${Platform.operatingSystem}).';
   }
 
+  /// Resolved local vectorizer package dir (`tools/logo_vectorizer`), if any.
+  static Future<Directory?> resolveToolsDir() => _resolveToolsRoot();
+
+  /// Probe Fly.io health endpoint and return a short status line.
+  static Future<String> flyHealthReport() async {
+    final ok = await LogoRecreateCloud.flyReachable();
+    final url = AppConfig.recreateLogoHealthUrl;
+    return ok
+        ? 'Fly.io healthy — $url'
+        : 'Fly.io unreachable — $url';
+  }
+
   /// Run recreate on [input] using the platform priority above.
   /// Throws on total failure; callers catch and keep the raw raster.
   static Future<LogoRecreateResult> run(

@@ -5,8 +5,8 @@
 #   .\scripts\publish_release.ps1 -Version 1.1.0
 #
 # Assets:
+#   SwiftDocumentGenerator-Setup.exe  (preferred for in-app Update)
 #   SwiftDocumentGenerator-windows.zip
-#   SwiftDocumentGenerator-Setup.exe
 #   SwiftDocumentGenerator-android.apk
 param(
     [string]$Version = "",
@@ -200,16 +200,19 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- Windows installer (SwiftDocumentGenerator-Setup.exe) — per-user install, no admin UAC; Start Menu shortcut, uninstaller
-- Portable zip unchanged; in-app Update still uses the zip only
+- In-app Update on Windows downloads and launches SwiftDocumentGenerator-Setup.exe (installer)
+- Windows MenuBar with File / Edit / View / Document / Tools / Options / Help
+- Top toolbar Generate removed on Windows (Generate stays in Workspace / File menu)
+- Desktop settings persist in settings.json (PDF output folder, view prefs, hotkeys)
 
 ### Assets
+- SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.
-- SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller).
 - SwiftDocumentGenerator-android.apk - Android install package.
 
 ### In-app Update
-In-app Update still downloads the portable zip only (not the Setup.exe).
+Windows: downloads Setup.exe and launches it.
+Android: downloads and opens the APK installer.
 "@
 
 if ($releaseExists) {

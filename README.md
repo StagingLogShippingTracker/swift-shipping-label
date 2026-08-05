@@ -29,8 +29,8 @@ Build the installer after a Windows release build:
 
 In-app **Update** downloads from GitHub Releases:
 
-- `SwiftDocumentGenerator-windows.zip` (portable; in-app Update does not use Setup.exe)
-- `SwiftDocumentGenerator-android.apk`
+- Windows: `SwiftDocumentGenerator-Setup.exe` (launches the installer; portable zip is still published for manual use)
+- Android: `SwiftDocumentGenerator-android.apk`
 
 ## Publish
 

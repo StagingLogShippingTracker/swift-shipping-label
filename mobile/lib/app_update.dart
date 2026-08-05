@@ -50,11 +50,16 @@ class AppVersion {
 
 enum AppUpdatePlatform { windows, android }
 
-enum ReleaseAssetKind { windowsZip, androidApk, unknown }
+enum ReleaseAssetKind { windowsSetup, windowsZip, androidApk, unknown }
 
 ReleaseAssetKind classifyReleaseAsset(String fileName) {
   final lower = fileName.trim().toLowerCase();
   if (lower.isEmpty) return ReleaseAssetKind.unknown;
+  if (lower.endsWith('.exe') &&
+      (lower.contains('setup') ||
+          lower == AppConfig.windowsSetupAsset.toLowerCase())) {
+    return ReleaseAssetKind.windowsSetup;
+  }
   if (lower.endsWith('.zip') &&
       (lower.contains('windows') ||
           lower == AppConfig.windowsZipAsset.toLowerCase())) {
@@ -77,6 +82,7 @@ class AppReleaseInfo {
     required this.tagName,
     required this.name,
     required this.htmlUrl,
+    this.windowsSetupUrl,
     this.windowsZipUrl,
     this.androidApkUrl,
   });
@@ -84,6 +90,7 @@ class AppReleaseInfo {
   final String tagName;
   final String name;
   final String htmlUrl;
+  final String? windowsSetupUrl;
   final String? windowsZipUrl;
   final String? androidApkUrl;
 
@@ -102,10 +109,13 @@ class AppReleaseInfo {
     return remote.isNewerThan(local);
   }
 
+  /// Preferred Windows asset URL — Setup.exe only for in-app updates.
+  String? get windowsInstallUrl => windowsSetupUrl;
+
   String? assetUrlFor(AppUpdatePlatform platform) {
     switch (platform) {
       case AppUpdatePlatform.windows:
-        return windowsZipUrl;
+        return windowsInstallUrl;
       case AppUpdatePlatform.android:
         return androidApkUrl;
     }
@@ -114,7 +124,7 @@ class AppReleaseInfo {
   String? assetLabelFor(AppUpdatePlatform platform) {
     switch (platform) {
       case AppUpdatePlatform.windows:
-        return windowsZipUrl == null ? null : AppConfig.windowsZipAsset;
+        return windowsSetupUrl == null ? null : AppConfig.windowsSetupAsset;
       case AppUpdatePlatform.android:
         return androidApkUrl == null ? null : AppConfig.androidApkAsset;
     }
@@ -187,6 +197,7 @@ class AppUpdateService {
       throw Exception('Unexpected release payload.');
     }
 
+    String? windowsSetup;
     String? windowsZip;
     String? androidApk;
     final assets = body['assets'];
@@ -197,6 +208,8 @@ class AppUpdateService {
         final url = '${raw['browser_download_url'] ?? ''}'.trim();
         if (name.isEmpty || url.isEmpty) continue;
         switch (classifyReleaseAsset(name)) {
+          case ReleaseAssetKind.windowsSetup:
+            windowsSetup = url;
           case ReleaseAssetKind.windowsZip:
             windowsZip = url;
           case ReleaseAssetKind.androidApk:
@@ -211,6 +224,7 @@ class AppUpdateService {
       tagName: '${body['tag_name'] ?? ''}'.trim(),
       name: '${body['name'] ?? body['tag_name'] ?? 'Latest'}'.trim(),
       htmlUrl: '${body['html_url'] ?? AppConfig.githubReleasesPage}'.trim(),
+      windowsSetupUrl: windowsSetup,
       windowsZipUrl: windowsZip,
       androidApkUrl: androidApk,
     );
@@ -300,41 +314,28 @@ class AppUpdateService {
     return file;
   }
 
-  /// Download Windows zip into app support and extract beside it.
-  Future<Directory> downloadAndExtractWindows({
+  /// Download Windows Setup.exe and launch the installer.
+  Future<File> downloadAndInstallWindows({
     required AppReleaseInfo release,
     void Function(double progress)? onProgress,
   }) async {
-    final url = release.windowsZipUrl;
+    final url = release.windowsSetupUrl;
     if (url == null || url.isEmpty) {
-      throw Exception('No Windows zip asset on this release.');
-    }
-    final zip = await downloadToAppStorage(
-      url: url,
-      fileName: AppConfig.windowsZipAsset,
-      onProgress: onProgress,
-    );
-    final support = await getApplicationSupportDirectory();
-    final extractRoot = Directory(
-      p.join(support.path, 'updates', 'extracted-${release.tagName}'),
-    );
-    if (await extractRoot.exists()) {
-      await extractRoot.delete(recursive: true);
-    }
-    await extractRoot.create(recursive: true);
-
-    // Prefer PowerShell Expand-Archive (always available on Win10+).
-    final result = await Process.run('powershell', [
-      '-NoProfile',
-      '-Command',
-      "Expand-Archive -LiteralPath '${zip.path.replaceAll("'", "''")}' "
-          "-DestinationPath '${extractRoot.path.replaceAll("'", "''")}' -Force",
-    ]);
-    if (result.exitCode != 0) {
       throw Exception(
-        'Could not extract update:\n${result.stderr}'.trim(),
+        'No Windows Setup.exe asset on this release. '
+        'In-app Update requires ${AppConfig.windowsSetupAsset}.',
       );
     }
-    return extractRoot;
+    final setup = await downloadToAppStorage(
+      url: url,
+      fileName: AppConfig.windowsSetupAsset,
+      onProgress: onProgress,
+    );
+    await Process.start(
+      setup.path,
+      const [],
+      mode: ProcessStartMode.detached,
+    );
+    return setup;
   }
 }

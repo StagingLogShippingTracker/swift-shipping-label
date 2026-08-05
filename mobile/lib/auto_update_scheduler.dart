@@ -200,6 +200,10 @@ class _AutoUpdateHostState extends State<AutoUpdateHost>
 
   Future<void> _maybeRunAutoCheck() async {
     if (!mounted || _checking || _dialogOpen) return;
+    try {
+      final ui = await widget.storage.loadUiSettings();
+      if (!ui.autoUpdateEnabled) return;
+    } catch (_) {}
     if (!_store.shouldRunAutoCheck) return;
 
     _checking = true;

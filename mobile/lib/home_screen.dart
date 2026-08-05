@@ -20,6 +20,7 @@ import 'pdf/shipping_label_pdf.dart';
 import 'platform_io.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
+import 'windows_menu_bar.dart';
 
 const _shippingGroups = <(String title, String hint, List<String> keys)>[
   (
@@ -174,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final SignatureSync _signatureSync;
   Uint8List? _shipperSignatureBytes;
   SavedSignature? _selectedSavedSignature;
+  AppUiSettings _uiSettings = AppUiSettings.defaults;
 
   @override
   void initState() {
@@ -187,7 +189,15 @@ class _HomeScreenState extends State<HomeScreen> {
         text: BolFields.freightPrepaid,
       ),
     };
+    _loadUiSettings();
     _syncPresetsOnLaunch();
+  }
+
+  Future<void> _loadUiSettings() async {
+    try {
+      final s = await widget.storage.loadUiSettings();
+      if (mounted) setState(() => _uiSettings = s);
+    } catch (_) {}
   }
 
   Future<void> _syncPresetsOnLaunch() async {
@@ -1255,9 +1265,15 @@ class _HomeScreenState extends State<HomeScreen> {
         salesOrder: so,
       );
 
-      final file = await widget.storage.writePdf(name, bytes);
+      final file = await widget.storage.writePdf(
+        name,
+        bytes,
+        outputDir: widget.storage.pdfOutputDir(_uiSettings),
+      );
 
-      await shareOrOpenFile(file: file);
+      if (_uiSettings.autoOpenPdf) {
+        await shareOrOpenFile(file: file);
+      }
 
       if (mounted) {
         final pages = switch (_kind) {
@@ -1266,8 +1282,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
         };
+        final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved$pages:\n${file.path}')),
+          SnackBar(content: Text('Saved$pages$openHint:\n${file.path}')),
         );
       }
     } catch (e) {
@@ -1721,6 +1738,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _newDocument(LabelKind kind) {
+    _clearAll();
+    _selectKind(kind);
+  }
+
+  void _onBolCopyChanged({bool? store, bool? driver, bool? customer}) {
+    setState(() {
+      if (store != null) _bolStoreCopy = store;
+      if (driver != null) _bolDriverCopy = driver;
+      if (customer != null) _bolCustomerCopy = customer;
+    });
+  }
+
   String get _kindTitle => switch (_kind) {
         LabelKind.shipping => 'Shipping Label',
         LabelKind.receiving => 'Receiving Label',
@@ -2125,197 +2155,290 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWindowsScaffold(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 1180;
-    final railExtended = MediaQuery.sizeOf(context).width >= 1280;
+    final showWorkspace = _uiSettings.showWorkspacePane && wide;
+    final railExtended = _uiSettings.preferExtendedRail
+        ? MediaQuery.sizeOf(context).width >= 1100
+        : false;
+    final dense = _uiSettings.denseForms;
 
-    return Scaffold(
-      backgroundColor: SwiftColors.bg,
-      body: Column(
-        children: [
-          RepaintBoundary(
-            child: _DesktopToolbar(
-              busy: _busy,
-              kindTitle: _kindTitle,
-              onGenerate: _generateAndShare,
-              onUpdate: () => showUpdateFlow(context),
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                NavigationRail(
-                  extended: railExtended,
-                  minExtendedWidth: 168,
-                  backgroundColor: SwiftColors.panel,
-                  selectedIndex: _kindRailIndex,
-                  labelType: railExtended
-                      ? NavigationRailLabelType.none
-                      : NavigationRailLabelType.all,
-                  onDestinationSelected: (i) {
-                    _selectKind(switch (i) {
-                      1 => LabelKind.receiving,
-                      2 => LabelKind.bol,
-                      _ => LabelKind.shipping,
-                    });
-                  },
-                  leading: Padding(
-                    padding: EdgeInsets.only(
-                      top: 8,
-                      bottom: railExtended ? 16 : 8,
-                    ),
-                    child: Icon(
-                      Icons.description_outlined,
-                      color: SwiftColors.accent.withValues(alpha: 0.85),
-                      size: 22,
-                    ),
-                  ),
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(Icons.local_shipping_outlined),
-                      selectedIcon: Icon(Icons.local_shipping),
-                      label: Text('Shipping'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.inventory_2_outlined),
-                      selectedIcon: Icon(Icons.inventory_2),
-                      label: Text('Receiving'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.receipt_long_outlined),
-                      selectedIcon: Icon(Icons.receipt_long),
-                      label: Text('BOL'),
+    final menuActions = WindowsMenuActions(
+      storage: widget.storage,
+      settings: _uiSettings,
+      kind: _kind,
+      busy: _busy,
+      recreateLogo: _recreateLogo,
+      bolStoreCopy: _bolStoreCopy,
+      bolDriverCopy: _bolDriverCopy,
+      bolCustomerCopy: _bolCustomerCopy,
+      onNewDocument: _newDocument,
+      onGenerate: _generateAndShare,
+      onClearShipment: _clearShipment,
+      onClearAll: _clearAll,
+      onSavePreset: _savePreset,
+      onDeletePreset: _deletePreset,
+      onToggleRecreate: (v) => setState(() => _recreateLogo = v),
+      onSelectKind: _selectKind,
+      onBolCopyChanged: _onBolCopyChanged,
+      onSettingsChanged: (s) => setState(() => _uiSettings = s),
+      onFindLogo: _findLogoOnWeb,
+      onBrowseLogo: _browseAndImportLogo,
+      onAddFromStorage: _addFromStorageAndImport,
+      onLoadSample: _loadSample,
+    );
+
+    return CallbackShortcuts(
+      bindings: windowsShortcutMap(
+        onGenerate: _generateAndShare,
+        onShipping: () => _selectKind(LabelKind.shipping),
+        onReceiving: () => _selectKind(LabelKind.receiving),
+        onBol: () => _selectKind(LabelKind.bol),
+        onSavePreset: _savePreset,
+        onClearShipment: _clearShipment,
+        onNewShipping: () => _newDocument(LabelKind.shipping),
+        onCheckUpdates: () => showUpdateFlow(context),
+      ),
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: SwiftColors.bg,
+          body: Column(
+            children: [
+              Material(
+                color: SwiftColors.surface,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    WindowsAppMenuBar(actions: menuActions),
+                    const Divider(height: 1),
+                    RepaintBoundary(
+                      child: _DesktopToolbar(
+                        busy: _busy,
+                        kindTitle: _kindTitle,
+                        showUpdate: _uiSettings.showToolbarUpdate,
+                        onUpdate: () => showUpdateFlow(context),
+                      ),
                     ),
                   ],
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _kindTitle,
-                              style: const TextStyle(
-                                fontFamily: 'Oswald',
-                                fontWeight: FontWeight.w600,
-                                fontSize: 22,
-                                color: SwiftColors.ink,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _kindHint,
-                              style: const TextStyle(
-                                color: SwiftColors.muted,
-                                fontSize: 13,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    NavigationRail(
+                      extended: railExtended,
+                      minExtendedWidth: 168,
+                      backgroundColor: SwiftColors.panel,
+                      selectedIndex: _kindRailIndex,
+                      labelType: railExtended
+                          ? NavigationRailLabelType.none
+                          : NavigationRailLabelType.all,
+                      onDestinationSelected: (i) {
+                        _selectKind(switch (i) {
+                          1 => LabelKind.receiving,
+                          2 => LabelKind.bol,
+                          _ => LabelKind.shipping,
+                        });
+                      },
+                      leading: Padding(
+                        padding: EdgeInsets.only(
+                          top: 8,
+                          bottom: railExtended ? 16 : 8,
+                        ),
+                        child: Icon(
+                          Icons.description_outlined,
+                          color: SwiftColors.accent.withValues(alpha: 0.85),
+                          size: 22,
                         ),
                       ),
-                      Expanded(
-                        child: Scrollbar(
-                          thumbVisibility: true,
-                          child: ListView(
-                            primary: true,
-                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-                            children: [
-                              if (!wide) ...[
-                                if (_kind == LabelKind.bol) ...[
-                                  _buildBolCopiesCard(compact: true),
-                                  const SizedBox(height: 4),
-                                ],
-                                _buildPresetCard(dense: true),
-                                _buildLogosCard(
-                                  dense: true,
-                                  stackActions: true,
-                                ),
-                              ],
-                              ..._buildDocumentFormCards(dualColumn: true),
-                              const SizedBox(height: 4),
-                              _buildUtilityActions(toolbarStyle: true),
-                            ],
-                          ),
+                      destinations: const [
+                        NavigationRailDestination(
+                          icon: Icon(Icons.local_shipping_outlined),
+                          selectedIcon: Icon(Icons.local_shipping),
+                          label: Text('Shipping'),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (wide) ...[
-                  const VerticalDivider(width: 1),
-                  SizedBox(
-                    width: 340,
-                    child: Material(
-                      color: SwiftColors.panel,
+                        NavigationRailDestination(
+                          icon: Icon(Icons.inventory_2_outlined),
+                          selectedIcon: Icon(Icons.inventory_2),
+                          label: Text('Receiving'),
+                        ),
+                        NavigationRailDestination(
+                          icon: Icon(Icons.receipt_long_outlined),
+                          selectedIcon: Icon(Icons.receipt_long),
+                          label: Text('BOL'),
+                        ),
+                      ],
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Padding(
-                            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                            child: Text(
-                              'Workspace',
-                              style: TextStyle(
-                                fontFamily: 'Oswald',
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                letterSpacing: 0.4,
-                                color: SwiftColors.ink,
-                              ),
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              24,
+                              dense ? 10 : 16,
+                              24,
+                              4,
                             ),
-                          ),
-                          Expanded(
-                            child: ListView(
-                              primary: false,
-                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildPresetCard(dense: true),
-                                _buildLogosCard(
-                                  dense: true,
-                                  stackActions: true,
+                                Text(
+                                  _kindTitle,
+                                  style: TextStyle(
+                                    fontFamily: 'Oswald',
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: dense ? 18 : 22,
+                                    color: SwiftColors.ink,
+                                    letterSpacing: 0.3,
+                                  ),
                                 ),
-                                if (_kind == LabelKind.bol)
-                                  _buildBolCopiesCard(compact: true),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _kindHint,
+                                  style: const TextStyle(
+                                    color: SwiftColors.muted,
+                                    fontSize: 13,
+                                    height: 1.35,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                            child: FilledButton.icon(
-                              onPressed: _busy ? null : _generateAndShare,
-                              icon: _busy
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.picture_as_pdf_outlined,
-                                      size: 18,
+                          Expanded(
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: ListView(
+                                primary: true,
+                                padding: EdgeInsets.fromLTRB(
+                                  24,
+                                  dense ? 4 : 8,
+                                  24,
+                                  dense ? 16 : 28,
+                                ),
+                                children: [
+                                  if (!showWorkspace) ...[
+                                    if (_kind == LabelKind.bol) ...[
+                                      _buildBolCopiesCard(compact: true),
+                                      const SizedBox(height: 4),
+                                    ],
+                                    _buildPresetCard(dense: true),
+                                    _buildLogosCard(
+                                      dense: true,
+                                      stackActions: true,
                                     ),
-                              label: Text(
-                                _busy ? 'Generating…' : 'Generate PDF',
+                                  ],
+                                  ..._buildDocumentFormCards(dualColumn: true),
+                                  const SizedBox(height: 4),
+                                  _buildUtilityActions(toolbarStyle: true),
+                                  if (!showWorkspace) ...[
+                                    const SizedBox(height: 12),
+                                    FilledButton.icon(
+                                      onPressed:
+                                          _busy ? null : _generateAndShare,
+                                      icon: _busy
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.picture_as_pdf_outlined,
+                                              size: 18,
+                                            ),
+                                      label: Text(
+                                        _busy
+                                            ? 'Generating…'
+                                            : 'Generate PDF',
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ],
-            ),
+                    if (showWorkspace) ...[
+                      const VerticalDivider(width: 1),
+                      SizedBox(
+                        width: 340,
+                        child: Material(
+                          color: SwiftColors.panel,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                child: Text(
+                                  'Workspace',
+                                  style: TextStyle(
+                                    fontFamily: 'Oswald',
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    letterSpacing: 0.4,
+                                    color: SwiftColors.ink,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: ListView(
+                                  primary: false,
+                                  padding:
+                                      const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                                  children: [
+                                    _buildPresetCard(dense: true),
+                                    _buildLogosCard(
+                                      dense: true,
+                                      stackActions: true,
+                                    ),
+                                    if (_kind == LabelKind.bol)
+                                      _buildBolCopiesCard(compact: true),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                                child: FilledButton.icon(
+                                  onPressed: _busy ? null : _generateAndShare,
+                                  icon: _busy
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.picture_as_pdf_outlined,
+                                          size: 18,
+                                        ),
+                                  label: Text(
+                                    _busy ? 'Generating…' : 'Generate PDF',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2382,84 +2505,77 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 
-/// Compact Windows title strip — brand left, document context, Generate + Update.
+/// Compact Windows title strip — brand left, document context, optional Update.
+/// Generate PDF lives in Workspace / menu only (not duplicated here).
 class _DesktopToolbar extends StatelessWidget {
   const _DesktopToolbar({
     required this.busy,
     required this.kindTitle,
-    required this.onGenerate,
+    required this.showUpdate,
     required this.onUpdate,
   });
 
   final bool busy;
   final String kindTitle;
-  final VoidCallback onGenerate;
+  final bool showUpdate;
   final VoidCallback onUpdate;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: SwiftColors.surface,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: Row(
-          children: [
-            Image.asset(
-              'assets/images/swift_supply_logo_orange.png',
-              height: 28,
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/images/swift_supply_logo_orange.png',
+            height: 26,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'Swift Document Generator',
+            style: TextStyle(
+              fontFamily: 'Oswald',
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              letterSpacing: 0.3,
+              color: SwiftColors.ink,
             ),
-            const SizedBox(width: 12),
-            const Text(
-              'Swift Document Generator',
-              style: TextStyle(
-                fontFamily: 'Oswald',
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                letterSpacing: 0.3,
-                color: SwiftColors.ink,
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 1,
+            height: 18,
+            color: SwiftColors.border,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            kindTitle,
+            style: const TextStyle(
+              fontFamily: 'Calibri',
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: SwiftColors.muted,
+            ),
+          ),
+          const Spacer(),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
-            const SizedBox(width: 12),
-            Container(
-              width: 1,
-              height: 18,
-              color: SwiftColors.border,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              kindTitle,
-              style: const TextStyle(
-                fontFamily: 'Calibri',
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: SwiftColors.muted,
-              ),
-            ),
-            const Spacer(),
-            if (busy)
-              const Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
+          if (showUpdate)
             OutlinedButton.icon(
               onPressed: busy ? null : onUpdate,
               icon: const Icon(Icons.system_update_alt, size: 16),
               label: const Text('Update'),
             ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: busy ? null : onGenerate,
-              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: Text(busy ? 'Generating…' : 'Generate PDF'),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

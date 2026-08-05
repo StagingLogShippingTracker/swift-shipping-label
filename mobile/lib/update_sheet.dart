@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
 import 'app_update.dart';
-import 'platform_io.dart';
 import 'theme.dart';
 
 AppUpdatePlatform get updatePlatform {
@@ -76,21 +75,23 @@ class _InstallProgressDialogState extends State<_InstallProgressDialog> {
         if (!mounted) return;
         setState(() => _status = 'Installer opened — follow on-screen prompts.');
       } else {
-        final dir = await _svc.downloadAndExtractWindows(
+        await _svc.downloadAndInstallWindows(
           release: widget.release,
           onProgress: (p) {
             if (!mounted) return;
             setState(() {
               _progress = p;
               _status = p >= 1.0
-                  ? 'Extracting…'
+                  ? 'Launching installer…'
                   : 'Downloading… ${(p * 100).round()}%';
             });
           },
         );
         if (!mounted) return;
-        setState(() => _status = 'Update ready — opening folder.');
-        await openFolder(dir.path);
+        setState(
+          () => _status =
+              'Installer launched — follow the Setup prompts, then restart the app.',
+        );
       }
       if (mounted) {
         await Future<void>.delayed(const Duration(seconds: 1));
@@ -257,7 +258,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
             '${result.latest.name.isEmpty ? result.latest.tagName : result.latest.name}\n\n'
             'Package: $assetLabel\n'
             'Installed: ${info.version}+${info.buildNumber}\n\n'
-            '${platform == AppUpdatePlatform.android ? 'Download and open the installer?' : 'Download and open the updates folder?'}',
+            '${platform == AppUpdatePlatform.android ? 'Download and open the installer?' : 'Download and run SwiftDocumentGenerator-Setup.exe?'}',
           ),
           actions: [
             TextButton(
@@ -357,7 +358,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
             Text(
               isAndroid
                   ? 'Checks GitHub Releases for a newer APK and installs it.'
-                  : 'Checks GitHub Releases for a newer Windows build and opens the download folder.',
+                  : 'Checks GitHub Releases for a newer Setup.exe and launches the installer.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: SwiftColors.muted,
                   ),

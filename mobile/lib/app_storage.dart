@@ -389,10 +389,24 @@ class AppStorage {
     );
   }
 
-  /// Write PDF under [filledDir], uniquifying with `(1)`, `(2)`, … if needed
-  /// (no space before the parentheses — e.g. `SL-StrikeSO1223344(1).pdf`).
-  Future<File> writePdf(String fileName, List<int> bytes) async {
-    await filledDir.create(recursive: true);
+  /// Directory used for generated PDFs — custom override when set.
+  Directory pdfOutputDir(AppUiSettings settings) {
+    final custom = settings.pdfOutputDir?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return Directory(custom);
+    }
+    return filledDir;
+  }
+
+  /// Write PDF under the effective output directory, uniquifying with `(1)`,
+  /// `(2)`, … if needed (no space before the parentheses).
+  Future<File> writePdf(
+    String fileName,
+    List<int> bytes, {
+    Directory? outputDir,
+  }) async {
+    final dir = outputDir ?? filledDir;
+    await dir.create(recursive: true);
     var base = p.basename(fileName.trim());
     if (!base.toLowerCase().endsWith('.pdf')) base = '$base.pdf';
     // Allow letters, digits, dash, underscore, parentheses; strip other junk.
@@ -401,10 +415,10 @@ class AppStorage {
 
     final stem = p.basenameWithoutExtension(base);
     const ext = '.pdf';
-    var out = File(p.join(filledDir.path, '$stem$ext'));
+    var out = File(p.join(dir.path, '$stem$ext'));
     var n = 1;
     while (await out.exists()) {
-      out = File(p.join(filledDir.path, '$stem($n)$ext'));
+      out = File(p.join(dir.path, '$stem($n)$ext'));
       n++;
     }
     await out.writeAsBytes(bytes, flush: true);
@@ -425,30 +439,43 @@ class AppStorage {
 
   static const logoSearchEngineKey = 'logoSearchEngine';
 
-  Future<String?> loadLogoSearchEngine() async {
-    if (!await settingsFile.exists()) return null;
+  Future<Map<String, dynamic>> _readSettingsMap() async {
+    if (!await settingsFile.exists()) return {};
     try {
-      final data =
-          jsonDecode(await settingsFile.readAsString()) as Map<String, dynamic>;
-      final value = data[logoSearchEngineKey];
-      return value is String && value.isNotEmpty ? value : null;
-    } catch (_) {
-      return null;
-    }
+      final raw = jsonDecode(await settingsFile.readAsString());
+      if (raw is Map<String, dynamic>) return Map<String, dynamic>.from(raw);
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } catch (_) {}
+    return {};
   }
 
-  Future<void> saveLogoSearchEngine(String engineId) async {
-    Map<String, dynamic> data = {};
-    if (await settingsFile.exists()) {
-      try {
-        final raw = jsonDecode(await settingsFile.readAsString());
-        if (raw is Map<String, dynamic>) data = raw;
-      } catch (_) {}
-    }
-    data[logoSearchEngineKey] = engineId;
+  Future<void> _writeSettingsMap(Map<String, dynamic> data) async {
     await settingsFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(data),
     );
+  }
+
+  Future<AppUiSettings> loadUiSettings() async {
+    final data = await _readSettingsMap();
+    return AppUiSettings.fromJson(data);
+  }
+
+  Future<void> saveUiSettings(AppUiSettings settings) async {
+    final data = await _readSettingsMap();
+    data.addAll(settings.toJson());
+    if (data['pdfOutputDir'] == null) data.remove('pdfOutputDir');
+    await _writeSettingsMap(data);
+  }
+
+  Future<String?> loadLogoSearchEngine() async {
+    final settings = await loadUiSettings();
+    final value = settings.logoSearchEngine;
+    return value != null && value.isNotEmpty ? value : null;
+  }
+
+  Future<void> saveLogoSearchEngine(String engineId) async {
+    final settings = await loadUiSettings();
+    await saveUiSettings(settings.copyWith(logoSearchEngine: engineId));
   }
 
   /// e.g. `SL-StrikeSO1223344.pdf`, `RL-…`, or `BOL-…`
@@ -467,5 +494,111 @@ class AppStorage {
     final body = '$cust$so';
     if (body.isEmpty) return '${prefix}label.pdf';
     return '$prefix$body.pdf';
+  }
+}
+
+/// Persisted UI / desktop preferences in [AppStorage.settingsFile].
+class AppUiSettings {
+  const AppUiSettings({
+    this.logoSearchEngine,
+    this.pdfOutputDir,
+    this.autoOpenPdf = true,
+    this.showWorkspacePane = true,
+    this.preferExtendedRail = true,
+    this.denseForms = false,
+    this.showToolbarUpdate = true,
+    this.autoUpdateEnabled = true,
+    this.hotkeyOverrides = const {},
+  });
+
+  final String? logoSearchEngine;
+  final String? pdfOutputDir;
+  final bool autoOpenPdf;
+  final bool showWorkspacePane;
+  final bool preferExtendedRail;
+  final bool denseForms;
+  final bool showToolbarUpdate;
+  final bool autoUpdateEnabled;
+  final Map<String, String> hotkeyOverrides;
+
+  static const defaults = AppUiSettings();
+
+  factory AppUiSettings.fromJson(Map<String, dynamic> json) {
+    final hotkeysRaw = json['hotkeyOverrides'];
+    final hotkeys = <String, String>{};
+    if (hotkeysRaw is Map) {
+      for (final e in hotkeysRaw.entries) {
+        final k = '${e.key}'.trim();
+        final v = '${e.value}'.trim();
+        if (k.isNotEmpty && v.isNotEmpty) hotkeys[k] = v;
+      }
+    }
+    return AppUiSettings(
+      logoSearchEngine: json[AppStorage.logoSearchEngineKey] is String
+          ? json[AppStorage.logoSearchEngineKey] as String
+          : null,
+      pdfOutputDir: json['pdfOutputDir'] is String
+          ? (json['pdfOutputDir'] as String).trim()
+          : null,
+      autoOpenPdf: json['autoOpenPdf'] is bool
+          ? json['autoOpenPdf'] as bool
+          : true,
+      showWorkspacePane: json['showWorkspacePane'] is bool
+          ? json['showWorkspacePane'] as bool
+          : true,
+      preferExtendedRail: json['preferExtendedRail'] is bool
+          ? json['preferExtendedRail'] as bool
+          : true,
+      denseForms:
+          json['denseForms'] is bool ? json['denseForms'] as bool : false,
+      showToolbarUpdate: json['showToolbarUpdate'] is bool
+          ? json['showToolbarUpdate'] as bool
+          : true,
+      autoUpdateEnabled: json['autoUpdateEnabled'] is bool
+          ? json['autoUpdateEnabled'] as bool
+          : true,
+      hotkeyOverrides: hotkeys,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        AppStorage.logoSearchEngineKey: logoSearchEngine,
+        'pdfOutputDir':
+            (pdfOutputDir != null && pdfOutputDir!.trim().isNotEmpty)
+                ? pdfOutputDir!.trim()
+                : null,
+        'autoOpenPdf': autoOpenPdf,
+        'showWorkspacePane': showWorkspacePane,
+        'preferExtendedRail': preferExtendedRail,
+        'denseForms': denseForms,
+        'showToolbarUpdate': showToolbarUpdate,
+        'autoUpdateEnabled': autoUpdateEnabled,
+        'hotkeyOverrides': hotkeyOverrides,
+      };
+
+  AppUiSettings copyWith({
+    String? logoSearchEngine,
+    String? pdfOutputDir,
+    bool clearPdfOutputDir = false,
+    bool? autoOpenPdf,
+    bool? showWorkspacePane,
+    bool? preferExtendedRail,
+    bool? denseForms,
+    bool? showToolbarUpdate,
+    bool? autoUpdateEnabled,
+    Map<String, String>? hotkeyOverrides,
+  }) {
+    return AppUiSettings(
+      logoSearchEngine: logoSearchEngine ?? this.logoSearchEngine,
+      pdfOutputDir:
+          clearPdfOutputDir ? null : (pdfOutputDir ?? this.pdfOutputDir),
+      autoOpenPdf: autoOpenPdf ?? this.autoOpenPdf,
+      showWorkspacePane: showWorkspacePane ?? this.showWorkspacePane,
+      preferExtendedRail: preferExtendedRail ?? this.preferExtendedRail,
+      denseForms: denseForms ?? this.denseForms,
+      showToolbarUpdate: showToolbarUpdate ?? this.showToolbarUpdate,
+      autoUpdateEnabled: autoUpdateEnabled ?? this.autoUpdateEnabled,
+      hotkeyOverrides: hotkeyOverrides ?? this.hotkeyOverrides,
+    );
   }
 }
