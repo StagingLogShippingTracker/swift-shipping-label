@@ -1,9 +1,8 @@
-import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'app_config.dart';
 import 'theme.dart';
 
 /// Warehouse feedback inbox for Windows Help / F2 capture forms.
@@ -113,7 +112,7 @@ class _MailFormDialogState extends State<_MailFormDialog> {
       ..writeln('Swift Document Generator — ${widget.subjectPrefix}')
       ..writeln()
       ..writeln('Version: ${widget.installedVersion}')
-      ..writeln('Platform: Windows')
+      ..writeln('Platform: ${Platform.operatingSystem}')
       ..writeln('Category: $_category')
       ..writeln('Name: ${_name.text.trim().isEmpty ? '(not provided)' : _name.text.trim()}')
       ..writeln(
@@ -255,11 +254,3 @@ class _MailFormDialogState extends State<_MailFormDialog> {
     );
   }
 }
-
-/// Compact JSON blob useful in diagnostics / error prefill.
-String feedbackDiagnosticsJson(Map<String, Object?> fields) =>
-    const JsonEncoder.withIndent('  ').convert({
-      'app': AppConfig.githubRepo,
-      'to': kWarehouseFeedbackEmail,
-      ...fields,
-    });

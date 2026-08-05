@@ -218,11 +218,15 @@ class _AutoUpdateHostState extends State<AutoUpdateHost>
 
       if (!mounted) return;
 
-      await _store.markCheckDoneForToday();
-
-      if (!result.updateAvailable) return;
+      if (!result.updateAvailable) {
+        await _store.markCheckDoneForToday();
+        return;
+      }
 
       await _showUpdateDialog(result.latest, info);
+      // Mark after the prompt so a failed fetch still retries later today;
+      // install failures can still use manual Update.
+      await _store.markCheckDoneForToday();
     } catch (_) {
       // Silent on auto-check failures; retry on next resume or 3pm window.
     } finally {

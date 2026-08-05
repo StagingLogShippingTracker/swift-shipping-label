@@ -237,7 +237,8 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           )),
                         ),
                         Text(
-                          'PDF FONT SCALE (${(pdf.fontScale * 100).round()}%)',
+                          'PDF FONT SCALE (${(pdf.fontScale * 100).round()}%) — '
+                          'stored only; PDF builders do not apply this yet',
                           style: const TextStyle(
                             fontFamily: 'Oswald',
                             fontSize: 11,

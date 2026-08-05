@@ -108,13 +108,20 @@ def main() -> int:
 
     if args.recreate_customer:
         png_out = args.render_png or out.with_suffix(".png")
+        # Customer recreate always wants a transparent canvas unless the
+        # caller explicitly passed --render-background (including "white").
+        # argparse default is "white" for generic --render-png; for recreate
+        # we treat that default as transparent so local Windows matches Fly.
+        render_bg = args.render_background
+        if render_bg == "white" and "--render-background" not in sys.argv:
+            render_bg = "transparent"
         result = recreate_customer_logo(
             args.input,
             output_svg=out,
             output_png=png_out,
             max_colors=args.max_colors,
             render_width=args.render_width or 2000,
-            render_background=args.render_background or "transparent",
+            render_background=render_bg or "transparent",
         )
         print(
             f"Recreate -> {out} ({out.stat().st_size} bytes)\n"

@@ -27,21 +27,29 @@ class LogoRecreateCloud {
   }
 
   /// Lightweight online probe — GET Fly `/health` with a short timeout.
-  /// Cold-start machines may still succeed within this window.
+  /// Retries once: cold-started machines (`min_machines_running = 0`) often
+  /// miss a single 8s window; a second attempt after wake usually succeeds.
   static Future<bool> flyReachable({
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     final uri = Uri.parse(AppConfig.recreateLogoHealthUrl);
-    try {
-      final res = await http.get(uri).timeout(timeout);
-      return res.statusCode >= 200 && res.statusCode < 300;
-    } on TimeoutException {
-      return false;
-    } on SocketException {
-      return false;
-    } catch (_) {
-      return false;
+    Future<bool> once() async {
+      try {
+        final res = await http.get(uri).timeout(timeout);
+        return res.statusCode >= 200 && res.statusCode < 300;
+      } on TimeoutException {
+        return false;
+      } on SocketException {
+        return false;
+      } catch (_) {
+        return false;
+      }
     }
+
+    if (await once()) return true;
+    // Brief pause then one retry for Fly machine cold start.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return once();
   }
 
   static Future<CloudRecreateResult> run(

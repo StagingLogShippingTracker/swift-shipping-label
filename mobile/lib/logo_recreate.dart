@@ -221,6 +221,9 @@ class LogoRecreate {
         pngOut.absolute.path,
         '--render-width',
         '3000',
+        // Match Fly/Android: transparent PNG (CLI default is white).
+        '--render-background',
+        'transparent',
       ],
       workingDirectory: packageParent.path,
       runInShell: false,

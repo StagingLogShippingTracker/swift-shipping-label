@@ -47,4 +47,19 @@ if (Test-Path $toolsSrc) {
     Write-Host "Bundled tools/ (customer logo Recreate vectorizer)"
 }
 
+# Optional on-device Rust fallback (logo_recreate.dll) when already built.
+# Flutter probes next to the exe; without this, offline Windows without
+# Python skips straight toward Supabase last-resort.
+$dllCandidates = @(
+    (Join-Path $Root "native\logo_recreate\target\release\logo_recreate.dll"),
+    (Join-Path $Root "native\logo_recreate\target\x86_64-pc-windows-msvc\release\logo_recreate.dll")
+)
+foreach ($dll in $dllCandidates) {
+    if (Test-Path $dll) {
+        Copy-Item $dll (Join-Path $out "logo_recreate.dll") -Force
+        Write-Host "Bundled logo_recreate.dll from $dll"
+        break
+    }
+}
+
 Write-Host "Windows app: $out\swift_shipping_label.exe"

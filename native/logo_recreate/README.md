@@ -4,9 +4,10 @@ On-device port of the Windows Python Recreate pipeline
 (`tools/logo_vectorizer/customer_recreate.py` + `manual_trace.py` +
 `sectional.py`) for Android (and optionally Windows without Python).
 
-**Fly.io Python cloud Recreate is aborted** — do not deploy
-`services/recreate-logo/` for production. That folder is unused scaffolding.
-Cloud fallback is the existing Supabase Deno/`vtracer` edge function only.
+**Cloud:** Fly.io Python (`services/recreate-logo/`,
+`https://swift-recreate-logo.fly.dev`) is the **primary online** backend when
+local Python is unavailable. This crate is the offline / Fly-failure path.
+Supabase Deno/`vtracer` remains last resort.
 
 ## Architecture choice
 
@@ -16,11 +17,12 @@ Cloud fallback is the existing Supabase Deno/`vtracer` edge function only.
 | `flutter_rust_bridge` | Fine later if the API grows; overkill for a single recreate entrypoint. |
 | WASM-in-Dart first | Attractive for one artifact, weaker Flutter mobile story vs native `.so`; keep as optional second target from the same crate (`crate-type` already includes `cdylib`). |
 
-### Call priority (Flutter)
+### Call priority (Flutter) — see `mobile/lib/logo_recreate.dart`
 
-1. **Windows:** local Python Bezier pipeline (unchanged, highest fidelity)
-2. **All platforms:** on-device Rust (`LogoRecreateNative`) when the dynamic library is present
-3. **Fallback:** Supabase `recreate-logo` edge function (vtracer) — not Fly
+1. **Windows:** local Python Bezier pipeline (highest fidelity)
+2. **All platforms (online):** Fly.io Python Bezier (`LogoRecreateCloud`)
+3. **All platforms:** on-device Rust (`LogoRecreateNative`) when the dynamic library is present
+4. **Fallback:** Supabase `recreate-logo` edge function (vtracer)
 
 ## MVP scope (this crate today)
 
