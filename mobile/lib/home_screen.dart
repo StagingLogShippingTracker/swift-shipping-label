@@ -181,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Uint8List? _shipperSignatureBytes;
   SavedSignature? _selectedSavedSignature;
   AppUiSettings _uiSettings = AppUiSettings.defaults;
+  /// Portrait Android: full header + kind selector collapse while scrolling.
+  bool _mobileChromeExpanded = true;
 
   @override
   void initState() {
@@ -2517,58 +2519,81 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMobileScaffold() {
     final chrome = SwiftChromeColors.of(context);
-    // Edge-to-edge Android: pad for status/nav (incl. landscape side nav bars).
+    final portrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    // Landscape keeps the full chrome; portrait collapses on scroll-down.
+    final showFullChrome = !portrait || _mobileChromeExpanded;
+
     return Scaffold(
       backgroundColor: chrome.bg,
       body: SafeArea(
         child: Column(
           children: [
-            RepaintBoundary(
-              child: _Header(
-                busy: _busy,
-                isDark: _uiSettings.isDark,
-                kindTitle: _kindTitle,
-                onToggleDark: _toggleDarkMode,
-              ),
-            ),
-            // Pin document-type switching so it never scrolls away with the form.
-            Material(
-              color: chrome.surface,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildMobileKindSelector(),
-                    const SizedBox(height: 8),
-                    Text(
-                      _kindHint,
-                      style: TextStyle(
-                        color: chrome.muted,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: showFullChrome
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RepaintBoundary(
+                          child: _Header(
+                            busy: _busy,
+                            isDark: _uiSettings.isDark,
+                            kindTitle: _kindTitle,
+                            onToggleDark: _toggleDarkMode,
+                          ),
+                        ),
+                        Material(
+                          color: chrome.surface,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildMobileKindSelector(),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _kindHint,
+                                  style: TextStyle(
+                                    color: chrome.muted,
+                                    fontSize: 13,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Divider(height: 1, color: chrome.border),
+                      ],
+                    )
+                  : _MobileChromeCollapsed(
+                      kindTitle: _kindTitle,
+                      isDark: _uiSettings.isDark,
+                      onExpand: () =>
+                          setState(() => _mobileChromeExpanded = true),
                     ),
+            ),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onMobileFormScroll,
+                child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  children: [
+                    if (_kind == LabelKind.bol) ...[
+                      _buildBolCopiesCard(),
+                      const SizedBox(height: 10),
+                    ],
+                    _buildPresetCard(),
+                    _buildLogosCard(),
+                    ..._buildDocumentFormCards(dualColumn: false),
+                    _buildUtilityActions(),
                   ],
                 ),
-              ),
-            ),
-            Divider(height: 1, color: chrome.border),
-            Expanded(
-              child: ListView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                children: [
-                  if (_kind == LabelKind.bol) ...[
-                    _buildBolCopiesCard(),
-                    const SizedBox(height: 10),
-                  ],
-                  _buildPresetCard(),
-                  _buildLogosCard(),
-                  ..._buildDocumentFormCards(dualColumn: false),
-                  _buildUtilityActions(),
-                ],
               ),
             ),
             RepaintBoundary(
@@ -2581,6 +2606,40 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  /// Collapse portrait chrome when the user scrolls down the form.
+  /// Scrolling back up near the top (or settling at the top) restores it.
+  bool _onMobileFormScroll(ScrollNotification notification) {
+    if (Platform.isWindows) return false;
+    if (MediaQuery.orientationOf(context) != Orientation.portrait) {
+      if (!_mobileChromeExpanded) {
+        setState(() => _mobileChromeExpanded = true);
+      }
+      return false;
+    }
+    if (notification.metrics.axis != Axis.vertical) return false;
+    final pixels = notification.metrics.pixels;
+
+    // Fling/settle at the absolute top should always restore chrome.
+    if (!_mobileChromeExpanded &&
+        notification is ScrollEndNotification &&
+        pixels <= 24) {
+      setState(() => _mobileChromeExpanded = true);
+      return false;
+    }
+
+    if (notification is! ScrollUpdateNotification) return false;
+    final delta = notification.scrollDelta ?? 0;
+    if (delta > 6 && pixels > 28 && _mobileChromeExpanded) {
+      setState(() => _mobileChromeExpanded = false);
+    } else if (!_mobileChromeExpanded &&
+        delta < 0 &&
+        pixels <= 24) {
+      // Near the top while scrolling up — restore chrome automatically.
+      setState(() => _mobileChromeExpanded = true);
+    }
+    return false;
   }
 
   @override
@@ -2702,6 +2761,82 @@ class _DesktopToolbar extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Thin portrait strip shown after the Android header collapses on scroll.
+class _MobileChromeCollapsed extends StatelessWidget {
+  const _MobileChromeCollapsed({
+    required this.kindTitle,
+    required this.isDark,
+    required this.onExpand,
+  });
+
+  final String kindTitle;
+  final bool isDark;
+  final VoidCallback onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
+    return Material(
+      color: chrome.surface,
+      elevation: 0,
+      child: InkWell(
+        onTap: onExpand,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: SwiftColors.accent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Image.asset(
+                    SwiftBrandAssets.chromeLogo(dark: isDark),
+                    height: 18,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      kindTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Oswald',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        letterSpacing: 0.3,
+                        color: chrome.ink,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Show header',
+                    onPressed: onExpand,
+                    icon: Icon(
+                      Icons.expand_more,
+                      color: chrome.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: chrome.border),
+          ],
+        ),
       ),
     );
   }
