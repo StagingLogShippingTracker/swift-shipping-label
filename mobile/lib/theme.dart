@@ -14,106 +14,153 @@ class SwiftColors {
   /// Slightly cooler panel wash for desktop chrome (rails / sidebars).
   static const panel = Color(0xFFF7F5F2);
   static const railSelected = Color(0xFFF3E4DF);
+
+  // Dark-mode counterparts (Windows View → Dark mode).
+  static const darkBg = Color(0xFF121417);
+  static const darkSurface = Color(0xFF1C1F24);
+  static const darkPanel = Color(0xFF16191E);
+  static const darkInk = Color(0xFFF2F0EC);
+  static const darkMuted = Color(0xFFA3A29C);
+  static const darkBorder = Color(0xFF2E333A);
+  static const darkAccentSoft = Color(0xFF3A221C);
+  static const darkRailSelected = Color(0xFF4A2A22);
 }
 
 class SwiftTheme {
-  static ThemeData light() {
+  static ThemeData light({double fontScale = 1.0}) =>
+      _build(brightness: Brightness.light, fontScale: fontScale);
+
+  static ThemeData dark({double fontScale = 1.0}) =>
+      _build(brightness: Brightness.dark, fontScale: fontScale);
+
+  static ThemeData _build({
+    required Brightness brightness,
+    required double fontScale,
+  }) {
     final desktop = Platform.isWindows;
+    final dark = brightness == Brightness.dark;
+    final scale = fontScale.clamp(0.85, 1.35);
+
+    final bg = dark ? SwiftColors.darkBg : SwiftColors.bg;
+    final surface = dark ? SwiftColors.darkSurface : SwiftColors.surface;
+    final ink = dark ? SwiftColors.darkInk : SwiftColors.ink;
+    final muted = dark ? SwiftColors.darkMuted : SwiftColors.muted;
+    final border = dark ? SwiftColors.darkBorder : SwiftColors.border;
+    final accentSoft =
+        dark ? SwiftColors.darkAccentSoft : SwiftColors.accentSoft;
+    final railSelected =
+        dark ? SwiftColors.darkRailSelected : SwiftColors.railSelected;
+    final inputFill = dark ? const Color(0xFF15181C) : const Color(0xFFFAFAF8);
+    final chromePanel = dark ? SwiftColors.darkPanel : SwiftColors.panel;
+
     final base = ColorScheme.fromSeed(
       seedColor: SwiftColors.accent,
       primary: SwiftColors.accent,
-      surface: SwiftColors.surface,
-      brightness: Brightness.light,
+      surface: surface,
+      brightness: brightness,
     );
 
     return ThemeData(
       useMaterial3: true,
+      brightness: brightness,
       visualDensity:
           desktop ? VisualDensity.compact : VisualDensity.standard,
       colorScheme: base.copyWith(
         primary: SwiftColors.accent,
         onPrimary: Colors.white,
-        surface: SwiftColors.surface,
-        onSurface: SwiftColors.ink,
+        surface: surface,
+        onSurface: ink,
       ),
-      scaffoldBackgroundColor: SwiftColors.bg,
+      scaffoldBackgroundColor: bg,
       fontFamily: 'Calibri',
+      textTheme: ThemeData(brightness: brightness).textTheme.apply(
+            fontFamily: 'Calibri',
+            bodyColor: ink,
+            displayColor: ink,
+            fontSizeFactor: scale,
+          ),
       appBarTheme: AppBarTheme(
-        backgroundColor: desktop ? SwiftColors.surface : SwiftColors.accent,
-        foregroundColor: desktop ? SwiftColors.ink : Colors.white,
+        backgroundColor: desktop
+            ? surface
+            : (dark ? SwiftColors.darkSurface : SwiftColors.accent),
+        foregroundColor: desktop
+            ? ink
+            : (dark ? SwiftColors.darkInk : Colors.white),
         elevation: 0,
         scrolledUnderElevation: desktop ? 0.5 : 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
           fontFamily: 'Oswald',
           fontWeight: FontWeight.w600,
-          fontSize: desktop ? 16 : 20,
-          color: desktop ? SwiftColors.ink : Colors.white,
+          fontSize: (desktop ? 16 : 20) * scale,
+          color: desktop
+              ? ink
+              : (dark ? SwiftColors.darkInk : Colors.white),
           letterSpacing: 0.4,
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: SwiftColors.panel,
-        indicatorColor: SwiftColors.railSelected,
+        backgroundColor: chromePanel,
+        indicatorColor: railSelected,
         selectedIconTheme: const IconThemeData(
           color: SwiftColors.accent,
           size: 22,
         ),
-        unselectedIconTheme: const IconThemeData(
-          color: SwiftColors.muted,
+        unselectedIconTheme: IconThemeData(
+          color: muted,
           size: 22,
         ),
-        selectedLabelTextStyle: const TextStyle(
+        selectedLabelTextStyle: TextStyle(
           fontFamily: 'Oswald',
           fontWeight: FontWeight.w600,
-          fontSize: 12,
+          fontSize: 12 * scale,
           color: SwiftColors.accent,
           letterSpacing: 0.3,
         ),
-        unselectedLabelTextStyle: const TextStyle(
+        unselectedLabelTextStyle: TextStyle(
           fontFamily: 'Calibri',
           fontWeight: FontWeight.w600,
-          fontSize: 12,
-          color: SwiftColors.muted,
+          fontSize: 12 * scale,
+          color: muted,
         ),
       ),
       cardTheme: CardThemeData(
-        color: SwiftColors.surface,
+        color: surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(desktop ? 8 : 14),
-          side: const BorderSide(color: SwiftColors.border),
+          side: BorderSide(color: border),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFFAFAF8),
+        fillColor: inputFill,
         isDense: true,
         contentPadding: EdgeInsets.symmetric(
           horizontal: 12,
           vertical: desktop ? 8 : 10,
         ),
-        labelStyle: const TextStyle(
+        labelStyle: TextStyle(
           fontFamily: 'Oswald',
-          fontSize: 12,
+          fontSize: 12 * scale,
           fontWeight: FontWeight.w500,
-          color: SwiftColors.muted,
+          color: muted,
           letterSpacing: 0.6,
         ),
-        floatingLabelStyle: const TextStyle(
+        floatingLabelStyle: TextStyle(
           fontFamily: 'Oswald',
-          fontSize: 12,
+          fontSize: 12 * scale,
           fontWeight: FontWeight.w600,
           color: SwiftColors.accent,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(desktop ? 6 : 10),
-          borderSide: const BorderSide(color: SwiftColors.border),
+          borderSide: BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(desktop ? 6 : 10),
-          borderSide: const BorderSide(color: SwiftColors.border),
+          borderSide: BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(desktop ? 6 : 10),
@@ -132,7 +179,7 @@ class SwiftTheme {
           textStyle: TextStyle(
             fontFamily: 'Oswald',
             fontWeight: FontWeight.w600,
-            fontSize: desktop ? 14 : 15,
+            fontSize: (desktop ? 14 : 15) * scale,
             letterSpacing: 0.4,
           ),
           shape: RoundedRectangleBorder(
@@ -142,16 +189,16 @@ class SwiftTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: SwiftColors.ink,
-          side: const BorderSide(color: SwiftColors.border),
+          foregroundColor: ink,
+          side: BorderSide(color: border),
           padding: EdgeInsets.symmetric(
             horizontal: desktop ? 12 : 14,
             vertical: desktop ? 10 : 12,
           ),
-          textStyle: const TextStyle(
+          textStyle: TextStyle(
             fontFamily: 'Calibri',
             fontWeight: FontWeight.w600,
-            fontSize: 13,
+            fontSize: 13 * scale,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(desktop ? 6 : 10),
@@ -160,11 +207,11 @@ class SwiftTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: SwiftColors.muted,
-          textStyle: const TextStyle(
+          foregroundColor: muted,
+          textStyle: TextStyle(
             fontFamily: 'Calibri',
             fontWeight: FontWeight.w600,
-            fontSize: 13,
+            fontSize: 13 * scale,
           ),
         ),
       ),
@@ -172,24 +219,22 @@ class SwiftTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return SwiftColors.accentSoft;
+              return accentSoft;
             }
-            return SwiftColors.surface;
+            return surface;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return SwiftColors.accent;
             }
-            return SwiftColors.muted;
+            return muted;
           }),
-          side: const WidgetStatePropertyAll(
-            BorderSide(color: SwiftColors.border),
-          ),
+          side: WidgetStatePropertyAll(BorderSide(color: border)),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: SwiftColors.ink,
+        backgroundColor: dark ? const Color(0xFF2A2E35) : SwiftColors.ink,
         contentTextStyle:
             const TextStyle(fontFamily: 'Calibri', color: Colors.white),
         shape: RoundedRectangleBorder(
@@ -197,19 +242,38 @@ class SwiftTheme {
         ),
       ),
       dialogTheme: DialogThemeData(
+        backgroundColor: surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(desktop ? 10 : 16),
         ),
       ),
-      dividerTheme: const DividerThemeData(
-        color: SwiftColors.border,
+      menuBarTheme: MenuBarThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(surface),
+          elevation: const WidgetStatePropertyAll(0),
+        ),
+      ),
+      menuButtonTheme: MenuButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(ink),
+          textStyle: WidgetStatePropertyAll(
+            TextStyle(
+              fontFamily: 'Calibri',
+              fontSize: 13 * scale,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: border,
         space: 1,
         thickness: 1,
       ),
       tooltipTheme: TooltipThemeData(
         waitDuration: const Duration(milliseconds: 400),
         decoration: BoxDecoration(
-          color: SwiftColors.ink,
+          color: dark ? const Color(0xFF2A2E35) : SwiftColors.ink,
           borderRadius: BorderRadius.circular(6),
         ),
         textStyle: const TextStyle(
@@ -218,6 +282,87 @@ class SwiftTheme {
           color: Colors.white,
         ),
       ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return null;
+        }),
+      ),
+      extensions: <ThemeExtension<dynamic>>[
+        SwiftChromeColors(
+          bg: bg,
+          surface: surface,
+          panel: chromePanel,
+          ink: ink,
+          muted: muted,
+          border: border,
+        ),
+      ],
+    );
+  }
+}
+
+/// Runtime chrome colors that flip with light/dark (Windows scaffolds).
+class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
+  const SwiftChromeColors({
+    required this.bg,
+    required this.surface,
+    required this.panel,
+    required this.ink,
+    required this.muted,
+    required this.border,
+  });
+
+  final Color bg;
+  final Color surface;
+  final Color panel;
+  final Color ink;
+  final Color muted;
+  final Color border;
+
+  static SwiftChromeColors of(BuildContext context) {
+    return Theme.of(context).extension<SwiftChromeColors>() ??
+        const SwiftChromeColors(
+          bg: SwiftColors.bg,
+          surface: SwiftColors.surface,
+          panel: SwiftColors.panel,
+          ink: SwiftColors.ink,
+          muted: SwiftColors.muted,
+          border: SwiftColors.border,
+        );
+  }
+
+  @override
+  SwiftChromeColors copyWith({
+    Color? bg,
+    Color? surface,
+    Color? panel,
+    Color? ink,
+    Color? muted,
+    Color? border,
+  }) {
+    return SwiftChromeColors(
+      bg: bg ?? this.bg,
+      surface: surface ?? this.surface,
+      panel: panel ?? this.panel,
+      ink: ink ?? this.ink,
+      muted: muted ?? this.muted,
+      border: border ?? this.border,
+    );
+  }
+
+  @override
+  SwiftChromeColors lerp(ThemeExtension<SwiftChromeColors>? other, double t) {
+    if (other is! SwiftChromeColors) return this;
+    return SwiftChromeColors(
+      bg: Color.lerp(bg, other.bg, t)!,
+      surface: Color.lerp(surface, other.surface, t)!,
+      panel: Color.lerp(panel, other.panel, t)!,
+      ink: Color.lerp(ink, other.ink, t)!,
+      muted: Color.lerp(muted, other.muted, t)!,
+      border: Color.lerp(border, other.border, t)!,
     );
   }
 }

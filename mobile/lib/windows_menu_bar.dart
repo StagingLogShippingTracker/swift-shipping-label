@@ -8,12 +8,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
 import 'app_storage.dart';
+import 'feedback_forms.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'logo_recreate.dart';
+import 'pdf_render_options.dart';
 import 'platform_io.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
+import 'windows_customize.dart';
+import 'windows_window_snap.dart';
 
 /// Callbacks + state for the Windows-only [MenuBar].
 class WindowsMenuActions {
@@ -77,6 +81,66 @@ class WindowsAppMenuBar extends StatelessWidget {
   Future<void> _persist(AppUiSettings next) async {
     await actions.storage.saveUiSettings(next);
     actions.onSettingsChanged(next);
+  }
+
+  Future<void> _toggleDark(BuildContext context) async {
+    final nextPref = actions.settings.isDark
+        ? UiThemePreference.light
+        : UiThemePreference.dark;
+    await _persist(actions.settings.copyWith(themePreference: nextPref));
+    if (context.mounted) {
+      await _snack(
+        context,
+        nextPref == UiThemePreference.dark
+            ? 'Dark mode on'
+            : 'Light mode on',
+      );
+    }
+  }
+
+  Future<void> _customize(BuildContext context) async {
+    final next = await showWindowsCustomizeDialog(
+      context,
+      settings: actions.settings,
+    );
+    if (next == null) return;
+    await _persist(next);
+    if (context.mounted) {
+      await _snack(context, 'Customization applied.');
+    }
+  }
+
+  Future<void> _snap(BuildContext context, WindowsSnapPreset preset) async {
+    final msg = await WindowsWindowSnap.apply(preset);
+    if (context.mounted) await _snack(context, msg);
+  }
+
+  Future<void> _feedback(BuildContext context) async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (_) {}
+    if (!context.mounted) return;
+    await openFeedbackForm(
+      context,
+      installedVersion: info == null
+          ? 'unknown'
+          : '${info.version}+${info.buildNumber}',
+    );
+  }
+
+  Future<void> _errorCapture(BuildContext context) async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (_) {}
+    if (!context.mounted) return;
+    await openErrorCaptureForm(
+      context,
+      installedVersion: info == null
+          ? 'unknown'
+          : '${info.version}+${info.buildNumber}',
+    );
   }
 
   Future<void> _snack(BuildContext context, String message) async {
@@ -549,6 +613,47 @@ class WindowsAppMenuBar extends StatelessWidget {
         SubmenuButton(
           menuChildren: [
             CheckboxMenuButton(
+              value: s.isDark,
+              onChanged: (_) => _toggleDark(context),
+              child: const Text('Dark mode'),
+            ),
+            MenuItemButton(
+              onPressed: () => _customize(context),
+              child: const Text('Customize appearance & PDF…'),
+            ),
+            const Divider(),
+            SubmenuButton(
+              menuChildren: [
+                for (final p in UiLayoutPreset.values)
+                  MenuItemButton(
+                    onPressed: () => _persist(
+                      s.copyWith(
+                        layoutPreset: p,
+                        showWorkspacePane: p != UiLayoutPreset.compact,
+                        preferExtendedRail: p == UiLayoutPreset.widescreen,
+                        denseForms: p == UiLayoutPreset.compact,
+                        formColumns: p == UiLayoutPreset.compact ? 1 : 2,
+                      ),
+                    ),
+                    child: Text(
+                      s.layoutPreset == p ? '● ${p.label}' : p.label,
+                    ),
+                  ),
+              ],
+              child: const Text('Layout presets'),
+            ),
+            SubmenuButton(
+              menuChildren: [
+                for (final snap in WindowsSnapPreset.values)
+                  MenuItemButton(
+                    onPressed: () => _snap(context, snap),
+                    child: Text(snap.label),
+                  ),
+              ],
+              child: const Text('Window snap'),
+            ),
+            const Divider(),
+            CheckboxMenuButton(
               value: s.showWorkspacePane,
               onChanged: (v) => _persist(
                 s.copyWith(showWorkspacePane: v ?? true),
@@ -576,10 +681,22 @@ class WindowsAppMenuBar extends StatelessWidget {
               ),
               child: const Text('Toolbar Update button'),
             ),
+            const Divider(),
+            MenuItemButton(
+              onPressed: () => _persist(s.copyWith(formColumns: 1)),
+              child: Text(
+                s.formColumns == 1 ? '● Single-column forms' : 'Single-column forms',
+              ),
+            ),
+            MenuItemButton(
+              onPressed: () => _persist(s.copyWith(formColumns: 2)),
+              child: Text(
+                s.formColumns == 2 ? '● Two-column forms' : 'Two-column forms',
+              ),
+            ),
           ],
           child: const Text('View'),
-        ),
-        SubmenuButton(
+        ),        SubmenuButton(
           menuChildren: [
             MenuItemButton(
               onPressed: () => actions.onSelectKind(LabelKind.shipping),
@@ -688,6 +805,11 @@ class WindowsAppMenuBar extends StatelessWidget {
               child: const Text('Auto-open PDF after generate'),
             ),
             MenuItemButton(
+              onPressed: () => _customize(context),
+              child: const Text('Customize appearance & PDF…'),
+            ),
+            const Divider(),
+            MenuItemButton(
               onPressed: () => _showHotkeys(context),
               child: const Text('Hotkeys…'),
             ),
@@ -723,6 +845,16 @@ class WindowsAppMenuBar extends StatelessWidget {
               onPressed: () => _showDiagnostics(context),
               child: const Text('Diagnostics report…'),
             ),
+            const Divider(),
+            MenuItemButton(
+              onPressed: () => _feedback(context),
+              child: const Text('Send feedback…'),
+            ),
+            MenuItemButton(
+              onPressed: () => _errorCapture(context),
+              shortcut: const SingleActivator(LogicalKeyboardKey.f2),
+              child: const Text('Error capture (F2)…'),
+            ),
           ],
           child: const Text('Help'),
         ),
@@ -741,6 +873,8 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
   required VoidCallback onClearShipment,
   required VoidCallback onNewShipping,
   required VoidCallback onCheckUpdates,
+  required VoidCallback onErrorCapture,
+  VoidCallback? onToggleDark,
 }) {
   return {
     const SingleActivator(LogicalKeyboardKey.enter, control: true): onGenerate,
@@ -759,5 +893,9 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
       control: true,
       shift: true,
     ): onCheckUpdates,
+    const SingleActivator(LogicalKeyboardKey.f2): onErrorCapture,
+    if (onToggleDark != null)
+      const SingleActivator(LogicalKeyboardKey.keyD, control: true, shift: true):
+          onToggleDark,
   };
 }

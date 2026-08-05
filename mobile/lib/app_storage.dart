@@ -9,6 +9,7 @@ import 'label_data.dart';
 import 'logo_image_process.dart';
 import 'logo_import_options.dart';
 import 'logo_recreate.dart';
+import 'pdf_render_options.dart';
 
 /// Result of [AppStorage.importLogoBytes] / [AppStorage.importLogo].
 class ImportLogoResult {
@@ -509,6 +510,11 @@ class AppUiSettings {
     this.showToolbarUpdate = true,
     this.autoUpdateEnabled = true,
     this.hotkeyOverrides = const {},
+    this.themePreference = UiThemePreference.light,
+    this.layoutPreset = UiLayoutPreset.classic,
+    this.formColumns = 2,
+    this.uiFontScale = 1.0,
+    this.pdfOptions = PdfRenderOptions.defaults,
   });
 
   final String? logoSearchEngine;
@@ -520,8 +526,15 @@ class AppUiSettings {
   final bool showToolbarUpdate;
   final bool autoUpdateEnabled;
   final Map<String, String> hotkeyOverrides;
+  final UiThemePreference themePreference;
+  final UiLayoutPreset layoutPreset;
+  final int formColumns;
+  final double uiFontScale;
+  final PdfRenderOptions pdfOptions;
 
   static const defaults = AppUiSettings();
+
+  bool get isDark => themePreference == UiThemePreference.dark;
 
   factory AppUiSettings.fromJson(Map<String, dynamic> json) {
     final hotkeysRaw = json['hotkeyOverrides'];
@@ -533,6 +546,14 @@ class AppUiSettings {
         if (k.isNotEmpty && v.isNotEmpty) hotkeys[k] = v;
       }
     }
+    final cols = json['formColumns'];
+    final formColumns = cols is int
+        ? cols.clamp(1, 2)
+        : (int.tryParse('$cols') ?? 2).clamp(1, 2);
+    final fontScaleRaw = json['uiFontScale'];
+    final uiFontScale = fontScaleRaw is num
+        ? fontScaleRaw.toDouble().clamp(0.85, 1.35)
+        : (double.tryParse('$fontScaleRaw') ?? 1.0).clamp(0.85, 1.35);
     return AppUiSettings(
       logoSearchEngine: json[AppStorage.logoSearchEngineKey] is String
           ? json[AppStorage.logoSearchEngineKey] as String
@@ -558,6 +579,20 @@ class AppUiSettings {
           ? json['autoUpdateEnabled'] as bool
           : true,
       hotkeyOverrides: hotkeys,
+      themePreference:
+          UiThemePreference.tryParse('${json['themePreference']}') ??
+              UiThemePreference.light,
+      layoutPreset: UiLayoutPreset.tryParse('${json['layoutPreset']}') ??
+          UiLayoutPreset.classic,
+      formColumns: formColumns,
+      uiFontScale: uiFontScale,
+      pdfOptions: PdfRenderOptions.fromJson(
+        json['pdfOptions'] is Map<String, dynamic>
+            ? json['pdfOptions'] as Map<String, dynamic>
+            : (json['pdfOptions'] is Map
+                ? Map<String, dynamic>.from(json['pdfOptions'] as Map)
+                : null),
+      ),
     );
   }
 
@@ -574,6 +609,11 @@ class AppUiSettings {
         'showToolbarUpdate': showToolbarUpdate,
         'autoUpdateEnabled': autoUpdateEnabled,
         'hotkeyOverrides': hotkeyOverrides,
+        'themePreference': themePreference.name,
+        'layoutPreset': layoutPreset.name,
+        'formColumns': formColumns,
+        'uiFontScale': uiFontScale,
+        'pdfOptions': pdfOptions.toJson(),
       };
 
   AppUiSettings copyWith({
@@ -587,6 +627,11 @@ class AppUiSettings {
     bool? showToolbarUpdate,
     bool? autoUpdateEnabled,
     Map<String, String>? hotkeyOverrides,
+    UiThemePreference? themePreference,
+    UiLayoutPreset? layoutPreset,
+    int? formColumns,
+    double? uiFontScale,
+    PdfRenderOptions? pdfOptions,
   }) {
     return AppUiSettings(
       logoSearchEngine: logoSearchEngine ?? this.logoSearchEngine,
@@ -599,6 +644,11 @@ class AppUiSettings {
       showToolbarUpdate: showToolbarUpdate ?? this.showToolbarUpdate,
       autoUpdateEnabled: autoUpdateEnabled ?? this.autoUpdateEnabled,
       hotkeyOverrides: hotkeyOverrides ?? this.hotkeyOverrides,
+      themePreference: themePreference ?? this.themePreference,
+      layoutPreset: layoutPreset ?? this.layoutPreset,
+      formColumns: formColumns ?? this.formColumns,
+      uiFontScale: uiFontScale ?? this.uiFontScale,
+      pdfOptions: pdfOptions ?? this.pdfOptions,
     );
   }
 }

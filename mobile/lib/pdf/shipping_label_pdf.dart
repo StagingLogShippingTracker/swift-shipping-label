@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../label_data.dart';
+import '../pdf_render_options.dart';
 
 /// Port of `generate_swift_shipping_label_pdf.py` — Swiss layout, flat print PDF.
 class ShippingLabelPdf {
@@ -188,6 +189,7 @@ class ShippingLabelPdf {
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
     PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
+    PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
     final pages = <ShippingLabelData>[];
     for (var i = 1; i <= piecePlan.palletCrates; i++) {
@@ -214,18 +216,21 @@ class ShippingLabelPdf {
       pages: pages,
       customerLogoBytes: customerLogoBytes,
       painter: _drawPage,
+      options: options,
     );
   }
 
   Future<Uint8List> buildReceiving({
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
+    PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
     return _buildDoc(
       title: 'Swift Oilfield Supply — Receiving Label',
       pages: [data],
       customerLogoBytes: customerLogoBytes,
       painter: _drawReceivingPage,
+      options: options,
     );
   }
 
@@ -239,23 +244,28 @@ class ShippingLabelPdf {
       ShippingLabelData data,
       List<PdfImage> customerLogos,
       PdfImage? swiftLogo,
+      PdfRenderOptions options,
     ) painter,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
     final doc = pw.Document(title: title, author: 'Swift Oilfield Supply');
+    // Shipping / Receiving labels are designed for landscape Letter.
+    final format = pageFormat;
 
     for (final pageData in pages) {
       doc.addPage(
         pw.Page(
-          pageFormat: pageFormat,
+          pageFormat: format,
           margin: pw.EdgeInsets.zero,
           build: (context) {
-            final fonts = _ResolvedFonts(
+            var fonts = _ResolvedFonts(
               oswald: oswald.getFont(context),
               oswaldMedium: oswaldMedium.getFont(context),
               oswaldBold: oswaldBold.getFont(context),
               calibri: calibri.getFont(context),
               calibriBold: calibriBold.getFont(context),
             );
+            fonts = fonts.withBodyFont(options.bodyFont);
 
             final customerLogos = <PdfImage>[];
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
@@ -266,15 +276,19 @@ class ShippingLabelPdf {
               }
             }
             PdfImage? swiftLogo;
-            if (swiftLogoBytes != null) {
+            if (options.showSwiftLogo && swiftLogoBytes != null) {
               swiftLogo =
                   PdfImage.file(context.document, bytes: swiftLogoBytes!);
             }
+            final logos = options.showCustomerLogos &&
+                    options.logoPlacement != PdfLogoPlacement.hidden
+                ? customerLogos
+                : <PdfImage>[];
 
             return pw.CustomPaint(
-              size: PdfPoint(pageFormat.width, pageFormat.height),
+              size: PdfPoint(format.width, format.height),
               painter: (PdfGraphics canvas, PdfPoint size) {
-                painter(canvas, fonts, pageData, customerLogos, swiftLogo);
+                painter(canvas, fonts, pageData, logos, swiftLogo, options);
               },
             );
           },
@@ -320,6 +334,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample,
     List<PdfImage> customerLogos,
     PdfImage? swiftLogo,
+    PdfRenderOptions options,
   ) {
     final pageH = pageFormat.height;
 
@@ -328,7 +343,7 @@ class ShippingLabelPdf {
     final footY = my + 6;
     final pieceTop = footY + 70;
 
-    var y = _drawHeader(c, fonts, customerLogos, swiftLogo);
+    var y = _drawHeader(c, fonts, customerLogos, swiftLogo, options: options);
     final pair = _drawIdentityPair(c, fonts, y, sample);
     _drawNotesAndMeta(c, fonts, pair.$1, pair.$2, sample, pieceTop + 4);
 
@@ -549,65 +564,88 @@ class ShippingLabelPdf {
     List<PdfImage> customerLogos,
     PdfImage? swiftLogo, {
     bool receivingChip = false,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
   }) {
     final pageH = pageFormat.height;
     final yTop = pageH - my - 14;
     final bandH = 0.92 * inch;
     final logoBottom = yTop - bandH;
     final logos = customerLogos.take(maxCustomerLogos).toList();
+    final logoH = customerLogoTargetH * options.logoScale;
 
     final swiftMaxW = colW * 0.95;
     final swiftMaxH = bandH - 4;
-    final swiftW = _swiftRenderedWidth(swiftLogo, swiftMaxW, swiftMaxH);
+    final swiftW = options.showSwiftLogo
+        ? _swiftRenderedWidth(swiftLogo, swiftMaxW, swiftMaxH)
+        : 0.0;
     final swiftLeftX = mx + contentW - swiftW;
-    final availForCustomer = swiftW > 0
-        ? (swiftLeftX - customerLogoToSwiftGap - mx)
-        : contentW;
 
-    if (logos.isNotEmpty) {
-      _drawCustomerLogosInHeader(
+    final place = options.showCustomerLogos
+        ? options.logoPlacement
+        : PdfLogoPlacement.hidden;
+
+    if (place == PdfLogoPlacement.left && logos.isNotEmpty) {
+      final availForCustomer = swiftW > 0
+          ? (swiftLeftX - customerLogoToSwiftGap - mx)
+          : contentW;
+      _drawCustomerLogoRow(
         c,
         logos,
+        mx,
         logoBottom,
-        bandH,
         yTop,
+        logoH,
         availForCustomer,
       );
-    } else {
+    } else if (place == PdfLogoPlacement.right && logos.isNotEmpty) {
+      // Customer logos on the right; Swift stays left-ish of remaining space.
+      final avail = contentW * 0.42;
+      final startX = mx + contentW - avail;
+      _drawCustomerLogoRow(
+        c,
+        logos,
+        startX,
+        logoBottom,
+        yTop,
+        logoH,
+        avail,
+      );
+    } else if (logos.isEmpty && place != PdfLogoPlacement.belowSwift) {
       c
         ..setStrokeColor(ruleSoft)
         ..setLineWidth(0.7)
-        ..setLineDashPattern(const [2, 2]);
-      final phW = 1.85 * inch;
-      final phH = 0.5 * inch;
-      _strokeRRect(c, mx, logoBottom + 14, phW, phH, 3);
-      c.setLineDashPattern();
-      c
-        ..setFillColor(labelC)
-        ..setFont(fonts.oswaldMedium, 7.5);
-      const ph = 'CUSTOMER LOGO';
-      final tw = stringWidth(fonts.oswaldMedium, ph, 7.5);
-      c.drawString(
-        fonts.oswaldMedium,
-        7.5,
-        ph,
-        mx + phW / 2 - tw / 2,
-        logoBottom + 14 + phH / 2 - 3,
-      );
+        ..drawRect(mx, logoBottom + 8, 120, bandH - 20)
+        ..strokePath();
     }
 
-    if (swiftLogo != null && swiftW > 0) {
-      _drawImageFit(
+    if (options.showSwiftLogo && swiftLogo != null && swiftW > 0) {
+      final ih = swiftLogo.height.toDouble();
+      final iw = swiftLogo.width.toDouble();
+      final scale = (swiftMaxW / iw < swiftMaxH / ih)
+          ? swiftMaxW / iw
+          : swiftMaxH / ih;
+      final w = iw * scale;
+      final h = ih * scale;
+      final drawX = place == PdfLogoPlacement.right
+          ? mx
+          : (mx + contentW - w);
+      final bandCenter = (yTop + logoBottom) / 2;
+      c.drawImage(swiftLogo, drawX, bandCenter - h / 2, w, h);
+    }
+
+    if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
+      _drawCustomerLogoRow(
         c,
-        swiftLogo,
-        mx + contentW,
-        logoBottom + 2,
-        swiftMaxW,
-        swiftMaxH,
-        right: true,
+        logos,
+        mx,
+        logoBottom - logoH - 4,
+        logoBottom,
+        logoH * 0.9,
+        contentW,
       );
     }
 
+    // Rule under logos + optional RECEIVING chip.
     final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
     final ruleY = logoBottom - airUnderLogos;
     c.setFillColor(swift);
@@ -721,6 +759,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample,
     List<PdfImage> customerLogos,
     PdfImage? swiftLogo,
+    PdfRenderOptions options,
   ) {
     final pageH = pageFormat.height;
     _bumper(c, pageH - my + 4);
@@ -733,6 +772,7 @@ class ShippingLabelPdf {
       customerLogos,
       swiftLogo,
       receivingChip: true,
+      options: options,
     );
 
     final lx = mx;
@@ -1266,4 +1306,27 @@ class _ResolvedFonts {
   final PdfFont oswaldBold;
   final PdfFont calibri;
   final PdfFont calibriBold;
+
+  _ResolvedFonts withBodyFont(PdfBodyFont body) {
+    switch (body) {
+      case PdfBodyFont.brand:
+        return this;
+      case PdfBodyFont.calibri:
+        return _ResolvedFonts(
+          oswald: calibri,
+          oswaldMedium: calibriBold,
+          oswaldBold: calibriBold,
+          calibri: calibri,
+          calibriBold: calibriBold,
+        );
+      case PdfBodyFont.oswald:
+        return _ResolvedFonts(
+          oswald: oswald,
+          oswaldMedium: oswaldMedium,
+          oswaldBold: oswaldBold,
+          calibri: oswald,
+          calibriBold: oswaldBold,
+        );
+    }
+  }
 }

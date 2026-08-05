@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../bol_item_type.dart';
 import '../label_data.dart';
+import '../pdf_render_options.dart';
 import 'shipping_label_pdf.dart';
 
 /// Flat print Bill of Lading — geometry ported from `generate_swift_bol_pdf.py`.
@@ -75,6 +76,7 @@ class BolLabelPdf {
     Uint8List? shipperSignatureBytes,
     /// Which copy pages to include (subset of [copyTypes]). Defaults to all three.
     List<String>? copies,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
     final selected = (copies == null || copies.isEmpty)
         ? List<String>.from(copyTypes)
@@ -90,11 +92,13 @@ class BolLabelPdf {
       title: 'Swift Oilfield Supply — Straight Bill of Lading',
       author: 'Swift Oilfield Supply',
     );
+    // BOL layout is fixed to portrait Letter.
+    final format = pageFormat;
 
     for (final copy in selected) {
       doc.addPage(
         pw.Page(
-          pageFormat: pageFormat,
+          pageFormat: format,
           margin: pw.EdgeInsets.zero,
           build: (context) {
             final fonts = _Fonts(
@@ -102,20 +106,23 @@ class BolLabelPdf {
               bold: pw.Font.helveticaBold().getFont(context),
             );
             PdfImage? swiftLogo;
-            if (shipping.swiftLogoBytes != null) {
+            if (options.showSwiftLogo && shipping.swiftLogoBytes != null) {
               swiftLogo = PdfImage.file(
                 context.document,
                 bytes: shipping.swiftLogoBytes!,
               );
             }
             final customerLogos = <PdfImage>[];
-            for (final b in customerLogoBytes.take(maxCustomerLogos)) {
-              if (b.isNotEmpty) {
-                customerLogos.add(PdfImage.file(context.document, bytes: b));
+            if (options.showCustomerLogos &&
+                options.logoPlacement != PdfLogoPlacement.hidden) {
+              for (final b in customerLogoBytes.take(maxCustomerLogos)) {
+                if (b.isNotEmpty) {
+                  customerLogos.add(PdfImage.file(context.document, bytes: b));
+                }
               }
             }
             return pw.CustomPaint(
-              size: PdfPoint(pageFormat.width, pageFormat.height),
+              size: PdfPoint(format.width, format.height),
               painter: (c, size) {
                 PdfImage? shipperSig;
                 if (shipperSignatureBytes != null &&

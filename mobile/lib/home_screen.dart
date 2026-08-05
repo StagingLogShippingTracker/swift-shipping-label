@@ -21,6 +21,10 @@ import 'platform_io.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
 import 'windows_menu_bar.dart';
+import 'feedback_forms.dart';
+import 'app_theme_scope.dart';
+import 'pdf_render_options.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 const _shippingGroups = <(String title, String hint, List<String> keys)>[
   (
@@ -196,8 +200,46 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadUiSettings() async {
     try {
       final s = await widget.storage.loadUiSettings();
-      if (mounted) setState(() => _uiSettings = s);
+      if (!mounted) return;
+      setState(() => _uiSettings = s);
+      _syncAppTheme(s);
     } catch (_) {}
+  }
+
+  void _applyUiSettings(AppUiSettings s) {
+    setState(() => _uiSettings = s);
+    _syncAppTheme(s);
+  }
+
+  void _syncAppTheme(AppUiSettings s) {
+    if (!Platform.isWindows) return;
+    try {
+      AppThemeScope.of(context).value = s;
+    } catch (_) {}
+  }
+
+  Future<void> _openErrorCapture() async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (_) {}
+    if (!mounted) return;
+    await openErrorCaptureForm(
+      context,
+      installedVersion: info == null
+          ? 'unknown'
+          : '${info.version}+${info.buildNumber}',
+    );
+  }
+
+  Future<void> _toggleDarkMode() async {
+    final next = _uiSettings.copyWith(
+      themePreference: _uiSettings.isDark
+          ? UiThemePreference.light
+          : UiThemePreference.dark,
+    );
+    await widget.storage.saveUiSettings(next);
+    _applyUiSettings(next);
   }
 
   Future<void> _syncPresetsOnLaunch() async {
@@ -1238,6 +1280,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes = await widget.pdf.buildReceiving(
             data: data,
             customerLogoBytes: logoBytes,
+            options: _uiSettings.pdfOptions,
           );
         case LabelKind.bol:
           bytes = await BolLabelPdf(widget.pdf).build(
@@ -1245,12 +1288,14 @@ class _HomeScreenState extends State<HomeScreen> {
             customerLogoBytes: logoBytes,
             shipperSignatureBytes: _shipperSignatureBytes,
             copies: bolCopies,
+            options: _uiSettings.pdfOptions,
           );
         case LabelKind.shipping:
           bytes = await widget.pdf.build(
             data: data,
             customerLogoBytes: logoBytes,
             piecePlan: piecePlan!,
+            options: _uiSettings.pdfOptions,
           );
       }
 
@@ -2154,12 +2199,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWindowsScaffold(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 1180;
-    final showWorkspace = _uiSettings.showWorkspacePane && wide;
+    final chrome = SwiftChromeColors.of(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final preset = _uiSettings.layoutPreset;
+    final wide = switch (preset) {
+      UiLayoutPreset.widescreen => width >= 1000,
+      UiLayoutPreset.compact => width >= 1400,
+      UiLayoutPreset.stacked => false,
+      UiLayoutPreset.classic => width >= 1180,
+    };
+    final showWorkspace = _uiSettings.showWorkspacePane &&
+        (preset == UiLayoutPreset.stacked || wide);
+    final stacked = preset == UiLayoutPreset.stacked && showWorkspace;
+    final sideWorkspace = showWorkspace && !stacked;
     final railExtended = _uiSettings.preferExtendedRail
-        ? MediaQuery.sizeOf(context).width >= 1100
+        ? width >= (preset == UiLayoutPreset.compact ? 1280 : 1100)
         : false;
-    final dense = _uiSettings.denseForms;
+    final dense = _uiSettings.denseForms || preset == UiLayoutPreset.compact;
+    final dualColumn = _uiSettings.formColumns >= 2;
 
     final menuActions = WindowsMenuActions(
       storage: widget.storage,
@@ -2179,11 +2236,79 @@ class _HomeScreenState extends State<HomeScreen> {
       onToggleRecreate: (v) => setState(() => _recreateLogo = v),
       onSelectKind: _selectKind,
       onBolCopyChanged: _onBolCopyChanged,
-      onSettingsChanged: (s) => setState(() => _uiSettings = s),
+      onSettingsChanged: _applyUiSettings,
       onFindLogo: _findLogoOnWeb,
       onBrowseLogo: _browseAndImportLogo,
       onAddFromStorage: _addFromStorageAndImport,
       onLoadSample: _loadSample,
+    );
+
+    final formList = ListView(
+      primary: true,
+      padding: EdgeInsets.fromLTRB(dense ? 16 : 24, 8, dense ? 16 : 24, 28),
+      children: [
+        if (!sideWorkspace) ...[
+          if (_kind == LabelKind.bol) ...[
+            _buildBolCopiesCard(compact: true),
+            const SizedBox(height: 4),
+          ],
+          _buildPresetCard(dense: true),
+          _buildLogosCard(dense: true, stackActions: true),
+        ],
+        ..._buildDocumentFormCards(dualColumn: dualColumn),
+        const SizedBox(height: 4),
+        _buildUtilityActions(toolbarStyle: true),
+      ],
+    );
+
+    final workspacePane = Material(
+      color: chrome.panel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Workspace',
+              style: TextStyle(
+                fontFamily: 'Oswald',
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                letterSpacing: 0.4,
+                color: chrome.ink,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              primary: false,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              children: [
+                _buildPresetCard(dense: true),
+                _buildLogosCard(dense: true, stackActions: true),
+                if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _generateAndShare,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: Text(_busy ? 'Generating…' : 'Generate PDF'),
+            ),
+          ),
+        ],
+      ),
     );
 
     return CallbackShortcuts(
@@ -2196,15 +2321,17 @@ class _HomeScreenState extends State<HomeScreen> {
         onClearShipment: _clearShipment,
         onNewShipping: () => _newDocument(LabelKind.shipping),
         onCheckUpdates: () => showUpdateFlow(context),
+        onErrorCapture: _openErrorCapture,
+        onToggleDark: _toggleDarkMode,
       ),
       child: Focus(
         autofocus: true,
         child: Scaffold(
-          backgroundColor: SwiftColors.bg,
+          backgroundColor: chrome.bg,
           body: Column(
             children: [
               Material(
-                color: SwiftColors.surface,
+                color: chrome.surface,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2217,6 +2344,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         kindTitle: _kindTitle,
                         showUpdate: _uiSettings.showToolbarUpdate,
                         onUpdate: () => showUpdateFlow(context),
+                        onToggleDark: _toggleDarkMode,
+                        isDark: _uiSettings.isDark,
                       ),
                     ),
                   ],
@@ -2230,7 +2359,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     NavigationRail(
                       extended: railExtended,
                       minExtendedWidth: 168,
-                      backgroundColor: SwiftColors.panel,
+                      backgroundColor: chrome.panel,
                       selectedIndex: _kindRailIndex,
                       labelType: railExtended
                           ? NavigationRailLabelType.none
@@ -2278,9 +2407,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Padding(
                             padding: EdgeInsets.fromLTRB(
-                              24,
-                              dense ? 10 : 16,
-                              24,
+                              dense ? 16 : 24,
+                              16,
+                              dense ? 16 : 24,
                               4,
                             ),
                             child: Column(
@@ -2291,16 +2420,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: TextStyle(
                                     fontFamily: 'Oswald',
                                     fontWeight: FontWeight.w600,
-                                    fontSize: dense ? 18 : 22,
-                                    color: SwiftColors.ink,
+                                    fontSize: dense ? 20 : 22,
+                                    color: chrome.ink,
                                     letterSpacing: 0.3,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   _kindHint,
-                                  style: const TextStyle(
-                                    color: SwiftColors.muted,
+                                  style: TextStyle(
+                                    color: chrome.muted,
                                     fontSize: 13,
                                     height: 1.35,
                                   ),
@@ -2309,129 +2438,31 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           Expanded(
-                            child: Scrollbar(
-                              thumbVisibility: true,
-                              child: ListView(
-                                primary: true,
-                                padding: EdgeInsets.fromLTRB(
-                                  24,
-                                  dense ? 4 : 8,
-                                  24,
-                                  dense ? 16 : 28,
-                                ),
-                                children: [
-                                  if (!showWorkspace) ...[
-                                    if (_kind == LabelKind.bol) ...[
-                                      _buildBolCopiesCard(compact: true),
-                                      const SizedBox(height: 4),
-                                    ],
-                                    _buildPresetCard(dense: true),
-                                    _buildLogosCard(
-                                      dense: true,
-                                      stackActions: true,
-                                    ),
-                                  ],
-                                  ..._buildDocumentFormCards(dualColumn: true),
-                                  const SizedBox(height: 4),
-                                  _buildUtilityActions(toolbarStyle: true),
-                                  if (!showWorkspace) ...[
-                                    const SizedBox(height: 12),
-                                    FilledButton.icon(
-                                      onPressed:
-                                          _busy ? null : _generateAndShare,
-                                      icon: _busy
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child:
-                                                  CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.white,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.picture_as_pdf_outlined,
-                                              size: 18,
-                                            ),
-                                      label: Text(
-                                        _busy
-                                            ? 'Generating…'
-                                            : 'Generate PDF',
+                            child: stacked
+                                ? Column(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: Scrollbar(
+                                          thumbVisibility: true,
+                                          child: formList,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                                      const Divider(height: 1),
+                                      SizedBox(height: 280, child: workspacePane),
+                                    ],
+                                  )
+                                : Scrollbar(
+                                    thumbVisibility: true,
+                                    child: formList,
+                                  ),
                           ),
                         ],
                       ),
                     ),
-                    if (showWorkspace) ...[
+                    if (sideWorkspace) ...[
                       const VerticalDivider(width: 1),
-                      SizedBox(
-                        width: 340,
-                        child: Material(
-                          color: SwiftColors.panel,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                                child: Text(
-                                  'Workspace',
-                                  style: TextStyle(
-                                    fontFamily: 'Oswald',
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    letterSpacing: 0.4,
-                                    color: SwiftColors.ink,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: ListView(
-                                  primary: false,
-                                  padding:
-                                      const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                                  children: [
-                                    _buildPresetCard(dense: true),
-                                    _buildLogosCard(
-                                      dense: true,
-                                      stackActions: true,
-                                    ),
-                                    if (_kind == LabelKind.bol)
-                                      _buildBolCopiesCard(compact: true),
-                                  ],
-                                ),
-                              ),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                                child: FilledButton.icon(
-                                  onPressed: _busy ? null : _generateAndShare,
-                                  icon: _busy
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.picture_as_pdf_outlined,
-                                          size: 18,
-                                        ),
-                                  label: Text(
-                                    _busy ? 'Generating…' : 'Generate PDF',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      SizedBox(width: 340, child: workspacePane),
                     ],
                   ],
                 ),
@@ -2513,15 +2544,20 @@ class _DesktopToolbar extends StatelessWidget {
     required this.kindTitle,
     required this.showUpdate,
     required this.onUpdate,
+    required this.onToggleDark,
+    required this.isDark,
   });
 
   final bool busy;
   final String kindTitle;
   final bool showUpdate;
   final VoidCallback onUpdate;
+  final VoidCallback onToggleDark;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
@@ -2533,30 +2569,30 @@ class _DesktopToolbar extends StatelessWidget {
             filterQuality: FilterQuality.high,
           ),
           const SizedBox(width: 12),
-          const Text(
+          Text(
             'Swift Document Generator',
             style: TextStyle(
               fontFamily: 'Oswald',
               fontWeight: FontWeight.w600,
               fontSize: 15,
               letterSpacing: 0.3,
-              color: SwiftColors.ink,
+              color: chrome.ink,
             ),
           ),
           const SizedBox(width: 12),
           Container(
             width: 1,
             height: 18,
-            color: SwiftColors.border,
+            color: chrome.border,
           ),
           const SizedBox(width: 12),
           Text(
             kindTitle,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Calibri',
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              color: SwiftColors.muted,
+              color: chrome.muted,
             ),
           ),
           const Spacer(),
@@ -2569,12 +2605,19 @@ class _DesktopToolbar extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
-          if (showUpdate)
+          IconButton(
+            tooltip: isDark ? 'Light mode (Ctrl+Shift+D)' : 'Dark mode (Ctrl+Shift+D)',
+            onPressed: busy ? null : onToggleDark,
+            icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+          ),
+          if (showUpdate) ...[
+            const SizedBox(width: 4),
             OutlinedButton.icon(
               onPressed: busy ? null : onUpdate,
               icon: const Icon(Icons.system_update_alt, size: 16),
               label: const Text('Update'),
             ),
+          ],
         ],
       ),
     );

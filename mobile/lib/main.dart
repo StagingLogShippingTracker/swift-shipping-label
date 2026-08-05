@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_storage.dart';
+import 'app_theme_scope.dart';
 import 'auto_update_scheduler.dart';
 import 'home_screen.dart';
 import 'pdf/shipping_label_pdf.dart';
+import 'pdf_render_options.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -23,28 +25,67 @@ Future<void> main() async {
   }
   final storage = await AppStorage.open();
   final pdf = await ShippingLabelPdf.load();
-  runApp(SwiftShippingLabelApp(storage: storage, pdf: pdf));
+  final settings = await storage.loadUiSettings();
+  runApp(
+    SwiftShippingLabelApp(
+      storage: storage,
+      pdf: pdf,
+      initialSettings: settings,
+    ),
+  );
 }
 
-class SwiftShippingLabelApp extends StatelessWidget {
+/// App-level theme + UI settings (Windows dark mode persists here).
+// See app_theme_scope.dart
+
+class SwiftShippingLabelApp extends StatefulWidget {
   const SwiftShippingLabelApp({
     super.key,
     required this.storage,
     required this.pdf,
+    required this.initialSettings,
   });
 
   final AppStorage storage;
   final ShippingLabelPdf pdf;
+  final AppUiSettings initialSettings;
+
+  @override
+  State<SwiftShippingLabelApp> createState() => _SwiftShippingLabelAppState();
+}
+
+class _SwiftShippingLabelAppState extends State<SwiftShippingLabelApp> {
+  late final ValueNotifier<AppUiSettings> _settings =
+      ValueNotifier(widget.initialSettings);
+
+  @override
+  void dispose() {
+    _settings.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Swift Document Generator',
-      debugShowCheckedModeBanner: false,
-      theme: SwiftTheme.light(),
-      home: AutoUpdateHost(
-        storage: storage,
-        child: HomeScreen(storage: storage, pdf: pdf),
+    return AppThemeScope(
+      notifier: _settings,
+      child: ValueListenableBuilder<AppUiSettings>(
+        valueListenable: _settings,
+        builder: (context, settings, _) {
+          final dark = Platform.isWindows &&
+              settings.themePreference == UiThemePreference.dark;
+          final scale = Platform.isWindows ? settings.uiFontScale : 1.0;
+          return MaterialApp(
+            title: 'Swift Document Generator',
+            debugShowCheckedModeBanner: false,
+            theme: SwiftTheme.light(fontScale: scale),
+            darkTheme: SwiftTheme.dark(fontScale: scale),
+            themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+            home: AutoUpdateHost(
+              storage: widget.storage,
+              child: HomeScreen(storage: widget.storage, pdf: widget.pdf),
+            ),
+          );
+        },
       ),
     );
   }
