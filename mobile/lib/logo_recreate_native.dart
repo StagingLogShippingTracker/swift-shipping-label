@@ -8,9 +8,9 @@ import 'package:path/path.dart' as p;
 
 /// On-device Rust Recreate (`native/logo_recreate`) via `dart:ffi`.
 ///
-/// When the dynamic library is not bundled (typical until Android jniLibs /
-/// Windows DLL packaging lands), [isAvailable] is false and
-/// [LogoRecreate] falls through to cloud.
+/// Used when offline or when Fly.io Python fails. When the dynamic library
+/// is not bundled, [isAvailable] is false and [LogoRecreate] falls through
+/// to Supabase last-resort (if online).
 class LogoRecreateNative {
   LogoRecreateNative._();
 

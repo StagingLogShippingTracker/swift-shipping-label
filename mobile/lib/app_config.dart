@@ -28,12 +28,25 @@ class AppConfig {
     defaultValue: '',
   );
 
-  /// Cloud Recreate fallback (Supabase Deno/`vtracer` edge function).
-  /// Preferred paths are Windows local Python and on-device Rust — see
-  /// `logo_recreate.dart`. Override with `--dart-define=RECREATE_LOGO_URL=...`.
-  /// Do not point this at Fly.io (that experiment was aborted).
+  /// Primary cloud Recreate — Fly.io Python (`tools.logo_vectorizer`).
+  /// Used when online (Android always; Windows when local Python is missing).
+  /// Override with `--dart-define=RECREATE_LOGO_URL=...`.
   static const recreateLogoUrl = String.fromEnvironment(
     'RECREATE_LOGO_URL',
+    defaultValue: 'https://swift-recreate-logo.fly.dev/recreate-logo',
+  );
+
+  /// Liveness probe for [recreateLogoUrl]. Override with
+  /// `--dart-define=RECREATE_LOGO_HEALTH_URL=...`.
+  static const recreateLogoHealthUrl = String.fromEnvironment(
+    'RECREATE_LOGO_HEALTH_URL',
+    defaultValue: 'https://swift-recreate-logo.fly.dev/health',
+  );
+
+  /// Last-resort Supabase Deno/`vtracer` edge function (weaker than Fly Python).
+  /// Only used when Fly and on-device Rust both fail.
+  static const recreateLogoSupabaseUrl = String.fromEnvironment(
+    'RECREATE_LOGO_SUPABASE_URL',
     defaultValue:
         'https://gdrpdiwykmnybmkadlrv.supabase.co/functions/v1/recreate-logo',
   );

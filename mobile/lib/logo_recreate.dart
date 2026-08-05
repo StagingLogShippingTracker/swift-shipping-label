@@ -4,22 +4,24 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'app_config.dart';
 import 'logo_recreate_cloud.dart';
 import 'logo_recreate_native.dart';
 
 /// Cross-platform "Recreate" bridge.
 ///
-/// Backends (priority order):
+/// Backend priority (no user toggle):
 ///
-/// 1. **Windows local Python** — `tools/logo_vectorizer --recreate-customer`
-///    (manual-quality Bezier + sectional). Highest fidelity when available.
-/// 2. **On-device Rust** — `native/logo_recreate` via `dart:ffi`
-///    ([LogoRecreateNative]). Primary path for Android once the `.so` is
-///    shipped; optional on Windows without Python. MVP uses palette +
-///    contour polylines (Bezier parity is a follow-up).
-/// 3. **Cloud fallback** — Supabase Deno/`vtracer` edge function
-///    ([LogoRecreateCloud]). Used only when local/native paths fail or are
-///    unavailable. **Not** Fly.io (that experiment was aborted).
+/// **Android**
+/// 1. Online → Fly.io Python ([LogoRecreateCloud] / [AppConfig.recreateLogoUrl])
+/// 2. Offline or Fly fails → on-device Rust ([LogoRecreateNative])
+/// 3. Last resort → Supabase Deno/`vtracer` ([AppConfig.recreateLogoSupabaseUrl])
+///
+/// **Windows**
+/// 1. Local Python if found (online or offline)
+/// 2. No Python + online → Fly.io Python
+/// 3. No Python + offline (or Fly fails) → on-device Rust
+/// 4. Last resort → Supabase Deno/`vtracer`
 ///
 /// All backends return a [LogoRecreateResult] with a rasterized PNG
 /// (transparent background) and, when possible, the source SVG.
@@ -30,37 +32,46 @@ class LogoRecreate {
   static String? _cachedPython;
 
   /// True when at least one backend can be attempted (always true: cloud
-  /// is the last resort; native/Python are opportunistic).
+  /// last-resort remains available when online).
   static Future<bool> isAvailable() async => true;
 
   /// Which backend we'd prefer for the next call.
   static Future<String> diagnostic() async {
     final local = await _resolveLocalBackend();
+    final online = await LogoRecreateCloud.flyReachable();
+    final nativeOk = await LogoRecreateNative.isAvailable();
+
     if (local != null) {
       return 'Recreate ready — local python=${local.python} '
           'tools=${local.toolsDir.path} '
-          '(native + cloud fallback available)';
+          '(Fly online=$online, native=$nativeOk)';
     }
-    if (await LogoRecreateNative.isAvailable()) {
-      return await LogoRecreateNative.diagnostic();
+    if (online) {
+      return 'Recreate ready — Fly.io Python online '
+          '(${AppConfig.recreateLogoUrl}; native Rust '
+          '${nativeOk ? "fallback available" : "unavailable"})';
+    }
+    if (nativeOk) {
+      final nativeDiag = await LogoRecreateNative.diagnostic();
+      return 'Recreate offline — $nativeDiag';
     }
     if (Platform.isWindows) {
-      return 'Recreate: local Python not found, native Rust not loaded — '
-          'using Supabase cloud recreate fallback.';
+      return 'Recreate: no local Python, Fly unreachable, native Rust '
+          'not loaded — Supabase vtracer last-resort only.';
     }
-    return 'Recreate: native Rust not loaded — '
-        'using Supabase cloud recreate fallback (${Platform.operatingSystem}).';
+    return 'Recreate: Fly unreachable and native Rust not loaded — '
+        'Supabase vtracer last-resort only (${Platform.operatingSystem}).';
   }
 
-  /// Run recreate on [input]. Prefers Windows Python, then on-device Rust,
-  /// then cloud. Throws on total failure; callers catch and keep the raw
-  /// raster.
+  /// Run recreate on [input] using the platform priority above.
+  /// Throws on total failure; callers catch and keep the raw raster.
   static Future<LogoRecreateResult> run(
     File input, {
     Directory? scratchDir,
     Duration timeout = const Duration(minutes: 4),
     void Function(String)? onLog,
   }) async {
+    // Windows: local Python first when available (online or offline).
     final local = await _resolveLocalBackend();
     if (local != null) {
       try {
@@ -72,19 +83,42 @@ class LogoRecreate {
           onLog: onLog,
         );
       } catch (e) {
-        onLog?.call('Recreate local Python failed, trying native/cloud: $e');
+        onLog?.call('Recreate local Python failed, trying Fly/native: $e');
       }
+    }
+
+    final online = await LogoRecreateCloud.flyReachable();
+    if (online) {
+      try {
+        return await _runCloud(
+          input,
+          endpointUrl: AppConfig.recreateLogoUrl,
+          backend: LogoRecreateBackend.flyPython,
+          timeout: timeout,
+          onLog: onLog,
+        );
+      } catch (e) {
+        onLog?.call('Recreate Fly.io failed, trying native/cloud: $e');
+      }
+    } else {
+      onLog?.call('Recreate: Fly unreachable — using on-device / last-resort');
     }
 
     if (await LogoRecreateNative.isAvailable()) {
       try {
         return await _runNative(input, onLog: onLog);
       } catch (e) {
-        onLog?.call('Recreate native failed, trying cloud: $e');
+        onLog?.call('Recreate native failed, trying Supabase last-resort: $e');
       }
     }
 
-    return _runCloud(input, timeout: timeout, onLog: onLog);
+    return _runCloud(
+      input,
+      endpointUrl: AppConfig.recreateLogoSupabaseUrl,
+      backend: LogoRecreateBackend.supabaseCloud,
+      timeout: timeout,
+      onLog: onLog,
+    );
   }
 
   static Future<LogoRecreateResult> _runNative(
@@ -108,6 +142,8 @@ class LogoRecreate {
 
   static Future<LogoRecreateResult> _runCloud(
     File input, {
+    required String endpointUrl,
+    required LogoRecreateBackend backend,
     required Duration timeout,
     void Function(String)? onLog,
   }) async {
@@ -115,18 +151,23 @@ class LogoRecreate {
         timeout > const Duration(seconds: 120) ? const Duration(seconds: 120) : timeout;
     final cloud = await LogoRecreateCloud.run(
       input,
+      endpointUrl: endpointUrl,
       timeout: cloudTimeout,
       onLog: onLog,
     );
+    final label = backend == LogoRecreateBackend.flyPython
+        ? 'fly python'
+        : 'supabase vtracer';
     return LogoRecreateResult(
       pngBytes: cloud.pngBytes,
       svgBytes: cloud.svgBytes,
       workDir: null,
-      log: 'cloud recreate (${cloud.elapsed.inMilliseconds}ms, '
+      log: '$label recreate (${cloud.elapsed.inMilliseconds}ms, '
           'sections=${cloud.sectionCount}, '
           'palette=${cloud.paletteHex.join(",")}, '
-          'bg_stripped=${cloud.backgroundStripped})',
-      backend: LogoRecreateBackend.cloud,
+          'bg_stripped=${cloud.backgroundStripped}, '
+          'server=${cloud.serverBackend})',
+      backend: backend,
     );
   }
 
@@ -290,7 +331,12 @@ class LogoRecreate {
   }
 }
 
-enum LogoRecreateBackend { localPython, nativeRust, cloud }
+enum LogoRecreateBackend {
+  localPython,
+  flyPython,
+  nativeRust,
+  supabaseCloud,
+}
 
 class _LocalBackend {
   const _LocalBackend({required this.python, required this.toolsDir});

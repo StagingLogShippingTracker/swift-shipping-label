@@ -2169,10 +2169,10 @@ class _Card extends StatelessWidget {
 /// (with only the existing light `LogoImageProcessor` fast-trim applied).
 ///
 /// The recreate pipeline runs on both Windows and Android:
-///   - Windows prefers local Python (manual Bezier), then on-device Rust,
-///     then Supabase cloud vtracer.
-///   - Android prefers on-device Rust when the native lib is shipped, else
-///     Supabase cloud fallback (Fly.io Python recreate was aborted).
+///   - Windows: local Python if present; else Fly.io Python when online;
+///     else on-device Rust; Supabase vtracer last resort.
+///   - Android: Fly.io Python when online; else on-device Rust offline /
+///     on Fly failure; Supabase vtracer last resort.
 class _RecreateCheckbox extends StatelessWidget {
   const _RecreateCheckbox({
     required this.value,
@@ -2191,11 +2191,10 @@ class _RecreateCheckbox extends StatelessWidget {
         ? 'Runs the premium tracer on the next logo you find or '
             'upload: strips background, rebuilds it as clean vectors, '
             'stores SVG + crisp PNG. Slower — ~5–30 s '
-            '(local Python fast path, Python cloud fallback).'
-        : 'Runs the premium Python cloud tracer on the next logo you '
-            'find or upload: strips background, rebuilds it as clean '
-            'vectors, stores SVG + crisp PNG. Slower — usually ~5–30 s '
-            'over network (cold start may add a bit).';
+            '(local Python when available; else Fly cloud / Rust).'
+        : 'Online: Fly.io Python cloud tracer. Offline: on-device Rust. '
+            'Strips background, rebuilds clean vectors, stores SVG + '
+            'crisp PNG. Slower — usually ~5–30 s (cold start may add a bit).';
     return Tooltip(
       message: 'Vectorize and clean the next logo before saving.',
       child: InkWell(

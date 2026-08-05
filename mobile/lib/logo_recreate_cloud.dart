@@ -7,20 +7,17 @@ import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 
-/// Cross-platform "Recreate" bridge that calls the Supabase edge function.
+/// HTTP client for cloud Recreate backends (Fly.io Python primary,
+/// Supabase Deno/`vtracer` last resort).
 ///
-/// Fallback only — preferred paths are Windows local Python and on-device
-/// Rust (`LogoRecreateNative`). This Deno/`vtracer` function is weaker than
-/// the Python Bezier pipeline but needs no native binary.
-///
-/// Fly.io Python recreate was aborted; do not point here at fly.dev.
+/// Preferred non-cloud paths are Windows local Python and on-device Rust
+/// (`LogoRecreateNative`) — see [LogoRecreate] selection order.
 class LogoRecreateCloud {
   LogoRecreateCloud._();
 
-  /// Supabase `recreate-logo` edge function. Override via
-  /// [AppConfig.recreateLogoUrl] (`--dart-define=RECREATE_LOGO_URL=...`).
-  static Uri get _endpoint {
-    final base = Uri.parse(AppConfig.recreateLogoUrl);
+  /// Fly.io Python recreate endpoint (default [AppConfig.recreateLogoUrl]).
+  static Uri endpointFor(String url) {
+    final base = Uri.parse(url);
     return base.replace(
       queryParameters: {
         ...base.queryParameters,
@@ -29,40 +26,61 @@ class LogoRecreateCloud {
     );
   }
 
-  /// True when we're online enough to at least try. We treat unavailable
-  /// network as a graceful failure at call time rather than a hard gate,
-  /// so users can still queue the upload / retry.
-  static Future<bool> isAvailable() async => true;
+  /// Lightweight online probe — GET Fly `/health` with a short timeout.
+  /// Cold-start machines may still succeed within this window.
+  static Future<bool> flyReachable({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final uri = Uri.parse(AppConfig.recreateLogoHealthUrl);
+    try {
+      final res = await http.get(uri).timeout(timeout);
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } on TimeoutException {
+      return false;
+    } on SocketException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Future<CloudRecreateResult> run(
     File input, {
+    String? endpointUrl,
     Duration timeout = const Duration(seconds: 120),
     void Function(String)? onLog,
   }) async {
     onLog?.call('Recreate (cloud): uploading ${input.path}');
     final bytes = await input.readAsBytes();
-    return runBytes(bytes, onLog: onLog, timeout: timeout);
+    return runBytes(
+      bytes,
+      endpointUrl: endpointUrl,
+      onLog: onLog,
+      timeout: timeout,
+    );
   }
 
   static Future<CloudRecreateResult> runBytes(
     List<int> bytes, {
+    String? endpointUrl,
     Duration timeout = const Duration(seconds: 120),
     void Function(String)? onLog,
   }) async {
     if (bytes.isEmpty) {
       throw StateError('Recreate cloud: empty image bytes');
     }
+    final endpoint = endpointFor(endpointUrl ?? AppConfig.recreateLogoUrl);
     final headers = {
       'apikey': AppConfig.supabaseAnonKey,
       'Authorization': 'Bearer ${AppConfig.supabaseAnonKey}',
       'Content-Type': _guessContentType(bytes),
     };
-    onLog?.call('Recreate (cloud): POST ${_endpoint.toString()}');
+    onLog?.call('Recreate (cloud): POST ${endpoint.toString()}');
     final stopwatch = Stopwatch()..start();
     late final http.Response res;
     try {
       res = await http
-          .post(_endpoint, headers: headers, body: bytes)
+          .post(endpoint, headers: headers, body: bytes)
           .timeout(timeout);
     } on TimeoutException {
       throw TimeoutException(
@@ -108,7 +126,8 @@ class LogoRecreateCloud {
     onLog?.call(
       'Recreate (cloud): palette=${palette.join(',')} '
       'sections=${map['section_count']} '
-      'bg_stripped=${map['bg_stripped']}',
+      'bg_stripped=${map['bg_stripped']} '
+      'backend=${map['backend']}',
     );
     return CloudRecreateResult(
       pngBytes: base64.decode(pngB64),
@@ -119,6 +138,7 @@ class LogoRecreateCloud {
           : 0,
       backgroundStripped: map['bg_stripped'] == true,
       elapsed: stopwatch.elapsed,
+      serverBackend: '${map['backend'] ?? ''}',
     );
   }
 
@@ -164,6 +184,7 @@ class CloudRecreateResult {
     required this.sectionCount,
     required this.backgroundStripped,
     required this.elapsed,
+    this.serverBackend = '',
   });
 
   final Uint8List pngBytes;
@@ -172,4 +193,5 @@ class CloudRecreateResult {
   final int sectionCount;
   final bool backgroundStripped;
   final Duration elapsed;
+  final String serverBackend;
 }
