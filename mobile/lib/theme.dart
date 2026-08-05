@@ -113,9 +113,16 @@ class SwiftTheme {
         onSurfaceVariant: muted,
         outline: border,
         error: const Color(0xFFB3261E),
+        // M3 MenuBar / SubmenuButton panels read these — keep them on-theme
+        // so dark mode menus are not light sheets with near-white labels.
+        surfaceContainerLowest: bg,
+        surfaceContainerLow: surface,
+        surfaceContainer: surface,
+        surfaceContainerHigh: elevated,
+        surfaceContainerHighest: elevated,
       ),
       scaffoldBackgroundColor: bg,
-      canvasColor: bg,
+      canvasColor: surface,
       fontFamily: 'Calibri',
       textTheme: ThemeData(brightness: brightness).textTheme.apply(
             fontFamily: 'Calibri',

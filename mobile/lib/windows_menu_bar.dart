@@ -498,14 +498,103 @@ class WindowsAppMenuBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = actions.settings;
     final pdfDir = actions.storage.pdfOutputDir(s);
+    final chrome = SwiftChromeColors.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
 
-    return MenuBar(
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(SwiftColors.surface),
-        elevation: const WidgetStatePropertyAll(0),
-        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)),
+    final barStyle = MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(chrome.surface),
+      elevation: const WidgetStatePropertyAll(0),
+      padding:
+          const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+    );
+    final panelStyle = MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(chrome.surface),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      shadowColor: WidgetStatePropertyAll(
+        Colors.black.withValues(alpha: dark ? 0.55 : 0.22),
       ),
-      children: [
+      elevation: const WidgetStatePropertyAll(8),
+      padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 6)),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: BorderSide(color: chrome.border),
+        ),
+      ),
+    );
+    final itemStyle = ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return chrome.muted.withValues(alpha: 0.55);
+        }
+        return chrome.ink;
+      }),
+      iconColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return chrome.muted.withValues(alpha: 0.55);
+        }
+        return chrome.ink;
+      }),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.hovered) ||
+            states.contains(WidgetState.focused) ||
+            states.contains(WidgetState.selected)) {
+          return chrome.accentSoft;
+        }
+        return chrome.surface;
+      }),
+      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      textStyle: WidgetStatePropertyAll(
+        TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: chrome.ink,
+        ),
+      ),
+    );
+    final scheme = Theme.of(context).colorScheme.copyWith(
+          surface: chrome.surface,
+          onSurface: chrome.ink,
+          onSurfaceVariant: chrome.muted,
+          outline: chrome.border,
+          surfaceContainerLowest: chrome.bg,
+          surfaceContainerLow: chrome.surface,
+          surfaceContainer: chrome.surface,
+          surfaceContainerHigh: chrome.elevated,
+          surfaceContainerHighest: chrome.elevated,
+        );
+
+    return Theme(
+      data: Theme.of(context).copyWith(
+        colorScheme: scheme,
+        canvasColor: chrome.surface,
+        menuTheme: MenuThemeData(style: panelStyle),
+        menuBarTheme: MenuBarThemeData(style: barStyle),
+        menuButtonTheme: MenuButtonThemeData(style: itemStyle),
+        dividerTheme: DividerThemeData(
+          color: chrome.border,
+          space: 1,
+          thickness: 1,
+        ),
+      ),
+      child: DefaultTextStyle(
+        style: TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: chrome.ink,
+        ),
+        child: IconTheme(
+          data: IconThemeData(color: chrome.ink, size: 18),
+          child: MenuBar(
+            style: barStyle,
+            children: _darkSafeMenuChildren(
+              panelStyle: panelStyle,
+              itemStyle: itemStyle,
+              children: [
         SubmenuButton(
           menuChildren: [
             MenuItemButton(
@@ -858,9 +947,65 @@ class WindowsAppMenuBar extends StatelessWidget {
           ],
           child: const Text('Help'),
         ),
-      ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
+}
+
+/// Force dark/light chrome onto MenuBar overlays (panels render in [Overlay]).
+List<Widget> _darkSafeMenuChildren({
+  required MenuStyle panelStyle,
+  required ButtonStyle itemStyle,
+  required List<Widget> children,
+}) {
+  return [
+    for (final child in children)
+      _darkSafeMenuChild(
+        panelStyle: panelStyle,
+        itemStyle: itemStyle,
+        child: child,
+      ),
+  ];
+}
+
+Widget _darkSafeMenuChild({
+  required MenuStyle panelStyle,
+  required ButtonStyle itemStyle,
+  required Widget child,
+}) {
+  if (child is SubmenuButton) {
+    return SubmenuButton(
+      style: itemStyle,
+      menuStyle: panelStyle,
+      menuChildren: _darkSafeMenuChildren(
+        panelStyle: panelStyle,
+        itemStyle: itemStyle,
+        children: child.menuChildren,
+      ),
+      child: child.child,
+    );
+  }
+  if (child is MenuItemButton) {
+    return MenuItemButton(
+      style: itemStyle,
+      onPressed: child.onPressed,
+      shortcut: child.shortcut,
+      child: child.child,
+    );
+  }
+  if (child is CheckboxMenuButton) {
+    return CheckboxMenuButton(
+      style: itemStyle,
+      value: child.value,
+      onChanged: child.onChanged,
+      child: child.child,
+    );
+  }
+  return child;
 }
 
 /// Built-in Windows CallbackShortcuts (MenuBar shortcuts alone are not enough).

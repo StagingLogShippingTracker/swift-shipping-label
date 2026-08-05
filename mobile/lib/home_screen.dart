@@ -2517,65 +2517,68 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMobileScaffold() {
     final chrome = SwiftChromeColors.of(context);
+    // Edge-to-edge Android: pad for status/nav (incl. landscape side nav bars).
     return Scaffold(
       backgroundColor: chrome.bg,
-      body: Column(
-        children: [
-          RepaintBoundary(
-            child: _Header(
-              busy: _busy,
-              isDark: _uiSettings.isDark,
-              kindTitle: _kindTitle,
-              onToggleDark: _toggleDarkMode,
+      body: SafeArea(
+        child: Column(
+          children: [
+            RepaintBoundary(
+              child: _Header(
+                busy: _busy,
+                isDark: _uiSettings.isDark,
+                kindTitle: _kindTitle,
+                onToggleDark: _toggleDarkMode,
+              ),
             ),
-          ),
-          // Pin document-type switching so it never scrolls away with the form.
-          Material(
-            color: chrome.surface,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildMobileKindSelector(),
-                  const SizedBox(height: 8),
-                  Text(
-                    _kindHint,
-                    style: TextStyle(
-                      color: chrome.muted,
-                      fontSize: 13,
-                      height: 1.35,
+            // Pin document-type switching so it never scrolls away with the form.
+            Material(
+              color: chrome.surface,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildMobileKindSelector(),
+                    const SizedBox(height: 8),
+                    Text(
+                      _kindHint,
+                      style: TextStyle(
+                        color: chrome.muted,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ),
+            Divider(height: 1, color: chrome.border),
+            Expanded(
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                children: [
+                  if (_kind == LabelKind.bol) ...[
+                    _buildBolCopiesCard(),
+                    const SizedBox(height: 10),
+                  ],
+                  _buildPresetCard(),
+                  _buildLogosCard(),
+                  ..._buildDocumentFormCards(dualColumn: false),
+                  _buildUtilityActions(),
                 ],
               ),
             ),
-          ),
-          Divider(height: 1, color: chrome.border),
-          Expanded(
-            child: ListView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              children: [
-                if (_kind == LabelKind.bol) ...[
-                  _buildBolCopiesCard(),
-                  const SizedBox(height: 10),
-                ],
-                _buildPresetCard(),
-                _buildLogosCard(),
-                ..._buildDocumentFormCards(dualColumn: false),
-                _buildUtilityActions(),
-              ],
+            RepaintBoundary(
+              child: _BottomBar(
+                busy: _busy,
+                onGenerate: _generateAndShare,
+              ),
             ),
-          ),
-          RepaintBoundary(
-            child: _BottomBar(
-              busy: _busy,
-              onGenerate: _generateAndShare,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2724,113 +2727,110 @@ class _Header extends StatelessWidget {
     return Material(
       color: chrome.surface,
       elevation: 0,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 3,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: SwiftColors.accent,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: SwiftColors.accent,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(width: 10),
-                  Image.asset(
-                    SwiftBrandAssets.chromeLogo(dark: isDark),
-                    height: 30,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Swift Document Generator',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                ),
+                const SizedBox(width: 10),
+                Image.asset(
+                  SwiftBrandAssets.chromeLogo(dark: isDark),
+                  height: 30,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Swift Document Generator',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Oswald',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          letterSpacing: 0.3,
+                          color: chrome.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: chrome.accentSoft,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: SwiftColors.accent.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Text(
+                          kindTitle,
+                          style: const TextStyle(
                             fontFamily: 'Oswald',
                             fontWeight: FontWeight.w600,
-                            fontSize: 15,
+                            fontSize: 11,
                             letterSpacing: 0.3,
-                            color: chrome.ink,
+                            color: SwiftColors.accent,
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: chrome.accentSoft,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: SwiftColors.accent.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: Text(
-                            kindTitle,
-                            style: const TextStyle(
-                              fontFamily: 'Oswald',
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                              letterSpacing: 0.3,
-                              color: SwiftColors.accent,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else ...[
+                  IconButton(
+                    tooltip: isDark ? 'Light mode' : 'Dark mode',
+                    onPressed: onToggleDark,
+                    icon: Icon(
+                      isDark
+                          ? Icons.light_mode_outlined
+                          : Icons.dark_mode_outlined,
+                      color: chrome.ink,
                     ),
                   ),
-                  if (busy)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else ...[
-                    IconButton(
-                      tooltip: isDark ? 'Light mode' : 'Dark mode',
-                      onPressed: onToggleDark,
-                      icon: Icon(
-                        isDark
-                            ? Icons.light_mode_outlined
-                            : Icons.dark_mode_outlined,
-                        color: chrome.ink,
+                  OutlinedButton.icon(
+                    onPressed: () => showUpdateFlow(context),
+                    icon: const Icon(Icons.system_update_alt, size: 16),
+                    label: const Text('Update'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
                       ),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: () => showUpdateFlow(context),
-                      icon: const Icon(Icons.system_update_alt, size: 16),
-                      label: const Text('Update'),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
-            Divider(height: 1, color: chrome.border),
-          ],
-        ),
+          ),
+          Divider(height: 1, color: chrome.border),
+        ],
       ),
     );
   }
@@ -2861,27 +2861,24 @@ class _BottomBar extends StatelessWidget {
             ),
           ],
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                onPressed: busy ? null : onGenerate,
-                icon: busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                label: Text(busy ? 'Generating…' : 'Generate PDF'),
-              ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: busy ? null : onGenerate,
+              icon: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined, size: 20),
+              label: Text(busy ? 'Generating…' : 'Generate PDF'),
             ),
           ),
         ),
