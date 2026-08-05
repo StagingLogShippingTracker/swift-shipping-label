@@ -1564,13 +1564,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// On Windows, pair single-line fields into two columns for denser forms.
+  Widget _buildFieldsBlock(List<String> keys, {bool dualColumn = false}) {
+    if (!dualColumn) {
+      return Column(
+        children: [for (final key in keys) _buildFormField(key)],
+      );
+    }
+
+    final out = <Widget>[];
+    final pending = <String>[];
+
+    void flushPending() {
+      for (var i = 0; i < pending.length; i += 2) {
+        if (i + 1 < pending.length) {
+          out.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildFormField(pending[i])),
+                const SizedBox(width: 12),
+                Expanded(child: _buildFormField(pending[i + 1])),
+              ],
+            ),
+          );
+        } else {
+          out.add(_buildFormField(pending[i]));
+        }
+      }
+      pending.clear();
+    }
+
+    for (final key in keys) {
+      final multiline = _meta(key).$3;
+      if (multiline) {
+        flushPending();
+        out.add(_buildFormField(key));
+      } else {
+        pending.add(key);
+      }
+    }
+    flushPending();
+    return Column(children: out);
+  }
+
   Widget _buildFreightChargesSelector() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          const Text(
             'FREIGHT CHARGES',
             style: TextStyle(
               fontFamily: 'Oswald',
@@ -1598,7 +1642,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
               setState(() {});
             },
-            style: ButtonStyle(
+            style: const ButtonStyle(
               textStyle: WidgetStatePropertyAll(
                 TextStyle(
                   fontFamily: 'Oswald',
@@ -1614,79 +1658,634 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final presetNames = widget.storage.presetDisplayNamesFor(_kind);
-    final groups = switch (_kind) {
-      LabelKind.receiving => _receivingGroups,
-      LabelKind.bol => _bolGroupsBeforeLines,
-      LabelKind.shipping => _shippingGroups,
-    };
+  void _selectKind(LabelKind kind) {
+    setState(() {
+      _kind = kind;
+      _presetName = null;
+      if (_kind == LabelKind.bol) {
+        _bolLineCount = _detectBolLineCount();
+        _syncSignaturesQuietly();
+      } else {
+        _bolLineCount = 1;
+      }
+    });
+  }
 
+  String get _kindTitle => switch (_kind) {
+        LabelKind.shipping => 'Shipping Label',
+        LabelKind.receiving => 'Receiving Label',
+        LabelKind.bol => 'Bill of Lading',
+      };
+
+  String get _kindHint => switch (_kind) {
+        LabelKind.receiving =>
+          'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.',
+        LabelKind.bol =>
+          'Straight Bill of Lading. Choose which copies to print. Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
+        LabelKind.shipping =>
+          'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
+      };
+
+  List<(String, String, List<String>)> get _activeGroups => switch (_kind) {
+        LabelKind.receiving => _receivingGroups,
+        LabelKind.bol => _bolGroupsBeforeLines,
+        LabelKind.shipping => _shippingGroups,
+      };
+
+  int get _kindRailIndex => switch (_kind) {
+        LabelKind.shipping => 0,
+        LabelKind.receiving => 1,
+        LabelKind.bol => 2,
+      };
+
+  Widget _buildMobileKindSelector() {
+    return SegmentedButton<LabelKind>(
+      segments: const [
+        ButtonSegment(
+          value: LabelKind.shipping,
+          label: Text('Shipping'),
+          icon: Icon(Icons.local_shipping_outlined, size: 18),
+        ),
+        ButtonSegment(
+          value: LabelKind.receiving,
+          label: Text('Receiving'),
+          icon: Icon(Icons.inventory_2_outlined, size: 18),
+        ),
+        ButtonSegment(
+          value: LabelKind.bol,
+          label: Text('Bill of Lading'),
+          icon: Icon(Icons.description_outlined, size: 18),
+        ),
+      ],
+      selected: {_kind},
+      onSelectionChanged: (s) => _selectKind(s.first),
+      style: const ButtonStyle(
+        textStyle: WidgetStatePropertyAll(
+          TextStyle(
+            fontFamily: 'Oswald',
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBolCopiesCard({bool compact = false}) {
+    Widget copyTile(String title, bool value, ValueChanged<bool?> onChanged) {
+      return CheckboxListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        title: Text(title, style: TextStyle(fontSize: compact ? 13 : 14)),
+        value: value,
+        onChanged: onChanged,
+      );
+    }
+
+    return _Card(
+      title: 'Copies to generate',
+      hint: 'Only selected pages are included in the PDF',
+      dense: compact,
+      child: Column(
+        children: [
+          copyTile('Store Copy', _bolStoreCopy,
+              (v) => setState(() => _bolStoreCopy = v ?? false)),
+          copyTile('Driver Copy', _bolDriverCopy,
+              (v) => setState(() => _bolDriverCopy = v ?? false)),
+          copyTile('Customer Copy', _bolCustomerCopy,
+              (v) => setState(() => _bolCustomerCopy = v ?? false)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresetCard({bool dense = false}) {
+    final presetNames = widget.storage.presetDisplayNamesFor(_kind);
+    return _Card(
+      title: 'Customer preset',
+      hint: dense
+          ? 'Shared cloud presets — per document type'
+          : 'Shared across all devices — per document type; shipment fields stay per job',
+      dense: dense,
+      child: Column(
+        children: [
+          DropdownButtonFormField<String?>(
+            key: ValueKey('preset-$_kind-${presetNames.length}'),
+            value: _presetName != null && presetNames.contains(_presetName)
+                ? _presetName
+                : null,
+            hint: const Text('Select preset'),
+            decoration: const InputDecoration(labelText: 'PRESET'),
+            isExpanded: true,
+            items: [
+              for (final n in presetNames)
+                DropdownMenuItem<String?>(value: n, child: Text(n)),
+            ],
+            onChanged: (v) {
+              if (v != null) _applyPreset(v);
+            },
+          ),
+          SizedBox(height: dense ? 8 : 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _savePreset,
+                  child: const Text('Save'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _presetName == null ? null : _deletePreset,
+                  child: const Text('Delete'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogosCard({bool dense = false, bool stackActions = false}) {
+    final logoButtons = stackActions
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: (_findingLogo ||
+                        _recreatingLogo ||
+                        _logoPaths.length >= maxCustomerLogos)
+                    ? null
+                    : _findLogoOnWeb,
+                icon: _findingLogo
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.travel_explore, size: 18),
+                label: Text(
+                  _findingLogo ? 'Searching…' : 'Find logo on the web',
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _logoPaths.length >= maxCustomerLogos ||
+                        _recreatingLogo
+                    ? null
+                    : _showUploadManuallyMenu,
+                icon: const Icon(Icons.upload_file, size: 18),
+                label: const Text('Upload manually'),
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: (_findingLogo ||
+                          _recreatingLogo ||
+                          _logoPaths.length >= maxCustomerLogos)
+                      ? null
+                      : _findLogoOnWeb,
+                  icon: _findingLogo
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.travel_explore, size: 18),
+                  label: Text(
+                    _findingLogo ? 'Searching…' : 'Find logo on the web',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _logoPaths.length >= maxCustomerLogos ||
+                          _recreatingLogo
+                      ? null
+                      : _showUploadManuallyMenu,
+                  icon: const Icon(Icons.upload_file, size: 18),
+                  label: const Text('Upload manually'),
+                ),
+              ),
+            ],
+          );
+
+    return _Card(
+      title: 'Customer logos',
+      hint: 'Up to $maxCustomerLogos per label — second logo is C/O',
+      dense: dense,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < _logoPaths.length; i++) ...[
+            if (i > 0) SizedBox(height: dense ? 6 : 8),
+            Container(
+              padding: EdgeInsets.all(dense ? 8 : 10),
+              decoration: BoxDecoration(
+                color: SwiftColors.bg,
+                borderRadius: BorderRadius.circular(dense ? 6 : 10),
+                border: Border.all(color: SwiftColors.border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          i == 0 ? 'CUSTOMER' : 'C/O',
+                          style: const TextStyle(
+                            fontFamily: 'Oswald',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: SwiftColors.muted,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        if (File(_logoPaths[i]).existsSync())
+                          Image.file(
+                            File(_logoPaths[i]),
+                            height: dense ? 36 : 44,
+                            cacheWidth: 220,
+                            filterQuality: FilterQuality.medium,
+                            gaplessPlayback: true,
+                            fit: BoxFit.contain,
+                          )
+                        else
+                          Text(
+                            p.basename(_logoPaths[i]),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Replace',
+                    onPressed: () => _replaceLogoAt(i),
+                    icon: const Icon(Icons.swap_horiz, size: 20),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove',
+                    onPressed: () => _removeLogoAt(i),
+                    icon: const Icon(Icons.close, size: 20),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_logoPaths.isNotEmpty) SizedBox(height: dense ? 10 : 12),
+          _RecreateCheckbox(
+            value: _recreateLogo,
+            busy: _recreatingLogo,
+            onChanged: (v) => setState(() => _recreateLogo = v ?? false),
+          ),
+          SizedBox(height: dense ? 6 : 8),
+          logoButtons,
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDocumentFormCards({required bool dualColumn}) {
+    final cards = <Widget>[
+      for (final group in _activeGroups)
+        _Card(
+          title: group.$1,
+          hint: group.$2,
+          dense: dualColumn,
+          child: Column(
+            children: [
+              _buildFieldsBlock(group.$3, dualColumn: dualColumn),
+              if (_kind == LabelKind.bol && group.$1 == 'Billing & freight')
+                _buildFreightChargesSelector(),
+            ],
+          ),
+        ),
+    ];
+
+    if (_kind == LabelKind.bol) {
+      for (var lineNum = 1; lineNum <= _bolLineCount; lineNum++) {
+        cards.add(
+          _Card(
+            title: 'Line $lineNum',
+            hint: _bolLineHint(lineNum),
+            dense: dualColumn,
+            trailing: lineNum > 1
+                ? IconButton(
+                    tooltip: 'Remove line',
+                    onPressed: () => _removeBolLine(lineNum),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                  )
+                : null,
+            child: _buildFieldsBlock(
+              _bolLineFieldKeys(lineNum),
+              dualColumn: dualColumn,
+            ),
+          ),
+        );
+      }
+      if (_bolLineCount < _bolMaxLines) {
+        cards.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: dualColumn
+                  ? OutlinedButton.icon(
+                      onPressed: _addBolLine,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add line'),
+                    )
+                  : IconButton.filledTonal(
+                      tooltip: 'Add line',
+                      onPressed: _addBolLine,
+                      icon: const Icon(Icons.add),
+                    ),
+            ),
+          ),
+        );
+      }
+      cards.add(
+        _Card(
+          title: _bolSignaturesGroup.$1,
+          hint: _bolSignaturesGroup.$2,
+          dense: dualColumn,
+          child: Column(
+            children: [
+              _buildShipperSignatureRow(),
+              _buildFieldsBlock(
+                _bolSignaturesGroup.$3,
+                dualColumn: dualColumn,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return cards;
+  }
+
+  Widget _buildUtilityActions({bool toolbarStyle = false}) {
+    if (toolbarStyle) {
+      return Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          TextButton.icon(
+            onPressed: _loadSample,
+            icon: const Icon(Icons.science_outlined, size: 16),
+            label: const Text('Load sample'),
+          ),
+          TextButton.icon(
+            onPressed: _clearShipment,
+            icon: const Icon(Icons.clear_all, size: 16),
+            label: const Text('Clear shipment'),
+          ),
+          TextButton.icon(
+            onPressed: _clearAll,
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Clear all'),
+          ),
+        ],
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        TextButton(onPressed: _loadSample, child: const Text('Load sample')),
+        TextButton(
+          onPressed: _clearShipment,
+          child: const Text('Clear shipment'),
+        ),
+        TextButton(onPressed: _clearAll, child: const Text('Clear all')),
+      ],
+    );
+  }
+
+  Widget _buildWindowsScaffold(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 1180;
+    final railExtended = MediaQuery.sizeOf(context).width >= 1280;
+
+    return Scaffold(
+      backgroundColor: SwiftColors.bg,
+      body: Column(
+        children: [
+          RepaintBoundary(
+            child: _DesktopToolbar(
+              busy: _busy,
+              kindTitle: _kindTitle,
+              onGenerate: _generateAndShare,
+              onUpdate: () => showUpdateFlow(context),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                NavigationRail(
+                  extended: railExtended,
+                  minExtendedWidth: 168,
+                  backgroundColor: SwiftColors.panel,
+                  selectedIndex: _kindRailIndex,
+                  labelType: railExtended
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
+                  onDestinationSelected: (i) {
+                    _selectKind(switch (i) {
+                      1 => LabelKind.receiving,
+                      2 => LabelKind.bol,
+                      _ => LabelKind.shipping,
+                    });
+                  },
+                  leading: Padding(
+                    padding: EdgeInsets.only(
+                      top: 8,
+                      bottom: railExtended ? 16 : 8,
+                    ),
+                    child: Icon(
+                      Icons.description_outlined,
+                      color: SwiftColors.accent.withValues(alpha: 0.85),
+                      size: 22,
+                    ),
+                  ),
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.local_shipping_outlined),
+                      selectedIcon: Icon(Icons.local_shipping),
+                      label: Text('Shipping'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.inventory_2_outlined),
+                      selectedIcon: Icon(Icons.inventory_2),
+                      label: Text('Receiving'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      selectedIcon: Icon(Icons.receipt_long),
+                      label: Text('BOL'),
+                    ),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _kindTitle,
+                              style: const TextStyle(
+                                fontFamily: 'Oswald',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 22,
+                                color: SwiftColors.ink,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _kindHint,
+                              style: const TextStyle(
+                                color: SwiftColors.muted,
+                                fontSize: 13,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: ListView(
+                            primary: true,
+                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+                            children: [
+                              if (!wide) ...[
+                                if (_kind == LabelKind.bol) ...[
+                                  _buildBolCopiesCard(compact: true),
+                                  const SizedBox(height: 4),
+                                ],
+                                _buildPresetCard(dense: true),
+                                _buildLogosCard(
+                                  dense: true,
+                                  stackActions: true,
+                                ),
+                              ],
+                              ..._buildDocumentFormCards(dualColumn: true),
+                              const SizedBox(height: 4),
+                              _buildUtilityActions(toolbarStyle: true),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (wide) ...[
+                  const VerticalDivider(width: 1),
+                  SizedBox(
+                    width: 340,
+                    child: Material(
+                      color: SwiftColors.panel,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text(
+                              'Workspace',
+                              style: TextStyle(
+                                fontFamily: 'Oswald',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                letterSpacing: 0.4,
+                                color: SwiftColors.ink,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView(
+                              primary: false,
+                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                              children: [
+                                _buildPresetCard(dense: true),
+                                _buildLogosCard(
+                                  dense: true,
+                                  stackActions: true,
+                                ),
+                                if (_kind == LabelKind.bol)
+                                  _buildBolCopiesCard(compact: true),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                            child: FilledButton.icon(
+                              onPressed: _busy ? null : _generateAndShare,
+                              icon: _busy
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.picture_as_pdf_outlined,
+                                      size: 18,
+                                    ),
+                              label: Text(
+                                _busy ? 'Generating…' : 'Generate PDF',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileScaffold() {
     return Scaffold(
       body: Column(
         children: [
           RepaintBoundary(child: _Header(busy: _busy)),
           Expanded(
             child: ListView(
-              cacheExtent: 500,
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               children: [
-                SegmentedButton<LabelKind>(
-                  segments: const [
-                    ButtonSegment(
-                      value: LabelKind.shipping,
-                      label: Text('Shipping'),
-                      icon: Icon(Icons.local_shipping_outlined, size: 18),
-                    ),
-                    ButtonSegment(
-                      value: LabelKind.receiving,
-                      label: Text('Receiving'),
-                      icon: Icon(Icons.inventory_2_outlined, size: 18),
-                    ),
-                    ButtonSegment(
-                      value: LabelKind.bol,
-                      label: Text('Bill of Lading'),
-                      icon: Icon(Icons.description_outlined, size: 18),
-                    ),
-                  ],
-                  selected: {_kind},
-                  onSelectionChanged: (s) {
-                    setState(() {
-                      _kind = s.first;
-                      _presetName = null;
-                      if (_kind == LabelKind.bol) {
-                        _bolLineCount = _detectBolLineCount();
-                        _syncSignaturesQuietly();
-                      } else {
-                        _bolLineCount = 1;
-                      }
-                    });
-                  },
-                  style: ButtonStyle(
-                    textStyle: WidgetStatePropertyAll(
-                      TextStyle(
-                        fontFamily: 'Oswald',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ),
+                _buildMobileKindSelector(),
                 const SizedBox(height: 10),
                 Text(
-                  switch (_kind) {
-                    LabelKind.receiving =>
-                      'Pre-fill the receiving / staging label → Generate PDF. Special Instructions stay two lines.',
-                    LabelKind.bol =>
-                      'Straight Bill of Lading. Choose which copies to print below. Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
-                    LabelKind.shipping =>
-                      'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
-                  },
-                  style: TextStyle(
+                  _kindHint,
+                  style: const TextStyle(
                     color: SwiftColors.muted,
                     fontSize: 13,
                     height: 1.3,
@@ -1694,285 +2293,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 if (_kind == LabelKind.bol) ...[
                   const SizedBox(height: 10),
-                  _Card(
-                    title: 'Copies to generate',
-                    hint: 'Only selected pages are included in the PDF',
-                    child: Column(
-                      children: [
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Store Copy'),
-                          value: _bolStoreCopy,
-                          onChanged: (v) =>
-                              setState(() => _bolStoreCopy = v ?? false),
-                        ),
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Driver Copy'),
-                          value: _bolDriverCopy,
-                          onChanged: (v) =>
-                              setState(() => _bolDriverCopy = v ?? false),
-                        ),
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Customer Copy'),
-                          value: _bolCustomerCopy,
-                          onChanged: (v) =>
-                              setState(() => _bolCustomerCopy = v ?? false),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildBolCopiesCard(),
                 ],
                 const SizedBox(height: 10),
-                _Card(
-                  title: 'Customer preset',
-                  hint:
-                      'Shared across all devices — per document type; shipment fields stay per job',
-                  child: Column(
-                    children: [
-                      DropdownButtonFormField<String?>(
-                        key: ValueKey('preset-$_kind-${presetNames.length}'),
-                        value: _presetName != null &&
-                                presetNames.contains(_presetName)
-                            ? _presetName
-                            : null,
-                        hint: const Text('Select preset'),
-                        decoration: const InputDecoration(
-                          labelText: 'PRESET',
-                        ),
-                        isExpanded: true,
-                        items: [
-                          for (final n in presetNames)
-                            DropdownMenuItem<String?>(
-                              value: n,
-                              child: Text(n),
-                            ),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) _applyPreset(v);
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _savePreset,
-                              child: const Text('Save'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed:
-                                  _presetName == null ? null : _deletePreset,
-                              child: const Text('Delete'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                _Card(
-                  title: 'Customer logos',
-                  hint:
-                      'Up to $maxCustomerLogos per label — second logo is C/O',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var i = 0; i < _logoPaths.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: SwiftColors.bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: SwiftColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      i == 0 ? 'CUSTOMER' : 'C/O',
-                                      style: const TextStyle(
-                                        fontFamily: 'Oswald',
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: SwiftColors.muted,
-                                        letterSpacing: 0.6,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    if (File(_logoPaths[i]).existsSync())
-                                      Image.file(
-                                        File(_logoPaths[i]),
-                                        height: 44,
-                                        cacheWidth: 220,
-                                        filterQuality: FilterQuality.medium,
-                                        gaplessPlayback: true,
-                                        fit: BoxFit.contain,
-                                      )
-                                    else
-                                      Text(
-                                        p.basename(_logoPaths[i]),
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Replace',
-                                onPressed: () => _replaceLogoAt(i),
-                                icon: const Icon(Icons.swap_horiz, size: 20),
-                              ),
-                              IconButton(
-                                tooltip: 'Remove',
-                                onPressed: () => _removeLogoAt(i),
-                                icon: const Icon(Icons.close, size: 20),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (_logoPaths.isNotEmpty) const SizedBox(height: 12),
-                      // "Recreate" runs the premium Python vectorizer on the
-                      // next logo picked/found. Unchecked keeps the raster
-                      // as-is (with the current light fast-path trim).
-                      _RecreateCheckbox(
-                        value: _recreateLogo,
-                        busy: _recreatingLogo,
-                        onChanged: (v) =>
-                            setState(() => _recreateLogo = v ?? false),
-                      ),
-                      const SizedBox(height: 8),
-                      // Two clear choices (tagger-style): web find vs manual upload
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              onPressed: (_findingLogo ||
-                                      _recreatingLogo ||
-                                      _logoPaths.length >= maxCustomerLogos)
-                                  ? null
-                                  : _findLogoOnWeb,
-                              icon: _findingLogo
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.travel_explore, size: 18),
-                              label: Text(
-                                _findingLogo
-                                    ? 'Searching…'
-                                    : 'Find logo on the web',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _logoPaths.length >= maxCustomerLogos ||
-                                      _recreatingLogo
-                                  ? null
-                                  : _showUploadManuallyMenu,
-                              icon: const Icon(Icons.upload_file, size: 18),
-                              label: const Text('Upload manually'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                for (final group in groups)
-                  _Card(
-                    title: group.$1,
-                    hint: group.$2,
-                    child: Column(
-                      children: [
-                        for (final key in group.$3)
-                          _buildFormField(key),
-                        if (_kind == LabelKind.bol &&
-                            group.$1 == 'Billing & freight')
-                          _buildFreightChargesSelector(),
-                      ],
-                    ),
-                  ),
-                if (_kind == LabelKind.bol) ...[
-                  for (var lineNum = 1; lineNum <= _bolLineCount; lineNum++)
-                    _Card(
-                      title: 'Line $lineNum',
-                      hint: _bolLineHint(lineNum),
-                      trailing: lineNum > 1
-                          ? IconButton(
-                              tooltip: 'Remove line',
-                              onPressed: () => _removeBolLine(lineNum),
-                              icon: const Icon(Icons.delete_outline, size: 20),
-                            )
-                          : null,
-                      child: Column(
-                        children: [
-                          for (final key in _bolLineFieldKeys(lineNum))
-                            _buildFormField(key),
-                        ],
-                      ),
-                    ),
-                  if (_bolLineCount < _bolMaxLines)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton.filledTonal(
-                          tooltip: 'Add line',
-                          onPressed: _addBolLine,
-                          icon: const Icon(Icons.add),
-                        ),
-                      ),
-                    ),
-                  _Card(
-                    title: _bolSignaturesGroup.$1,
-                    hint: _bolSignaturesGroup.$2,
-                    child: Column(
-                      children: [
-                        _buildShipperSignatureRow(),
-                        for (final key in _bolSignaturesGroup.$3)
-                          _buildFormField(key),
-                      ],
-                    ),
-                  ),
-                ],
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: _loadSample,
-                      child: const Text('Load sample'),
-                    ),
-                    TextButton(
-                      onPressed: _clearShipment,
-                      child: const Text('Clear shipment'),
-                    ),
-                    TextButton(
-                      onPressed: _clearAll,
-                      child: const Text('Clear all'),
-                    ),
-                  ],
-                ),
+                _buildPresetCard(),
+                _buildLogosCard(),
+                ..._buildDocumentFormCards(dualColumn: false),
+                _buildUtilityActions(),
               ],
             ),
           ),
@@ -1986,8 +2313,101 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (Platform.isWindows) {
+      return _buildWindowsScaffold(context);
+    }
+    return _buildMobileScaffold();
+  }
 }
 
+
+/// Compact Windows title strip — brand left, document context, Generate + Update.
+class _DesktopToolbar extends StatelessWidget {
+  const _DesktopToolbar({
+    required this.busy,
+    required this.kindTitle,
+    required this.onGenerate,
+    required this.onUpdate,
+  });
+
+  final bool busy;
+  final String kindTitle;
+  final VoidCallback onGenerate;
+  final VoidCallback onUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: SwiftColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Row(
+          children: [
+            Image.asset(
+              'assets/images/swift_supply_logo_orange.png',
+              height: 28,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Swift Document Generator',
+              style: TextStyle(
+                fontFamily: 'Oswald',
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                letterSpacing: 0.3,
+                color: SwiftColors.ink,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 1,
+              height: 18,
+              color: SwiftColors.border,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              kindTitle,
+              style: const TextStyle(
+                fontFamily: 'Calibri',
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: SwiftColors.muted,
+              ),
+            ),
+            const Spacer(),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.only(right: 12),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: busy ? null : onUpdate,
+              icon: const Icon(Icons.system_update_alt, size: 16),
+              label: const Text('Update'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: busy ? null : onGenerate,
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: Text(busy ? 'Generating…' : 'Generate PDF'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Android / mobile orange brand header (unchanged).
 class _Header extends StatelessWidget {
   const _Header({required this.busy});
 
@@ -2103,20 +2523,27 @@ class _Card extends StatelessWidget {
     required this.hint,
     required this.child,
     this.trailing,
+    this.dense = false,
   });
 
   final String title;
   final String hint;
   final Widget child;
   final Widget? trailing;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: dense ? 8 : 8),
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: EdgeInsets.fromLTRB(
+            dense ? 12 : 14,
+            dense ? 8 : 10,
+            dense ? 12 : 14,
+            dense ? 10 : 12,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2129,10 +2556,10 @@ class _Card extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'Oswald',
                             fontWeight: FontWeight.w600,
-                            fontSize: 15,
+                            fontSize: dense ? 14 : 15,
                             color: SwiftColors.ink,
                             letterSpacing: 0.3,
                           ),
@@ -2140,18 +2567,18 @@ class _Card extends StatelessWidget {
                         const SizedBox(height: 1),
                         Text(
                           hint,
-                          style: const TextStyle(
-                            fontSize: 12,
+                          style: TextStyle(
+                            fontSize: dense ? 11 : 12,
                             color: SwiftColors.muted,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (trailing != null) trailing!,
+                  ?trailing,
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: dense ? 6 : 8),
               child,
             ],
           ),
