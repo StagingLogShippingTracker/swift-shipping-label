@@ -15,20 +15,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid) {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.dark,
-        systemNavigationBarDividerColor: Colors.transparent,
-      ),
-    );
   }
   final storage = await AppStorage.open();
   final pdf = await ShippingLabelPdf.load();
   final settings = await storage.loadUiSettings();
+  _applySystemUiOverlay(settings.isDark);
   runApp(
     SwiftShippingLabelApp(
       storage: storage,
@@ -38,7 +29,22 @@ Future<void> main() async {
   );
 }
 
-/// App-level theme + UI settings (Windows dark mode persists via [AppThemeScope]).
+void _applySystemUiOverlay(bool dark) {
+  if (!Platform.isAndroid) return;
+  SystemChrome.setSystemUIOverlayStyle(
+    SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness:
+          dark ? Brightness.light : Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+}
+
+/// App-level theme + UI settings (dark mode persists via [AppThemeScope]).
 class SwiftShippingLabelApp extends StatefulWidget {
   const SwiftShippingLabelApp({
     super.key,
@@ -72,8 +78,8 @@ class _SwiftShippingLabelAppState extends State<SwiftShippingLabelApp> {
       child: ValueListenableBuilder<AppUiSettings>(
         valueListenable: _settings,
         builder: (context, settings, _) {
-          final dark = Platform.isWindows &&
-              settings.themePreference == UiThemePreference.dark;
+          final dark = settings.themePreference == UiThemePreference.dark;
+          _applySystemUiOverlay(dark);
           final scale = Platform.isWindows ? settings.uiFontScale : 1.0;
           return MaterialApp(
             title: 'Swift Document Generator',

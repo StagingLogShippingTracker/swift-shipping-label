@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'app_storage.dart';
 import 'bol_document_number.dart';
 import 'bol_item_type.dart';
+import 'brand_assets.dart';
 import 'preset_sync.dart';
 import 'signature_pad.dart';
 import 'signature_sync.dart';
@@ -212,7 +213,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _syncAppTheme(AppUiSettings s) {
-    if (!Platform.isWindows) return;
     try {
       AppThemeScope.of(context).value = s;
     } catch (_) {}
@@ -2516,14 +2516,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMobileScaffold() {
+    final chrome = SwiftChromeColors.of(context);
     return Scaffold(
-      backgroundColor: SwiftColors.bg,
+      backgroundColor: chrome.bg,
       body: Column(
         children: [
-          RepaintBoundary(child: _Header(busy: _busy)),
+          RepaintBoundary(
+            child: _Header(
+              busy: _busy,
+              isDark: _uiSettings.isDark,
+              kindTitle: _kindTitle,
+              onToggleDark: _toggleDarkMode,
+            ),
+          ),
           // Pin document-type switching so it never scrolls away with the form.
           Material(
-            color: SwiftColors.surface,
+            color: chrome.surface,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Column(
@@ -2533,8 +2541,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _kindHint,
-                    style: const TextStyle(
-                      color: SwiftColors.muted,
+                    style: TextStyle(
+                      color: chrome.muted,
                       fontSize: 13,
                       height: 1.35,
                     ),
@@ -2543,7 +2551,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: chrome.border),
           Expanded(
             child: ListView(
               keyboardDismissBehavior:
@@ -2618,7 +2626,7 @@ class _DesktopToolbar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Image.asset(
-            'assets/images/swift_supply_logo_orange.png',
+            SwiftBrandAssets.chromeLogo(dark: isDark),
             height: 26,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
@@ -2696,16 +2704,25 @@ class _DesktopToolbar extends StatelessWidget {
   }
 }
 
-/// Android / mobile orange brand header.
+/// Android / mobile header — Windows-like surface chrome, compact layout.
 class _Header extends StatelessWidget {
-  const _Header({required this.busy});
+  const _Header({
+    required this.busy,
+    required this.isDark,
+    required this.kindTitle,
+    required this.onToggleDark,
+  });
 
   final bool busy;
+  final bool isDark;
+  final String kindTitle;
+  final VoidCallback onToggleDark;
 
   @override
   Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
     return Material(
-      color: SwiftColors.accent,
+      color: chrome.surface,
       elevation: 0,
       child: SafeArea(
         bottom: false,
@@ -2713,76 +2730,105 @@ class _Header extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 14, 14),
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
               child: Row(
                 children: [
+                  Container(
+                    width: 3,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: SwiftColors.accent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Image.asset(
+                    SwiftBrandAssets.chromeLogo(dark: isDark),
+                    height: 30,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Image.asset(
-                          'assets/images/swift_supply_header_white.png',
-                          height: 42,
-                          fit: BoxFit.contain,
-                          alignment: Alignment.centerLeft,
-                          filterQuality: FilterQuality.high,
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Document Generator',
+                        Text(
+                          'Swift Document Generator',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontFamily: 'Oswald',
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                            letterSpacing: 0.4,
-                            color: SwiftColors.accentOn,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            letterSpacing: 0.3,
+                            color: chrome.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: chrome.accentSoft,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: SwiftColors.accent.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Text(
+                            kindTitle,
+                            style: const TextStyle(
+                              fontFamily: 'Oswald',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                              letterSpacing: 0.3,
+                              color: SwiftColors.accent,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
                   if (busy)
-                    const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+                    const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  else
-                    TextButton.icon(
-                      onPressed: () => showUpdateFlow(context),
-                      style: TextButton.styleFrom(
-                        foregroundColor: SwiftColors.accent,
-                        backgroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(9),
-                        ),
+                  else ...[
+                    IconButton(
+                      tooltip: isDark ? 'Light mode' : 'Dark mode',
+                      onPressed: onToggleDark,
+                      icon: Icon(
+                        isDark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                        color: chrome.ink,
                       ),
-                      icon: const Icon(Icons.system_update_alt, size: 18),
-                      label: const Text(
-                        'Update',
-                        style: TextStyle(
-                          fontFamily: 'Oswald',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          letterSpacing: 0.3,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => showUpdateFlow(context),
+                      icon: const Icon(Icons.system_update_alt, size: 16),
+                      label: const Text('Update'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
-            Container(
-              height: 3,
-              color: SwiftColors.accentHover.withValues(alpha: 0.55),
-            ),
+            Divider(height: 1, color: chrome.border),
           ],
         ),
       ),
@@ -2798,19 +2844,20 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
     return Material(
-      color: SwiftColors.surface,
+      color: chrome.surface,
       elevation: 0,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(
-            top: BorderSide(color: SwiftColors.border),
+            top: BorderSide(color: chrome.border),
           ),
           boxShadow: [
             BoxShadow(
-              color: Color(0x14000000),
+              color: Color(isDarkChrome(context) ? 0x66000000 : 0x14000000),
               blurRadius: 10,
-              offset: Offset(0, -2),
+              offset: const Offset(0, -2),
             ),
           ],
         ),
@@ -2842,6 +2889,9 @@ class _BottomBar extends StatelessWidget {
     );
   }
 }
+
+bool isDarkChrome(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark;
 
 class _Card extends StatelessWidget {
   const _Card({

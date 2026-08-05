@@ -1,8 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-
 /// Windows-only window snap / size presets via Win32 MoveWindow.
+///
+/// Uses the monitor work area that contains the app window (virtual-screen
+/// coordinates). Earlier builds used DESKTOPHORZRES/VERTRES (physical pixels),
+/// which on high-DPI displays moved the window off-screen / made it unusable.
 class WindowsWindowSnap {
   WindowsWindowSnap._();
 
@@ -28,65 +30,77 @@ class WindowsWindowSnap {
     return 'Window: ${preset.label}';
   }
 
-  static String _psShowWindow(int cmd) => '''
+  static const _win32Types = r'''
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class W {
+public class SwiftWinSnap {
+  public const uint MONITOR_DEFAULTTONEAREST = 2;
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+  public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+  [StructLayout(LayoutKind.Sequential)]
+  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+  public struct MONITORINFO {
+    public int cbSize;
+    public RECT rcMonitor;
+    public RECT rcWork;
+    public uint dwFlags;
+  }
 }
 "@
-\$p = Get-Process -Name 'swift_shipping_label' -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not \$p) { throw 'App window not found' }
-[W]::ShowWindow(\$p.MainWindowHandle, $cmd) | Out-Null
+''';
+
+  static String _psResolveWindow() => r'''
+$p = Get-Process -Name 'swift_shipping_label' -ErrorAction SilentlyContinue |
+  Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } |
+  Select-Object -First 1
+if (-not $p) { throw 'App window not found' }
+$hwnd = $p.MainWindowHandle
+''';
+
+  static String _psWorkArea() => r'''
+$mi = New-Object SwiftWinSnap+MONITORINFO
+$mi.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][SwiftWinSnap+MONITORINFO])
+$hMon = [SwiftWinSnap]::MonitorFromWindow($hwnd, [SwiftWinSnap]::MONITOR_DEFAULTTONEAREST)
+if (-not [SwiftWinSnap]::GetMonitorInfo($hMon, [ref]$mi)) { throw 'GetMonitorInfo failed' }
+$left = $mi.rcWork.Left
+$top = $mi.rcWork.Top
+$sw = [Math]::Max(320, $mi.rcWork.Right - $mi.rcWork.Left)
+$sh = [Math]::Max(240, $mi.rcWork.Bottom - $mi.rcWork.Top)
+''';
+
+  static String _psShowWindow(int cmd) => '''
+$_win32Types
+${_psResolveWindow()}
+[SwiftWinSnap]::ShowWindow(\$hwnd, $cmd) | Out-Null
 ''';
 
   static String _psMoveFraction({required bool left}) => '''
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class W {
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
-  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
-  [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
-  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-}
-"@
-\$p = Get-Process -Name 'swift_shipping_label' -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not \$p) { throw 'App window not found' }
-\$hdc = [W]::GetDC([IntPtr]::Zero)
-\$sw = [W]::GetDeviceCaps(\$hdc, 118)
-\$sh = [W]::GetDeviceCaps(\$hdc, 117)
-[W]::ReleaseDC([IntPtr]::Zero, \$hdc) | Out-Null
-[W]::ShowWindow(\$p.MainWindowHandle, 1) | Out-Null
+$_win32Types
+${_psResolveWindow()}
+${_psWorkArea()}
+[SwiftWinSnap]::ShowWindow(\$hwnd, 1) | Out-Null
 \$w = [Math]::Floor(\$sw / 2)
-\$x = ${left ? '0' : r'$w'}
-[W]::MoveWindow(\$p.MainWindowHandle, \$x, 0, \$w, \$sh, \$true) | Out-Null
+\$h = \$sh
+\$x = ${left ? r'$left' : r'$left + $w'}
+\$y = \$top
+[SwiftWinSnap]::MoveWindow(\$hwnd, \$x, \$y, \$w, \$h, \$true) | Out-Null
 ''';
 
   static String _psCentered(int width, int height) => '''
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class W {
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
-  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
-  [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
-  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-}
-"@
-\$p = Get-Process -Name 'swift_shipping_label' -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not \$p) { throw 'App window not found' }
-\$hdc = [W]::GetDC([IntPtr]::Zero)
-\$sw = [W]::GetDeviceCaps(\$hdc, 118)
-\$sh = [W]::GetDeviceCaps(\$hdc, 117)
-[W]::ReleaseDC([IntPtr]::Zero, \$hdc) | Out-Null
-[W]::ShowWindow(\$p.MainWindowHandle, 1) | Out-Null
-\$x = [Math]::Max(0, [Math]::Floor((\$sw - $width) / 2))
-\$y = [Math]::Max(0, [Math]::Floor((\$sh - $height) / 2))
-[W]::MoveWindow(\$p.MainWindowHandle, \$x, \$y, $width, $height, \$true) | Out-Null
+$_win32Types
+${_psResolveWindow()}
+${_psWorkArea()}
+[SwiftWinSnap]::ShowWindow(\$hwnd, 1) | Out-Null
+\$w = [Math]::Min($width, \$sw)
+\$h = [Math]::Min($height, \$sh)
+\$x = \$left + [Math]::Max(0, [Math]::Floor((\$sw - \$w) / 2))
+\$y = \$top + [Math]::Max(0, [Math]::Floor((\$sh - \$h) / 2))
+[SwiftWinSnap]::MoveWindow(\$hwnd, \$x, \$y, \$w, \$h, \$true) | Out-Null
 ''';
 }
 

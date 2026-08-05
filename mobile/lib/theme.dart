@@ -20,7 +20,7 @@ class SwiftColors {
   static const railSelected = Color(0xFFF3E4DF);
   static const inputFill = Color(0xFFFAFAF8);
 
-  // Dark-mode counterparts (Windows View → Dark mode).
+  // Dark-mode counterparts (Windows + Android).
   static const darkBg = Color(0xFF121417);
   static const darkSurface = Color(0xFF1C1F24);
   static const darkPanel = Color(0xFF16191E);
@@ -159,22 +159,17 @@ class SwiftTheme {
             ),
           ),
       appBarTheme: AppBarTheme(
-        backgroundColor: desktop
-            ? surface
-            : (dark ? SwiftColors.darkSurface : SwiftColors.accent),
-        foregroundColor: desktop
-            ? ink
-            : (dark ? SwiftColors.darkInk : Colors.white),
+        // Mobile chrome matches Windows surface strip (not full orange block).
+        backgroundColor: surface,
+        foregroundColor: ink,
         elevation: 0,
         scrolledUnderElevation: desktop ? 0.5 : 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
           fontFamily: 'Oswald',
           fontWeight: FontWeight.w600,
-          fontSize: (desktop ? 16 : 20) * scale,
-          color: desktop
-              ? ink
-              : (dark ? SwiftColors.darkInk : Colors.white),
+          fontSize: (desktop ? 16 : 18) * scale,
+          color: ink,
           letterSpacing: 0.4,
         ),
       ),
@@ -462,6 +457,27 @@ class SwiftTheme {
         color: SwiftColors.accent,
         linearTrackColor: SwiftColors.accentSoft,
       ),
+      // Submenu panels defaulted to a light Material surface while menu
+      // button foreground used dark-mode ink (near-white) — text vanished
+      // until hover. Theme the menu panel + buttons together.
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(surface),
+          shadowColor: WidgetStatePropertyAll(
+            Colors.black.withValues(alpha: dark ? 0.55 : 0.22),
+          ),
+          elevation: const WidgetStatePropertyAll(8),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(vertical: 6),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(controlR),
+              side: BorderSide(color: border),
+            ),
+          ),
+        ),
+      ),
       menuBarTheme: MenuBarThemeData(
         style: MenuStyle(
           backgroundColor: WidgetStatePropertyAll(surface),
@@ -476,11 +492,29 @@ class SwiftTheme {
       ),
       menuButtonTheme: MenuButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: WidgetStatePropertyAll(ink),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return muted.withValues(alpha: 0.55);
+            }
+            return ink;
+          }),
+          iconColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return muted.withValues(alpha: 0.55);
+            }
+            return ink;
+          }),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered) ||
-                states.contains(WidgetState.focused)) {
+                states.contains(WidgetState.focused) ||
+                states.contains(WidgetState.selected)) {
               return accentSoft;
+            }
+            return Colors.transparent;
+          }),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return accentSoft.withValues(alpha: 0.85);
             }
             return null;
           }),
@@ -489,6 +523,7 @@ class SwiftTheme {
               fontFamily: 'Calibri',
               fontSize: 13 * scale,
               fontWeight: FontWeight.w600,
+              color: ink,
             ),
           ),
         ),
@@ -500,6 +535,23 @@ class SwiftTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(controlR),
           side: BorderSide(color: border),
+        ),
+        textStyle: TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 13 * scale,
+          color: ink,
+        ),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(surface),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(controlR),
+              side: BorderSide(color: border),
+            ),
+          ),
         ),
         textStyle: TextStyle(
           fontFamily: 'Calibri',
