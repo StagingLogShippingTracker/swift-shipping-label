@@ -71,7 +71,7 @@ class BolFields {
     (vehicleId, 'Vehicle ID', false),
     (consigneePrint, 'Consignee Print Name', false),
     (consigneeDate, 'Consignee Date', false),
-    for (var i = 1; i <= 7; i++) ...[
+    for (var i = 1; i <= 10; i++) ...[
       (lineKey(i, 'pieces'), 'Line $i Qty', false),
       (lineKey(i, 'item_type'), 'Line $i Item Type', false),
       (lineKey(i, 'dimensions'), 'Line $i Dimensions', false),

@@ -119,17 +119,44 @@ class _RelevanceContext {
     required this.companyName,
     required this.domains,
     required this.tokens,
+    this.extraQueries = const [],
+    this.alternateNames = const [],
   });
 
   final String companyName;
   final List<String> domains;
   final List<String> tokens;
+  /// Gemini (or other) extra image-search queries.
+  final List<String> extraQueries;
+  /// Alternate company names suggested by Gemini.
+  final List<String> alternateNames;
 
-  factory _RelevanceContext.from(String companyName, List<String> domains) {
+  factory _RelevanceContext.from(
+    String companyName,
+    List<String> domains, {
+    List<String> extraQueries = const [],
+    List<String> alternateNames = const [],
+  }) {
     return _RelevanceContext(
       companyName: companyName.trim(),
       domains: domains,
       tokens: LogoFinder._companyTokens(companyName),
+      extraQueries: extraQueries,
+      alternateNames: alternateNames,
+    );
+  }
+
+  _RelevanceContext withExtras({
+    List<String>? extraQueries,
+    List<String>? alternateNames,
+    List<String>? domains,
+  }) {
+    return _RelevanceContext(
+      companyName: companyName,
+      domains: domains ?? this.domains,
+      tokens: tokens,
+      extraQueries: extraQueries ?? this.extraQueries,
+      alternateNames: alternateNames ?? this.alternateNames,
     );
   }
 }
@@ -148,34 +175,103 @@ class LogoFinder {
   static const _minDownloadedScore = 26;
   static const _pickerMinScore = 24;
   /// Per-request timeout so one blocked engine cannot stall All Sources.
-  static const _requestTimeout = Duration(seconds: 5);
+  static const _requestTimeout = Duration(seconds: 6);
+  /// Whole-engine budget (multiple queries / fallbacks inside one source).
+  static const _engineTimeout = Duration(seconds: 18);
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
-  static const _browserUa =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+  /// Rotating desktop Chrome profiles (User-Agent + matching Sec-Ch-Ua).
+  static const _chromeProfiles = <({String ua, String secChUa, String version})>[
+    (
+      version: '131',
+      ua:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      secChUa:
+          '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    ),
+    (
+      version: '132',
+      ua:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+      secChUa:
+          '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+    ),
+    (
+      version: '133',
+      ua:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+      secChUa:
+          '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+    ),
+    (
+      version: '134',
+      ua:
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+      secChUa:
+          '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"',
+    ),
+    (
+      version: '135',
+      ua:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      secChUa:
+          '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+    ),
+  ];
+
+  static int _uaRotate = 0;
+
+  static ({String ua, String secChUa, String version}) _nextChromeProfile() {
+    final profile = _chromeProfiles[_uaRotate % _chromeProfiles.length];
+    _uaRotate++;
+    return profile;
+  }
 
   /// Desktop Chrome-like headers for HTML scrapers (Google / Bing / DDG / BOTW).
-  static Map<String, String> get _browserHeaders => {
-        'User-Agent': _browserUa,
-        'Accept':
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Sec-Ch-Ua':
-            '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      };
+  static Map<String, String> _browserHeadersRotating({String? referer}) {
+    final p = _nextChromeProfile();
+    final headers = <String, String>{
+      'User-Agent': p.ua,
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Sec-Ch-Ua': p.secChUa,
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': p.ua.contains('Macintosh') ? '"macOS"' : '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': referer == null ? 'none' : 'same-origin',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+    };
+    if (referer != null && referer.isNotEmpty) {
+      headers['Referer'] = referer;
+    }
+    return headers;
+  }
 
-  static Map<String, String> _browserHeadersFor(Uri uri) => {
-        ..._browserHeaders,
-        'Referer': '${uri.scheme}://${uri.host}/',
-      };
+  static Map<String, String> _browserHeadersFor(Uri uri) =>
+      _browserHeadersRotating(referer: '${uri.scheme}://${uri.host}/');
+
+  static Map<String, String> _imageDownloadHeaders(Uri uri) {
+    final p = _nextChromeProfile();
+    return {
+      'User-Agent': p.ua,
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Sec-Ch-Ua': p.secChUa,
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': p.ua.contains('Macintosh') ? '"macOS"' : '"Windows"',
+      'Sec-Fetch-Dest': 'image',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
+      'Referer': '${uri.scheme}://${uri.host}/',
+    };
+  }
+
 
   /// Ranked list for the picker UI — top [pickerMaxResults] by score, with light
   /// junk filtering. Callers must always show the grid when this is non-empty.
@@ -189,6 +285,26 @@ class LogoFinder {
     return pool.take(pickerMaxResults).toList();
   }
 
+  /// Test hooks for HTML/JSON crawler parsers (no network).
+  static Set<String> debugParseBingPayload(String body) =>
+      _parseBingImagePayload(body).toSet();
+
+  static Set<String> debugParseGoogleHtml(String html) {
+    final urls = <String>{};
+    _extractGoogleImageUrls(html, urls);
+    return urls;
+  }
+
+  static List<String> debugPrimaryQueries(String companyName, {String domain = ''}) {
+    final domains = domain.trim().isEmpty ? <String>[] : [domain.trim()];
+    return _primaryLogoQueries(_RelevanceContext.from(companyName, domains));
+  }
+
+  static List<String> debugExpandedQueries(String companyName, {String domain = ''}) {
+    final domains = domain.trim().isEmpty ? <String>[] : [domain.trim()];
+    return _expandedLogoQueries(_RelevanceContext.from(companyName, domains));
+  }
+
   /// Returns ranked, successfully downloaded logo candidates from selected sources.
   Future<List<LogoDownloadedCandidate>> findDownloadedCandidates({
     required String companyName,
@@ -199,10 +315,46 @@ class LogoFinder {
     final dom = _normalizeDomain(domain);
     if (name.isEmpty && dom.isEmpty) return const [];
 
-    final domainList = await _resolveDomains(name, dom);
-    final ctx = _RelevanceContext.from(name, domainList);
+    var domainList = await _resolveDomains(name, dom);
+
+    // Gemini search plan — queries / domains / URL hints (fail-open, parallel-safe).
+    final gemini = GeminiClient.isConfigured ? GeminiClient(client: _client) : null;
+    GeminiLogoSearchPlan? plan;
+    if (gemini != null && name.isNotEmpty) {
+      try {
+        plan = await gemini
+            .suggestLogoSearchPlan(
+              companyName: name,
+              knownDomains: domainList,
+            )
+            .timeout(const Duration(seconds: 12));
+      } catch (_) {
+        plan = null;
+      }
+    }
+
+    if (plan != null) {
+      domainList = _mergeGeminiDomains(domainList, plan.officialDomains, name);
+    }
+
+    final extraQueries = <String>[
+      if (plan != null) ...plan.searchQueries,
+      if (plan != null)
+        for (final alt in plan.alternateNames.take(4)) ...[
+          '$alt logo png',
+          '$alt logo',
+          '$alt brand vector logo',
+        ],
+    ];
+
+    final ctx = _RelevanceContext.from(
+      name,
+      domainList,
+      extraQueries: extraQueries,
+      alternateNames: plan?.alternateNames ?? const [],
+    );
     final useAll = engine == LogoSearchEngine.all;
-    final use = (LogoSearchEngine e) => useAll || engine == e;
+    bool use(LogoSearchEngine e) => useAll || engine == e;
 
     // Each source is independently trapped — one failure must not zero out All Sources.
     final futures = <Future<List<LogoCandidate>>>[];
@@ -250,6 +402,13 @@ class LogoFinder {
       );
     }
 
+    // Gemini-suggested direct logo URLs (only when the model is highly confident).
+    if (plan != null && plan.logoUrlHints.isNotEmpty) {
+      futures.add(
+        _safeSource(() async => _geminiUrlHintCandidates(plan!, ctx)),
+      );
+    }
+
     // Fail-safe aggregation: never let a single rejected future cancel the rest.
     final urlLists = await Future.wait(
       futures.map(
@@ -275,14 +434,56 @@ class LogoFinder {
       }
     }
 
-    final ranked = _rankAndDedupe(merged, ctx);
+    var ranked = _rankAndDedupe(merged, ctx);
 
     // Download candidates in parallel batches so "All sources" merges as
     // well as any single engine (top ~20 by score after byte bonus).
-    final toTry = ranked.take(_maxCandidatesToDownload).toList();
-    final downloaded = await _downloadCandidatesParallel(toTry, ctx);
+    var toTry = ranked.take(_maxCandidatesToDownload).toList();
+    var downloaded = await _downloadCandidatesParallel(toTry, ctx, gemini: gemini);
+
+    // Sparse rescue: if scrapers under-delivered, re-run Google/Bing with Gemini queries only.
+    if (downloaded.length < 3 &&
+        gemini != null &&
+        plan != null &&
+        (use(LogoSearchEngine.google) || use(LogoSearchEngine.bing))) {
+      try {
+        final rescueCtx = ctx.withExtras(
+          extraQueries: [
+            ...plan.searchQueries,
+            for (final alt in plan.alternateNames.take(3)) '$alt official logo png',
+          ],
+        );
+        final rescueFutures = <Future<List<LogoCandidate>>>[];
+        if (use(LogoSearchEngine.google)) {
+          rescueFutures.add(_safeSource(() => _googleImageSearch(rescueCtx, forceExpanded: true)));
+        }
+        if (use(LogoSearchEngine.bing)) {
+          rescueFutures.add(_safeSource(() => _bingImageSearch(rescueCtx, forceExpanded: true)));
+        }
+        final rescueLists = await Future.wait(
+          rescueFutures.map(
+            (f) => f.catchError((Object _, StackTrace __) => <LogoCandidate>[]),
+          ),
+        );
+        final rescueMerged = <LogoCandidate>[...merged];
+        for (final list in rescueLists) {
+          rescueMerged.addAll(list);
+        }
+        ranked = _rankAndDedupe(rescueMerged, rescueCtx);
+        toTry = ranked.take(_maxCandidatesToDownload).toList();
+        final more = await _downloadCandidatesParallel(toTry, rescueCtx, gemini: gemini);
+        final seen = {for (final c in downloaded) _urlKey(c.url)};
+        for (final c in more) {
+          final key = _urlKey(c.url);
+          if (key.isEmpty || seen.add(key)) downloaded.add(c);
+        }
+      } catch (_) {
+        // Fail open — keep first-pass downloads.
+      }
+    }
 
     if (downloaded.isNotEmpty) {
+      downloaded = await _maybeGeminiRerank(downloaded, gemini, name);
       downloaded.sort((a, b) => b.score.compareTo(a.score));
       return filterForPicker(downloaded);
     }
@@ -310,13 +511,90 @@ class LogoFinder {
     return const [];
   }
 
+  static List<String> _mergeGeminiDomains(
+    List<String> existing,
+    List<String> suggested,
+    String companyName,
+  ) {
+    final out = [...existing];
+    final seen = out.toSet();
+    for (final raw in suggested) {
+      final d = _normalizeDomain(raw);
+      if (d.isEmpty || !seen.add(d)) continue;
+      if (!_domainLooksCorporate(d, companyName)) continue;
+      // Prefer Gemini domains near the front (after an explicit user domain).
+      final insertAt = existing.isNotEmpty && out.isNotEmpty ? 1 : 0;
+      out.insert(insertAt > out.length ? out.length : insertAt, d);
+    }
+    // Deduplicate while preserving order.
+    final dedup = <String>{};
+    return [for (final d in out) if (dedup.add(d)) d];
+  }
+
+  List<LogoCandidate> _geminiUrlHintCandidates(
+    GeminiLogoSearchPlan plan,
+    _RelevanceContext ctx,
+  ) {
+    final out = <LogoCandidate>[];
+    for (final url in plan.logoUrlHints.take(6)) {
+      if (!_isAcceptableLogoUrl(url)) continue;
+      out.add(
+        LogoCandidate(
+          url: url,
+          source: 'Gemini URL hint',
+          score: 70 + _scoreUrl(url, 'Gemini URL hint', ctx),
+        ),
+      );
+    }
+    return out;
+  }
+
+  Future<List<LogoDownloadedCandidate>> _maybeGeminiRerank(
+    List<LogoDownloadedCandidate> downloaded,
+    GeminiClient? gemini,
+    String companyName,
+  ) async {
+    if (gemini == null || downloaded.length < 3) return downloaded;
+    try {
+      final top = downloaded.take(6).toList();
+      final order = await gemini
+          .rankLogoCandidates(
+            [for (final c in top) c.bytes],
+            companyHint: companyName,
+          )
+          .timeout(const Duration(seconds: 20));
+      if (order == null || order.isEmpty) return downloaded;
+
+      final rerankedTop = <LogoDownloadedCandidate>[];
+      for (var i = 0; i < order.length; i++) {
+        final idx = order[i];
+        if (idx < 0 || idx >= top.length) continue;
+        final c = top[idx];
+        // Boost earlier ranks so picker sort favors Gemini's preference.
+        rerankedTop.add(
+          LogoDownloadedCandidate(
+            bytes: c.bytes,
+            source: c.source.contains('Gemini') ? c.source : '${c.source} · Gemini rank',
+            url: c.url,
+            score: c.score + (18 - i * 3).clamp(0, 18),
+            hint: c.hint,
+          ),
+        );
+      }
+      final rest = downloaded.skip(top.length);
+      return [...rerankedTop, ...rest];
+    } catch (_) {
+      return downloaded;
+    }
+  }
+
   /// Isolate one engine/source so errors never propagate to All Sources.
   Future<List<LogoCandidate>> _safeSource(
     Future<List<LogoCandidate>> Function() run,
   ) async {
     try {
       return await run().timeout(
-        _requestTimeout * 3,
+        _engineTimeout,
         onTimeout: () => <LogoCandidate>[],
       );
     } catch (_) {
@@ -326,13 +604,15 @@ class LogoFinder {
 
   Future<List<LogoDownloadedCandidate>> _downloadCandidatesParallel(
     List<LogoCandidate> candidates,
-    _RelevanceContext ctx,
-  ) async {
+    _RelevanceContext ctx, {
+    GeminiClient? gemini,
+  }) async {
     if (candidates.isEmpty) return const [];
 
     const batchSize = 8;
     final out = <LogoDownloadedCandidate>[];
-    final gemini = GeminiClient.isConfigured ? GeminiClient(client: _client) : null;
+    final vision = gemini ??
+        (GeminiClient.isConfigured ? GeminiClient(client: _client) : null);
 
     for (var start = 0; start < candidates.length; start += batchSize) {
       if (out.length >= pickerMaxResults) break;
@@ -352,9 +632,9 @@ class LogoFinder {
 
             // Gemini vision gate — discard photos / junk scraped as "logos".
             // Fail-open when Gemini is unavailable so warehouse workflows continue.
-            if (gemini != null && !isFavicon) {
+            if (vision != null && !isFavicon) {
               try {
-                final verdict = await gemini.validateLogoCandidate(
+                final verdict = await vision.validateLogoCandidate(
                   dl.bytes!,
                   companyHint: ctx.companyName,
                 );
@@ -520,46 +800,59 @@ class LogoFinder {
     }
   }
 
-  Future<List<LogoCandidate>> _bingImageSearch(_RelevanceContext ctx) async {
+  Future<List<LogoCandidate>> _bingImageSearch(
+    _RelevanceContext ctx, {
+    bool forceExpanded = false,
+  }) async {
     try {
       final urls = <String>{};
-      final queries = _imageSearchQueries(ctx);
+      // Primary query first; expand only when empty / sparse (or Gemini rescue).
+      final primary = forceExpanded
+          ? _queriesForSearch(ctx, expanded: true)
+          : _queriesForSearch(ctx, expanded: false, includePrimary: true);
+      final expanded = _queriesForSearch(ctx, expanded: true);
 
-      for (final q in queries) {
-        if (urls.length >= 24) break;
-        try {
-          final encoded = Uri.encodeQueryComponent(q);
-          final referer = 'https://www.bing.com/images/search?q=$encoded';
-          final headers = {
-            ..._browserHeaders,
-            'Referer': referer,
-            'Sec-Fetch-Site': 'same-origin',
-          };
+      Future<void> runQueries(List<String> queries) async {
+        for (final q in queries) {
+          if (urls.length >= 28) break;
+          try {
+            final encoded = Uri.encodeQueryComponent(q);
+            final referer = 'https://www.bing.com/images/search?q=$encoded';
+            final headers = _browserHeadersRotating(referer: referer)
+              ..['Sec-Fetch-Site'] = 'same-origin';
 
-          final asyncUri = Uri.parse(
-            'https://www.bing.com/images/async?q=$encoded&first=0&count=35&relp=35&tsc=ImageBasicHover',
-          );
-          final asyncRes = await _client
-              .get(asyncUri, headers: headers)
-              .timeout(_requestTimeout);
-          if (asyncRes.statusCode == 200) {
-            urls.addAll(_parseBingMurls(asyncRes.body));
-          }
-
-          if (urls.length < 6) {
-            final pageUri = Uri.parse(
-              'https://www.bing.com/images/search?q=$encoded&form=HDRSC2&first=1',
+            final asyncUri = Uri.parse(
+              'https://www.bing.com/images/async?q=$encoded&first=0&count=35&relp=35&tsc=ImageBasicHover&qft=+filterui:photo-photo',
             );
-            final pageRes = await _client
-                .get(pageUri, headers: headers)
+            final asyncRes = await _client
+                .get(asyncUri, headers: headers)
                 .timeout(_requestTimeout);
-            if (pageRes.statusCode == 200) {
-              urls.addAll(_parseBingMurls(pageRes.body));
+            if (asyncRes.statusCode == 200) {
+              urls.addAll(_parseBingImagePayload(asyncRes.body));
             }
+
+            if (urls.length < 8) {
+              final pageUri = Uri.parse(
+                'https://www.bing.com/images/search?q=$encoded&form=HDRSC2&first=1&tsc=ImageBasicHover',
+              );
+              final pageRes = await _client
+                  .get(pageUri, headers: headers)
+                  .timeout(_requestTimeout);
+              if (pageRes.statusCode == 200) {
+                urls.addAll(_parseBingImagePayload(pageRes.body));
+              }
+            }
+          } catch (_) {
+            continue;
           }
-        } catch (_) {
-          continue;
         }
+      }
+
+      await runQueries(primary);
+      if (urls.isEmpty) {
+        await runQueries(expanded);
+      } else if (urls.length < 6) {
+        await runQueries(expanded.take(4).toList());
       }
 
       return _urlCandidatesFromSet(
@@ -574,48 +867,116 @@ class LogoFinder {
     }
   }
 
-  static Iterable<String> _parseBingMurls(String html) sync* {
+  /// Extract high-res Bing media URLs (`murl` / `mediaurl`) from HTML or JSON.
+  static Iterable<String> _parseBingImagePayload(String body) sync* {
+    final seen = <String>{};
+
+    // Prefer structured `m="{...}"` / `m='{...}'` containers (Bing iusc cards).
+    for (final m in RegExp(
+      r'''\bm=["'](\{.*?\})["']''',
+      dotAll: true,
+    ).allMatches(body)) {
+      final raw = m.group(1);
+      if (raw == null) continue;
+      final jsonStr = _htmlUnescape(raw);
+      try {
+        final obj = jsonDecode(jsonStr);
+        if (obj is Map) {
+          for (final key in ['murl', 'mediaurl', 'purl']) {
+            final v = obj[key];
+            if (v is String && v.startsWith('http')) {
+              seen.add(_unescapeJsonUrl(v));
+            }
+          }
+        }
+      } catch (_) {
+        for (final mm in RegExp(r'"murl"\s*:\s*"(https?://[^"]+)"')
+            .allMatches(jsonStr)) {
+          final u = mm.group(1);
+          if (u != null) seen.add(_unescapeJsonUrl(u));
+        }
+      }
+    }
+
+    // HTML-entity encoded murls common in async HTML.
     for (final pattern in [
       RegExp(r'murl&quot;:&quot;(https?://[^&]+?)&quot;'),
-      RegExp(r'"murl":"(https?://[^"]+)"'),
-      RegExp(r'murl":"(https?://[^"]+)"'),
+      RegExp(r'mediaurl&quot;:&quot;(https?://[^&]+?)&quot;'),
+      RegExp(r'"murl"\s*:\s*"(https?://[^"]+)"'),
+      RegExp(r'"mediaurl"\s*:\s*"(https?://[^"]+)"'),
+      RegExp(r'"murl"\s*:\s*"(https?:\\/\\/[^"]+)"'),
+      RegExp(r'murl\\?":\\?"(https?://[^"\\]+)'),
     ]) {
-      for (final m in pattern.allMatches(html)) {
+      for (final m in pattern.allMatches(body)) {
         final url = m.group(1);
-        if (url != null && url.startsWith('http')) yield url;
+        if (url != null) seen.add(_unescapeJsonUrl(url));
       }
+    }
+
+    // Compact JSON objects that carry murl.
+    for (final m in RegExp(
+      r'\{[^{}]{0,40}"murl"\s*:\s*"(https?://[^"]+)"[^{}]{0,400}\}',
+    ).allMatches(body)) {
+      try {
+        final obj = jsonDecode(m.group(0)!);
+        if (obj is Map && obj['murl'] is String) {
+          seen.add(_unescapeJsonUrl(obj['murl'] as String));
+        }
+      } catch (_) {
+        final u = m.group(1);
+        if (u != null) seen.add(_unescapeJsonUrl(u));
+      }
+    }
+
+    for (final u in seen) {
+      if (u.startsWith('http')) yield u;
     }
   }
 
-  Future<List<LogoCandidate>> _googleImageSearch(_RelevanceContext ctx) async {
+  Future<List<LogoCandidate>> _googleImageSearch(
+    _RelevanceContext ctx, {
+    bool forceExpanded = false,
+  }) async {
     try {
       final urls = <String>{};
-      final queries = _imageSearchQueries(ctx);
+      final primary = forceExpanded
+          ? _queriesForSearch(ctx, expanded: true)
+          : _queriesForSearch(ctx, expanded: false, includePrimary: true);
+      final expanded = _queriesForSearch(ctx, expanded: true);
 
-      // Independent per-query fetches — one blocked query must not cancel others.
-      await Future.wait(
-        queries.take(5).map(
-              (q) => _fetchGoogleImageUrls(q, urls, basicHtml: false).catchError(
-                    (Object _, StackTrace __) {},
-                  ),
-            ),
-      );
+      Future<void> runQueries(List<String> queries, {required bool basicHtml}) async {
+        await Future.wait(
+          queries.take(5).map(
+                (q) => _fetchGoogleImageUrls(q, urls, basicHtml: basicHtml)
+                    .catchError((Object _, StackTrace __) {}),
+              ),
+        );
+      }
+
+      await runQueries(primary, basicHtml: false);
+      if (urls.isEmpty) {
+        await runQueries(expanded, basicHtml: false);
+      }
 
       if (urls.length < 4) {
-        await Future.wait(
-          queries.take(4).map(
-                (q) => _fetchGoogleImageUrls(q, urls, basicHtml: true).catchError(
-                      (Object _, StackTrace __) {},
-                    ),
-              ),
+        await runQueries(
+          urls.isEmpty ? [...primary, ...expanded.take(3)] : primary,
+          basicHtml: true,
         );
       }
 
       // Newer Google Images UI (`udm=2`) as an extra fallback.
       if (urls.length < 4) {
-        for (final q in queries.take(3)) {
+        final fallbackQs = urls.isEmpty ? [...primary, ...expanded.take(3)] : primary;
+        for (final q in fallbackQs.take(4)) {
           await _fetchGoogleUdmImageUrls(q, urls);
         }
+      }
+
+      // Still empty after primary — force full expansion cycle.
+      if (urls.isEmpty) {
+        await runQueries(expanded, basicHtml: false);
+        await runQueries(expanded, basicHtml: true);
       }
 
       return _urlCandidatesFromSet(
@@ -630,24 +991,43 @@ class LogoFinder {
     }
   }
 
-  /// Flexible query ladder: unquoted first (works for "Keyera"), then quoted /
-  /// domain-scoped variants. Avoids over-rigid `"Name" logo` as the only attempt.
-  static List<String> _imageSearchQueries(_RelevanceContext ctx) {
+  /// Direct `{Company} logo png` (+ light aliases) tried first.
+  static List<String> _primaryLogoQueries(_RelevanceContext ctx) {
     final name = ctx.companyName.trim();
     if (name.isEmpty) {
-      if (ctx.domains.isEmpty) return const ['logo'];
+      if (ctx.domains.isEmpty) return const ['logo png'];
       final d = ctx.domains.first;
-      return ['$d logo', 'site:$d logo', '${d.split('.').first} logo'];
+      return ['$d logo png', '${d.split('.').first} logo png'];
     }
-
-    final out = <String>{
-      '$name logo',
+    return <String>[
       '$name logo png',
+      '$name logo',
+    ];
+  }
+
+  /// Smart synonyms used when the primary `{name} logo png` search is empty.
+  static List<String> _expandedLogoQueries(_RelevanceContext ctx) {
+    final name = ctx.companyName.trim();
+    if (name.isEmpty) {
+      if (ctx.domains.isEmpty) return const ['brand vector logo'];
+      final d = ctx.domains.first;
+      final stem = d.split('.').first;
+      return [
+        '$stem brand vector logo',
+        '$stem corporate logo transparent background',
+        '$stem official website logo',
+        'site:$d logo',
+      ];
+    }
+    final out = <String>{
+      '$name brand vector logo',
+      '$name corporate logo transparent background',
+      '$name official website logo',
       '$name company logo',
       '$name brand logo',
-      '"$name" logo',
-      '"$name" logo png',
       '$name official logo',
+      '"$name" logo png',
+      '"$name" logo',
     };
     for (final d in ctx.domains.take(4)) {
       out.add('site:$d logo');
@@ -655,6 +1035,44 @@ class LogoFinder {
       out.add('${d.split('.').first} logo');
     }
     return out.toList();
+  }
+
+  /// Combined query ladder (primary then expanded + Gemini extras).
+  static List<String> _imageSearchQueries(_RelevanceContext ctx) {
+    return _queriesForSearch(ctx, expanded: true, includePrimary: true);
+  }
+
+  static List<String> _queriesForSearch(
+    _RelevanceContext ctx, {
+    required bool expanded,
+    bool includePrimary = false,
+  }) {
+    final seen = <String>{};
+    final out = <String>[];
+    void addAll(Iterable<String> qs) {
+      for (final q in qs) {
+        final t = q.trim();
+        if (t.isEmpty) continue;
+        if (seen.add(t)) out.add(t);
+      }
+    }
+
+    if (includePrimary || !expanded) addAll(_primaryLogoQueries(ctx));
+    if (expanded) {
+      addAll(_expandedLogoQueries(ctx));
+      addAll(ctx.extraQueries);
+      for (final alt in ctx.alternateNames.take(4)) {
+        addAll([
+          '$alt logo png',
+          '$alt brand vector logo',
+          '$alt corporate logo transparent background',
+        ]);
+      }
+    } else {
+      // Primary path still benefits from a few Gemini hints when present.
+      addAll(ctx.extraQueries.take(3));
+    }
+    return out;
   }
 
   Future<void> _fetchGoogleImageUrls(
@@ -670,8 +1088,12 @@ class LogoFinder {
         'gl': 'us',
         'ijn': '0',
         'safe': 'off',
+        'tbs': 'itp:photo,ift:png',
       };
-      if (basicHtml) params['gbv'] = '1';
+      if (basicHtml) {
+        params['gbv'] = '1';
+        params.remove('tbs');
+      }
 
       final uri = Uri.https('www.google.com', '/search', params);
       final res = await _client
@@ -701,49 +1123,223 @@ class LogoFinder {
   }
 
   static void _extractGoogleImageUrls(String html, Set<String> urls) {
+    // 1) Classic / still-present JSON keys in image result payloads.
     for (final pattern in [
-      RegExp(r'"ou":"(https?://[^"]+)"'),
-      RegExp(r'\\"ou\\":\\"(https?://[^\\"]+)\\"'),
+      RegExp(r'"ou"\s*:\s*"(https?://[^"]+)"'),
+      RegExp(r'\\"ou\\"\s*:\s*\\"(https?://[^\\"]+)\\"'),
       RegExp(r'\["ou","(https?://[^"]+)"\]'),
-      RegExp(r'"ou":\s*"(https?://[^"]+)"'),
-      RegExp(r'"originalUrl":"(https?://[^"]+)"'),
-      RegExp(r'"imageUrl":"(https?://[^"]+)"'),
+      RegExp(r'"originalUrl"\s*:\s*"(https?://[^"]+)"'),
+      RegExp(r'"imageUrl"\s*:\s*"(https?://[^"]+)"'),
+      RegExp(r'"ow"\s*:\s*\d+\s*,\s*"oh"\s*:\s*\d+\s*,\s*"ou"\s*:\s*"(https?://[^"]+)"'),
       RegExp(r'imgurl=(https?://[^&"]+)'),
-      RegExp(r'imgrefurl=(https?://[^&"]+)'),
       RegExp(r',"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"'),
       RegExp(r'\[\s*"(https?://[^"]+\.(?:png|jpe?g|webp))"'),
-      RegExp(r'data-src="(https?://[^"]+)"'),
-      RegExp(r'data-iurl="(https?://[^"]+)"'),
     ]) {
       for (final m in pattern.allMatches(html)) {
-        final raw = m.group(1);
-        if (raw == null) continue;
-        final decoded = Uri.decodeComponent(
-          raw
-              .replaceAll(r'\\/', '/')
-              .replaceAll(r'\\u003d', '=')
-              .replaceAll(r'\u003d', '='),
-        );
-        if (decoded.startsWith('http') && !_isGoogleThumbnail(decoded)) {
-          urls.add(decoded);
-        }
+        _offerGoogleUrl(m.group(1), urls);
       }
     }
 
-    for (final m
-        in RegExp(r'AF_initDataCallback\(\{[^;]+\}\);', dotAll: true)
-            .allMatches(html)) {
-      final chunk = m.group(0) ?? '';
+    // 2) Data attributes used by newer Google Images UI.
+    for (final pattern in [
+      RegExp(r'data-src="(https?://[^"]+)"'),
+      RegExp(r"data-src='(https?://[^']+)'"),
+      RegExp(r'data-iurl="(https?://[^"]+)"'),
+      RegExp(r'data-ils="[^"]*"[^>]*src="(https?://[^"]+)"'),
+      RegExp(r'data-deferred="1"[^>]*src="(https?://[^"]+)"'),
+      RegExp(r'data-iml="[^"]*"[^>]*(?:data-src|src)="(https?://[^"]+)"'),
+    ]) {
+      for (final m in pattern.allMatches(html)) {
+        _offerGoogleUrl(m.group(1), urls);
+      }
+    }
+
+    // 3) AF_initDataCallback script blocks — walk embedded data arrays.
+    for (final chunk in _extractAfInitDataChunks(html)) {
       _collectOuFields(chunk, urls);
       _collectInitDataUrls(chunk, urls);
+      _walkEmbeddedJsonForImageUrls(chunk, urls);
+    }
+
+    // 4) `<script>` blobs that look like image result JSON.
+    for (final m in RegExp(
+      r'<script[^>]*>([\s\S]*?)</script>',
+      caseSensitive: false,
+    ).allMatches(html)) {
+      final script = m.group(1) ?? '';
+      if (script.length < 80) continue;
+      if (!script.contains('http') ||
+          !(script.contains('ou') ||
+              script.contains('imageUrl') ||
+              script.contains('.png') ||
+              script.contains('AF_initDataCallback'))) {
+        continue;
+      }
+      _collectOuFields(script, urls);
+      _collectInitDataUrls(script, urls);
     }
 
     for (final m in RegExp(
       r'(https?://[^"\s<>]+googleusercontent\.com/[^"\s<>]+)',
     ).allMatches(html)) {
-      final u = m.group(1)!;
-      if (_isGoogleThumbnail(u)) continue;
-      urls.add(u.replaceAll(r'\\u003d', '=').replaceAll(r'\u003d', '='));
+      _offerGoogleUrl(m.group(1), urls);
+    }
+  }
+
+  static void _offerGoogleUrl(String? raw, Set<String> urls) {
+    if (raw == null || raw.isEmpty) return;
+    final decoded = _unescapeJsonUrl(raw);
+    if (!decoded.startsWith('http')) return;
+    if (_isGoogleThumbnail(decoded)) return;
+    urls.add(decoded);
+  }
+
+  /// Pull `AF_initDataCallback({...})` payloads with nested-brace awareness.
+  static Iterable<String> _extractAfInitDataChunks(String html) sync* {
+    const marker = 'AF_initDataCallback(';
+    var from = 0;
+    while (true) {
+      final start = html.indexOf(marker, from);
+      if (start < 0) break;
+      final brace = html.indexOf('{', start + marker.length);
+      if (brace < 0) break;
+      final end = _findMatchingBrace(html, brace);
+      if (end < 0) {
+        from = start + marker.length;
+        continue;
+      }
+      yield html.substring(brace, end + 1);
+      from = end + 1;
+    }
+  }
+
+  static int _findMatchingBrace(String s, int openIdx) {
+    if (openIdx < 0 || openIdx >= s.length || s[openIdx] != '{') return -1;
+    var depth = 0;
+    var inString = false;
+    var escape = false;
+    for (var i = openIdx; i < s.length; i++) {
+      final ch = s[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch == r'\') {
+          escape = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+        continue;
+      }
+      if (ch == '{') {
+        depth++;
+      } else if (ch == '}') {
+        depth--;
+        if (depth == 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  static void _walkEmbeddedJsonForImageUrls(String chunk, Set<String> urls) {
+    // Attempt to decode the AF callback object and walk for URL-looking strings.
+    try {
+      final decoded = jsonDecode(chunk);
+      _walkJsonForUrls(decoded, urls, depth: 0);
+      return;
+    } catch (_) {}
+
+    // Callbacks often wrap data in `data:` key with a JS array — extract that array.
+    final dataIdx = chunk.indexOf('"data"');
+    if (dataIdx < 0) return;
+    final colon = chunk.indexOf(':', dataIdx);
+    if (colon < 0) return;
+    var i = colon + 1;
+    while (i < chunk.length && (chunk[i] == ' ' || chunk[i] == '\n')) {
+      i++;
+    }
+    if (i >= chunk.length) return;
+    if (chunk[i] == '[') {
+      final end = _findMatchingBracket(chunk, i);
+      if (end > i) {
+        try {
+          final arr = jsonDecode(chunk.substring(i, end + 1));
+          _walkJsonForUrls(arr, urls, depth: 0);
+        } catch (_) {}
+      }
+    } else if (chunk[i] == '{') {
+      final end = _findMatchingBrace(chunk, i);
+      if (end > i) {
+        try {
+          final obj = jsonDecode(chunk.substring(i, end + 1));
+          _walkJsonForUrls(obj, urls, depth: 0);
+        } catch (_) {}
+      }
+    }
+  }
+
+  static int _findMatchingBracket(String s, int openIdx) {
+    if (openIdx < 0 || openIdx >= s.length || s[openIdx] != '[') return -1;
+    var depth = 0;
+    var inString = false;
+    var escape = false;
+    for (var i = openIdx; i < s.length; i++) {
+      final ch = s[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch == r'\') {
+          escape = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+        continue;
+      }
+      if (ch == '[') {
+        depth++;
+      } else if (ch == ']') {
+        depth--;
+        if (depth == 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  static void _walkJsonForUrls(Object? node, Set<String> urls, {required int depth}) {
+    if (depth > 14 || node == null) return;
+    if (node is String) {
+      if (node.startsWith('http') && _looksLikeDirectImageUrl(node)) {
+        _offerGoogleUrl(node, urls);
+      }
+      return;
+    }
+    if (node is List) {
+      for (final item in node) {
+        _walkJsonForUrls(item, urls, depth: depth + 1);
+      }
+      return;
+    }
+    if (node is Map) {
+      for (final entry in node.entries) {
+        final key = '${entry.key}'.toLowerCase();
+        final value = entry.value;
+        if (value is String &&
+            value.startsWith('http') &&
+            (key.contains('ou') ||
+                key.contains('url') ||
+                key.contains('image') ||
+                key.contains('src'))) {
+          _offerGoogleUrl(value, urls);
+        }
+        _walkJsonForUrls(value, urls, depth: depth + 1);
+      }
     }
   }
 
@@ -751,13 +1347,12 @@ class LogoFinder {
     for (final m in RegExp(
       r'"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"',
     ).allMatches(chunk)) {
-      final u = m.group(1);
-      if (u != null && !_isGoogleThumbnail(u)) urls.add(u);
+      _offerGoogleUrl(m.group(1), urls);
     }
     for (final m in RegExp(r'\[\s*"(https?://[^"]{12,})"').allMatches(chunk)) {
       final u = m.group(1);
       if (u == null || _isGoogleThumbnail(u)) continue;
-      if (_looksLikeDirectImageUrl(u)) urls.add(u);
+      if (_looksLikeDirectImageUrl(u)) _offerGoogleUrl(u, urls);
     }
   }
 
@@ -768,7 +1363,11 @@ class LogoFinder {
         lower.contains('=w16') ||
         lower.contains('=h16') ||
         lower.contains('encrypted-tbn0.gstatic.com') ||
-        lower.contains('/imgres?');
+        lower.contains('encrypted-tbn1.gstatic.com') ||
+        lower.contains('encrypted-tbn2.gstatic.com') ||
+        lower.contains('encrypted-tbn3.gstatic.com') ||
+        lower.contains('/imgres?') ||
+        lower.contains('gstatic.com/images?q=tbn');
   }
 
   static bool _looksLikeDirectImageUrl(String url) {
@@ -779,14 +1378,46 @@ class LogoFinder {
         lower.contains('.webp') ||
         lower.contains('.gif') ||
         lower.contains('logo') ||
-        lower.contains('brand');
+        lower.contains('brand') ||
+        lower.contains('googleusercontent.com');
   }
 
   static void _collectOuFields(String chunk, Set<String> urls) {
-    for (final m in RegExp(r'"ou":"(https?://[^"]+)"').allMatches(chunk)) {
-      final u = m.group(1);
-      if (u != null) urls.add(u);
+    for (final m in RegExp(r'"ou"\s*:\s*"(https?://[^"]+)"').allMatches(chunk)) {
+      _offerGoogleUrl(m.group(1), urls);
     }
+  }
+
+  static String _unescapeJsonUrl(String raw) {
+    var s = raw
+        .replaceAll(r'\\/', '/')
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'\\u003d', '=')
+        .replaceAll(r'\u003d', '=')
+        .replaceAll(r'\\u0026', '&')
+        .replaceAll(r'\u0026', '&')
+        .replaceAll('&amp;', '&');
+    try {
+      s = Uri.decodeComponent(s);
+    } catch (_) {}
+    try {
+      // Second pass for double-encoded imgurl= values.
+      if (s.contains('%2F') || s.contains('%3A')) {
+        s = Uri.decodeComponent(s);
+      }
+    } catch (_) {}
+    return s;
+  }
+
+  static String _htmlUnescape(String raw) {
+    return raw
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#34;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
   }
 
   Future<List<LogoCandidate>> _brandsOfTheWorldSearch(
@@ -982,7 +1613,7 @@ class LogoFinder {
           });
           final res = await _client
               .get(uri, headers: {
-                'User-Agent': _browserUa,
+                'User-Agent': _nextChromeProfile().ua,
                 'Accept': 'application/json',
               })
               .timeout(_requestTimeout);
@@ -1051,66 +1682,81 @@ class LogoFinder {
   Future<List<LogoCandidate>> _duckDuckGoImageSearch(_RelevanceContext ctx) async {
     try {
       final urls = <String>{};
-      for (final q in _imageSearchQueries(ctx).take(3)) {
-        try {
-          final uri = Uri.https('duckduckgo.com', '/', {
-            'q': q,
-            'iax': 'images',
-            'ia': 'images',
-          });
-          final res = await _client
-              .get(uri, headers: _browserHeadersFor(uri))
-              .timeout(_requestTimeout);
-          if (res.statusCode != 200) continue;
+      final primary = _queriesForSearch(ctx, expanded: false, includePrimary: true);
+      final expanded = _queriesForSearch(ctx, expanded: true);
 
-          // vqd token unlocks the i.js JSON feed.
-          final vqdMatch =
-              RegExp("vqd=['\"]([^'\"]+)['\"]").firstMatch(res.body);
-          final vqd = vqdMatch?.group(1);
-          if (vqd != null && vqd.isNotEmpty) {
-            final feed = Uri.https('duckduckgo.com', '/i.js', {
-              'l': 'us-en',
-              'o': 'json',
+      Future<void> runQueries(List<String> queries) async {
+        for (final q in queries) {
+          if (urls.length >= 24) break;
+          try {
+            final uri = Uri.https('duckduckgo.com', '/', {
               'q': q,
-              'vqd': vqd,
-              'f': ',,,',
-              'p': '1',
+              'iax': 'images',
+              'ia': 'images',
             });
-            final feedRes = await _client
-                .get(feed, headers: {
-                  ..._browserHeadersFor(feed),
-                  'Accept': 'application/json,text/javascript,*/*',
-                  'Referer': uri.toString(),
+            final res = await _client
+                .get(uri, headers: _browserHeadersFor(uri))
+                .timeout(_requestTimeout);
+            if (res.statusCode != 200) continue;
+
+            // vqd token unlocks the i.js JSON feed.
+            final vqdMatch =
+                RegExp(r'''vqd=['"]([^'"]+)['"]''').firstMatch(res.body) ??
+                    RegExp(r'vqd=([0-9-]+)').firstMatch(res.body);
+            final vqd = vqdMatch?.group(1);
+            if (vqd != null && vqd.isNotEmpty) {
+              final feed = Uri.https('duckduckgo.com', '/i.js', {
+                'l': 'us-en',
+                'o': 'json',
+                'q': q,
+                'vqd': vqd,
+                'f': ',,,',
+                'p': '1',
+              });
+              final feedHeaders = _browserHeadersRotating(referer: uri.toString())
+                ..addAll({
+                  'Accept': 'application/json,text/javascript,*/*;q=0.8',
                   'Sec-Fetch-Dest': 'empty',
                   'Sec-Fetch-Mode': 'cors',
                   'Sec-Fetch-Site': 'same-origin',
-                })
-                .timeout(_requestTimeout);
-            if (feedRes.statusCode == 200) {
-              try {
-                final body = jsonDecode(feedRes.body);
-                final results = body is Map ? body['results'] : null;
-                if (results is List) {
-                  for (final item in results.take(30)) {
-                    if (item is! Map) continue;
-                    final image = '${item['image'] ?? ''}';
-                    if (image.startsWith('http')) urls.add(image);
+                });
+              final feedRes = await _client
+                  .get(feed, headers: feedHeaders)
+                  .timeout(_requestTimeout);
+              if (feedRes.statusCode == 200) {
+                try {
+                  final body = jsonDecode(feedRes.body);
+                  final results = body is Map ? body['results'] : null;
+                  if (results is List) {
+                    for (final item in results.take(35)) {
+                      if (item is! Map) continue;
+                      for (final key in ['image', 'url']) {
+                        final image = '${item[key] ?? ''}';
+                        if (image.startsWith('http')) urls.add(image);
+                      }
+                    }
                   }
-                }
-              } catch (_) {}
+                } catch (_) {}
+              }
             }
-          }
 
-          for (final m in RegExp(
-            r'https?://[^\s"<>]+\.(?:png|jpe?g|webp)(?:\?[^\s"<>]*)?',
-          ).allMatches(res.body)) {
-            final u = m.group(0)!;
-            if (!_isGoogleThumbnail(u)) urls.add(u);
+            for (final m in RegExp(
+              r'https?://[^\s"<>]+\.(?:png|jpe?g|webp)(?:\?[^\s"<>]*)?',
+            ).allMatches(res.body)) {
+              final u = m.group(0)!;
+              if (!_isGoogleThumbnail(u)) urls.add(u);
+            }
+          } catch (_) {
+            continue;
           }
-          if (urls.length >= 20) break;
-        } catch (_) {
-          continue;
         }
+      }
+
+      await runQueries(primary);
+      if (urls.isEmpty) {
+        await runQueries(expanded);
+      } else if (urls.length < 6) {
+        await runQueries(expanded.take(3).toList());
       }
 
       return _urlCandidatesFromSet(
@@ -1446,12 +2092,7 @@ class LogoFinder {
       final res = await _client
           .get(
             uri,
-            headers: {
-              'User-Agent': _browserUa,
-              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Referer': '${uri.scheme}://${uri.host}/',
-            },
+            headers: _imageDownloadHeaders(uri),
           )
           .timeout(_requestTimeout);
       if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -1545,7 +2186,7 @@ class LogoFinder {
       });
       final res = await _client
           .get(uri, headers: {
-            'User-Agent': _browserUa,
+            'User-Agent': _nextChromeProfile().ua,
             'Accept': 'application/json',
           })
           .timeout(_requestTimeout);

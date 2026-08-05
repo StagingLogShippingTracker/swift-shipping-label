@@ -54,8 +54,12 @@ class BolLabelPdf {
   static final probillBoxW = 2.35 * inch;
   /// Gap between Swift wordmark and Probill cut-out.
   static const probillCutGap = 14.0;
-  static const lineRows = 7;
+  static const lineRows = 10;
   static List<String> get itemTypes => BolItemTypes.productTotalLabels;
+  static const productTotalLeft = ['Pallets', 'Crates', 'Boxes'];
+  static const productTotalRight = ['Pipes', 'Other'];
+  /// Still summed for rollups; not drawn in the compact 2-col Product Total grid.
+  static const productTotalHidden = ['Bundles'];
   static const copyTypes = ['STORE COPY', 'DRIVER COPY', 'CUSTOMER COPY'];
   static const shipperLines = [
     'Swift Oilfield Supply',
@@ -507,9 +511,9 @@ class BolLabelPdf {
     }
     y -= gap;
 
-    // Product total | Special instructions | Totals
-    final blockH = 1.40 * inch;
-    const bHdr = 16.0;
+    // Product total (2-col) | Special instructions | Totals — compact band
+    final blockH = 0.92 * inch;
+    const bHdr = 14.0;
     _alignedBottomRow(
       c,
       fonts,
@@ -525,8 +529,8 @@ class BolLabelPdf {
 
     // Signature columns
     final sw = (contentW - 2 * gap) / 3;
-    final sh = 1.38 * inch;
-    const shdr = 16.0;
+    final sh = 1.28 * inch;
+    const shdr = 14.0;
     var sx = margin;
     final bodyTop = y - shdr;
     final bodyBot = bodyTop - sh;
@@ -634,8 +638,9 @@ class BolLabelPdf {
     double totalWeight,
   ) {
     final blockBot = y - blockH;
-    final pw = 1.48 * inch;
-    final tw = 1.28 * inch;
+    // Wider Product Total for dual columns; SI narrows; Totals slightly tighter.
+    final pw = 2.05 * inch;
+    final tw = 1.12 * inch;
     final iw = contentW - pw - tw - 2 * gap;
     final ix = margin + pw + gap;
     final tx = ix + iw + gap;
@@ -655,37 +660,50 @@ class BolLabelPdf {
       ..fillPath();
     _rect(c, tx, blockBot, tw, bodyH, lw: 0.75);
 
-    final n = itemTypes.length;
-    final avail = bodyH - bodyInset - 4;
-    final rowH = avail / n;
-    const labelW = 0.72 * inch; // ~51.84 pt
-    final innerX = margin + pad;
-    final fieldX = innerX + labelW;
-    final fieldW = pw - 2 * pad - labelW;
-    for (var i = 0; i < n; i++) {
-      final label = itemTypes[i];
-      final rowTop = bodyTop - bodyInset - i * rowH;
-      _micro(c, fonts, innerX, rowTop - 8, label);
-      final fieldH = (rowH - 10).clamp(8.0, 11.0);
-      final fieldBot = rowTop - rowH + 3;
-      final v = typeTotals[label] ?? 0;
-      final text = v > 0
-          ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)
-          : '';
-      _drawValue(c, fonts, text, fieldX, fieldBot, fieldW, fieldH, 8);
-      _hline(c, fieldX, fieldBot, fieldW);
+    // Product totals: 2-column grid (left stack + right stack).
+    const leftCats = productTotalLeft;
+    const rightCats = productTotalRight;
+    final nRows = leftCats.length > rightCats.length
+        ? leftCats.length
+        : rightCats.length;
+    const topInset = 5.0;
+    final avail = bodyH - topInset - 3;
+    final rowH = avail / nRows;
+    const colGap = 5.0;
+    final innerW = pw - 2 * pad;
+    final colW = (innerW - colGap) / 2;
+
+    void productTotalCol(List<String> cats, double colX) {
+      for (var i = 0; i < cats.length; i++) {
+        final label = cats[i];
+        final rowTop = bodyTop - topInset - i * rowH;
+        _micro(c, fonts, colX, rowTop - 6.5, label);
+        final fieldH = (rowH - 10).clamp(7.0, 9.5);
+        final fieldBot = rowTop - rowH + 2;
+        final v = typeTotals[label] ?? 0;
+        final text = v > 0
+            ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)
+            : '';
+        _drawValue(c, fonts, text, colX, fieldBot, colW - 1, fieldH, 7.5);
+        _hline(c, colX, fieldBot, colW - 1);
+      }
     }
 
+    productTotalCol(leftCats, margin + pad);
+    productTotalCol(rightCats, margin + pad + colW + colGap);
+
+    final siBot = blockBot + 3;
+    final siH = bodyH - topInset - 2;
     _drawValue(
       c,
       fonts,
       d.get(LabelFields.specialInstructions),
       ix + pad,
-      blockBot + bodyInset - 2,
+      siBot,
       iw - 2 * pad,
-      bodyH - bodyInset - (bodyInset - 2),
+      siH < 18 ? 18 : siH,
       7,
-      maxLines: 8,
+      maxLines: 5,
       alignTop: true,
     );
 
@@ -696,8 +714,9 @@ class BolLabelPdf {
       ..drawLine(tx, midTot, tx + tw, midTot)
       ..strokePath();
 
-    _micro(c, fonts, tx + pad, bodyTop - bodyInset - 1, 'Total Piece Count');
-    final piecesTop = bodyTop - bodyInset - 12;
+    _micro(c, fonts, tx + pad, bodyTop - 6, 'Total Piece Count');
+    final piecesBot = midTot + 3;
+    final piecesTop = bodyTop - 14;
     final piecesText = totalPieces > 0
         ? totalPieces.toStringAsFixed(0)
         : d.get(BolFields.totalPieces);
@@ -706,13 +725,15 @@ class BolLabelPdf {
       fonts,
       piecesText,
       tx + pad,
-      midTot + 5,
+      piecesBot,
       tw - 2 * pad,
-      (piecesTop - (midTot + 5)).clamp(11.0, 40.0),
-      8,
+      (piecesTop - piecesBot).clamp(9.0, 28.0),
+      7.5,
     );
 
-    _micro(c, fonts, tx + pad, midTot - bodyInset - 1, 'Total Weight');
+    _micro(c, fonts, tx + pad, midTot - 6, 'Total Weight');
+    final weightBot = blockBot + 11;
+    final weightTop = midTot - 14;
     final weightText = totalWeight > 0
         ? totalWeight.toStringAsFixed(0)
         : d.get(BolFields.totalWeight);
@@ -721,15 +742,15 @@ class BolLabelPdf {
       fonts,
       weightText,
       tx + pad,
-      blockBot + 16,
+      weightBot,
       tw - 2 * pad,
-      (midTot - bodyInset - 12 - (blockBot + 16)).clamp(11.0, 40.0),
-      8,
+      (weightTop - weightBot).clamp(9.0, 28.0),
+      7.5,
     );
     c
       ..setFillColor(hint)
       ..setFont(fonts.regular, 5)
-      ..drawString(fonts.regular, 5, 'LBS', tx + pad, blockBot + 6);
+      ..drawString(fonts.regular, 5, 'LBS', tx + pad, blockBot + 3);
   }
 
   void _sigFields(

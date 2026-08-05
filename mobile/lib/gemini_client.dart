@@ -138,6 +138,114 @@ Return JSON only:
     return GeminiLogoValidation.fromJson(data);
   }
 
+  /// Text-only search plan to close gaps when scrapers return sparse/junk results.
+  ///
+  /// Fail-open: returns null when unconfigured, rate-limited, or malformed.
+  Future<GeminiLogoSearchPlan?> suggestLogoSearchPlan({
+    required String companyName,
+    List<String> knownDomains = const [],
+  }) async {
+    final key = resolveApiKey();
+    final name = companyName.trim();
+    if (key.isEmpty || name.isEmpty) return null;
+
+    final known = knownDomains.where((d) => d.trim().isNotEmpty).take(6).join(', ');
+    final prompt = '''
+You help a warehouse shipping-label app find the official company logo online.
+
+Company: "$name"
+Known domains (may be empty or wrong): ${known.isEmpty ? '(none)' : known}
+
+Return JSON only:
+{
+  "alternate_names": ["short or legal name variants people search"],
+  "search_queries": [
+    "high-signal Google/Bing image queries that a human would try",
+    "include logo png / brand / transparent / official website variants"
+  ],
+  "official_domains": ["example.com"],
+  "logo_url_hints": [
+    "https://only-if-you-are-highly-confident-this-is-a-real-public-logo-URL"
+  ],
+  "notes": "brief"
+}
+
+Rules:
+- Prefer real corporate domains (not wikipedia, linkedin, facebook, stock sites).
+- search_queries: 4-10 concrete strings, English, tuned for image search.
+- logo_url_hints: ZERO or few URLs; never invent plausible-looking fake CDN paths.
+- If unsure about a direct logo URL, omit it and rely on search_queries/domains.
+''';
+
+    final data = await _generateJson(
+      key: key,
+      prompt: prompt,
+      timeout: const Duration(seconds: 12),
+    );
+    if (data == null) return null;
+    return GeminiLogoSearchPlan.fromJson(data);
+  }
+
+  /// Rank already-downloaded logo candidates for [companyHint] (best first).
+  /// Returns preferred indices into [images], or null on failure (fail-open).
+  Future<List<int>?> rankLogoCandidates(
+    List<Uint8List> images, {
+    String companyHint = '',
+  }) async {
+    final key = resolveApiKey();
+    if (key.isEmpty || images.isEmpty) return null;
+    final capped = images.take(6).toList();
+    if (capped.length == 1) return const [0];
+
+    final prompt = '''
+You are ranking logo candidates for a shipping-label picker${companyHint.isEmpty ? '' : ' for "$companyHint"'}.
+
+Images are labeled Candidate 0 .. Candidate ${capped.length - 1} in order.
+Prefer clean official wordmarks/icons with transparent or solid backgrounds.
+Penalize photos, screenshots, watermarks, unrelated brands, and tiny favicons.
+
+Return JSON only:
+{
+  "ranked_indices": [best_index, ..., worst_index],
+  "best_reason": "short"
+}
+''';
+
+    final parts = <Map<String, dynamic>>[];
+    for (var i = 0; i < capped.length; i++) {
+      parts.add({'text': 'Candidate $i:'});
+      parts.add({
+        'inline_data': {
+          'mime_type': _guessMime(capped[i]),
+          'data': base64Encode(_maybeDownscale(capped[i])),
+        },
+      });
+    }
+    parts.add({'text': prompt});
+
+    final data = await _generateJson(
+      key: key,
+      prompt: '', // prompt already in parts
+      partsOverride: parts,
+      timeout: const Duration(seconds: 20),
+    );
+    if (data == null) return null;
+    final raw = data['ranked_indices'];
+    if (raw is! List || raw.isEmpty) return null;
+    final out = <int>[];
+    final seen = <int>{};
+    for (final item in raw) {
+      final idx = item is num ? item.toInt() : int.tryParse('$item');
+      if (idx == null || idx < 0 || idx >= capped.length) continue;
+      if (seen.add(idx)) out.add(idx);
+    }
+    // Append any missing indices so ranking stays a full permutation prefix.
+    for (var i = 0; i < capped.length; i++) {
+      if (seen.add(i)) out.add(i);
+    }
+    return out.isEmpty ? null : out;
+  }
+
   /// Pre-recreate structural hints (brand, fonts, colors, layout).
   Future<GeminiRecreateHints?> analyzeForRecreate(Uint8List bytes) async {
     final key = resolveApiKey();
@@ -171,27 +279,31 @@ Return JSON only:
   Future<Map<String, dynamic>?> _generateJson({
     required String key,
     required String prompt,
-    required Uint8List imageBytes,
-    required String mimeType,
+    Uint8List? imageBytes,
+    String? mimeType,
+    List<Map<String, dynamic>>? partsOverride,
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/'
       '${model}:generateContent?key=$key',
     );
-    final b64 = base64Encode(_maybeDownscale(imageBytes));
-    final payload = {
-      'contents': [
-        {
-          'parts': [
+
+    final parts = partsOverride ??
+        <Map<String, dynamic>>[
+          if (imageBytes != null && imageBytes.isNotEmpty)
             {
               'inline_data': {
-                'mime_type': mimeType,
-                'data': b64,
+                'mime_type': mimeType ?? _guessMime(imageBytes),
+                'data': base64Encode(_maybeDownscale(imageBytes)),
               },
             },
-            {'text': prompt},
-          ],
-        },
+          if (prompt.isNotEmpty) {'text': prompt},
+        ];
+
+    final payload = {
+      'contents': [
+        {'parts': parts},
       ],
       'generationConfig': {
         'responseMimeType': 'application/json',
@@ -208,7 +320,7 @@ Return JSON only:
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 45));
+            .timeout(timeout);
         if (res.statusCode == 429 || res.statusCode >= 500) {
           lastError = 'HTTP ${res.statusCode}';
           await Future<void>.delayed(
@@ -217,6 +329,7 @@ Return JSON only:
           continue;
         }
         if (res.statusCode < 200 || res.statusCode >= 300) {
+          lastError = 'HTTP ${res.statusCode}';
           return null;
         }
         final body = jsonDecode(res.body);
@@ -330,6 +443,51 @@ class GeminiLogoValidation {
   }
 
   bool get shouldKeep => isValidLogo && confidenceScore >= 0.45;
+}
+
+/// Gemini-assisted search enrichment for the logo crawler (fail-open).
+class GeminiLogoSearchPlan {
+  const GeminiLogoSearchPlan({
+    this.alternateNames = const [],
+    this.searchQueries = const [],
+    this.officialDomains = const [],
+    this.logoUrlHints = const [],
+    this.notes = '',
+  });
+
+  final List<String> alternateNames;
+  final List<String> searchQueries;
+  final List<String> officialDomains;
+  final List<String> logoUrlHints;
+  final String notes;
+
+  factory GeminiLogoSearchPlan.fromJson(Map<String, dynamic> json) {
+    List<String> strList(dynamic raw) {
+      if (raw is! List) return const [];
+      final out = <String>[];
+      for (final item in raw) {
+        final s = '$item'.trim();
+        if (s.isNotEmpty) out.add(s);
+      }
+      return out;
+    }
+
+    return GeminiLogoSearchPlan(
+      alternateNames: strList(json['alternate_names']),
+      searchQueries: strList(json['search_queries']),
+      officialDomains: strList(json['official_domains']),
+      logoUrlHints: strList(json['logo_url_hints'])
+          .where((u) => u.startsWith('http'))
+          .toList(),
+      notes: '${json['notes'] ?? ''}',
+    );
+  }
+
+  bool get isEmpty =>
+      alternateNames.isEmpty &&
+      searchQueries.isEmpty &&
+      officialDomains.isEmpty &&
+      logoUrlHints.isEmpty;
 }
 
 class GeminiRecreateHints {

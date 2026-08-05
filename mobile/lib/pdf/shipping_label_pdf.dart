@@ -341,7 +341,7 @@ class ShippingLabelPdf {
     _bumper(c, pageH - my + 4);
 
     final footY = my + 6;
-    // Clearance above footer for the tall 48pt piece-count band.
+    // Clearance above footer for the piece-count band.
     final pieceTop = footY + pieceBandRowH + 28;
 
     var y = _drawHeader(c, fonts, customerLogos, swiftLogo, options: options);
@@ -1208,7 +1208,7 @@ class ShippingLabelPdf {
   }
 
   /// Piece-count / page-number digits (e.g. "2 of 28").
-  static const pieceCountSize = 48.0;
+  static const pieceCountSize = 36.0;
   static const pieceOfSize = 22.0;
   static const pieceBandPadV = 8.0;
   static const pieceBandBoxPadH = 10.0;
@@ -1248,7 +1248,7 @@ class ShippingLabelPdf {
         ..setLineWidth(0.6);
       _strokeRRect(c, x, y - rowH, half, rowH, 4);
 
-      // Micro-label along the top edge so 48pt digits have full width below.
+      // Micro-label along the top edge so digits have full width below.
       c
         ..setFillColor(labelC)
         ..setFont(fonts.oswaldMedium, 7.5);

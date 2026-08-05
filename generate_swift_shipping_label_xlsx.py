@@ -74,7 +74,7 @@ def build() -> Path:
     val_f = Font(name="Oswald", color=INK, size=13)
     hero_f = Font(name="Oswald", bold=True, color=INK, size=20)
     of_f = Font(name="Oswald", bold=True, color=SWIFT, size=22)
-    count_f = Font(name="Oswald", bold=True, color=INK, size=48)
+    count_f = Font(name="Oswald", bold=True, color=INK, size=36)
 
     def L(coord, text):
         ws[coord].value = text.upper()

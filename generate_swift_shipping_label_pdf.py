@@ -64,7 +64,7 @@ FONT_BOLD = "Oswald-Bold"
 ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
 ENTRY_SIZE = 18
-PIECE_COUNT_SIZE = 48
+PIECE_COUNT_SIZE = 36
 PIECE_OF_SIZE = 22
 PIECE_BAND_PAD_V = 8
 PIECE_BAND_BOX_PAD_H = 10
@@ -783,7 +783,7 @@ def draw_notes_and_meta(
 
 
 def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
-    """Two aligned counters — 48pt digits under a top micro-label strip."""
+    """Two aligned counters — 36pt digits under a top micro-label strip."""
     count_size = PIECE_COUNT_SIZE
     of_size = PIECE_OF_SIZE
     value_h = PIECE_BAND_VALUE_H
@@ -810,7 +810,7 @@ def draw_piece_band(c: canvas.Canvas, form, y: float, sample: dict) -> float:
         c.setLineWidth(0.6)
         c.roundRect(x, y - row_h, half, row_h, 4, stroke=1, fill=0)
 
-        # Micro-label along the top edge so 48pt digits have full width below.
+        # Micro-label along the top edge so digits have full width below.
         c.setFillColor(LABEL_C)
         c.setFont(FONT_MED, 7.5)
         cx = x + 10

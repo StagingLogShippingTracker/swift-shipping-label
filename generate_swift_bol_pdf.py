@@ -44,9 +44,15 @@ BODY_INSET = 8  # Clear air between section header bars and body content
 INSET = 3.0
 ROW = 12
 LBL = 7
-LINE_ROWS = 7
+LINE_ROWS = 10
 ITEM_TYPE_OPTIONS = ("Pallet", "Crate", "Box", "Pipe", "Bundle", "Other")
 PRODUCT_TOTAL_LABELS = ("Pallets", "Crates", "Boxes", "Pipes", "Bundles", "Other")
+# Product Total panel: compact 2-column grid (shortens mid-page block).
+# Left stack = packing units; right stack = Pipe / Other (per layout brief).
+PRODUCT_TOTAL_LEFT = ("Pallets", "Crates", "Boxes")
+PRODUCT_TOTAL_RIGHT = ("Pipes", "Other")
+# Still calculated via AcroForm/JS; drawn off-panel so the right column stays 2 rows.
+PRODUCT_TOTAL_HIDDEN = ("Bundles",)
 
 _ITEM_TYPE_PLURAL = {
     "Pallet": "Pallets",
@@ -1018,10 +1024,11 @@ def read_serial_start() -> int:
 
 
 def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hdr_h: float) -> None:
-    """Product Total | Special Instructions | Totals — even panels with clear header clearance."""
+    """Product Total (2-col) | Special Instructions | Totals — compact mid-page band."""
     block_bot = y - block_h
-    pw = 1.48 * inch
-    tw = 1.28 * inch
+    # Wider Product Total for dual columns; SI narrows; Totals slightly tighter.
+    pw = 2.05 * inch
+    tw = 1.12 * inch
     iw = CONTENT_W - pw - tw - 2 * GAP
     ix = MARGIN + pw + GAP
     tx = ix + iw + GAP
@@ -1040,62 +1047,82 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
     c.rect(tx, block_bot, tw, body_h, stroke=0, fill=1)
     rect_stroke(c, tx, block_bot, tw, body_h, 0.75)
 
-    # --- Product totals: qty sum per Item Type from goods rows ---
-    categories = PRODUCT_TOTAL_LABELS
-    n = len(categories)
-    avail = body_h - BODY_INSET - 4
-    row_h = avail / n
-    label_w = 0.72 * inch
-    inner_x = MARGIN + PAD
-    field_x = inner_x + label_w
-    field_w = pw - 2 * PAD - label_w
-    for i, label in enumerate(categories):
-        row_top = body_top - BODY_INSET - i * row_h
-        label_y = row_top - 8
-        micro_label(c, inner_x, label_y, label)
-        field_h = min(11, max(8, row_h - 10))
-        field_bot = row_top - row_h + 3
+    # --- Product totals: 2-column grid (left stack + right stack) ---
+    left_cats = PRODUCT_TOTAL_LEFT
+    right_cats = PRODUCT_TOTAL_RIGHT
+    n_rows = max(len(left_cats), len(right_cats))
+    top_inset = 5
+    avail = body_h - top_inset - 3
+    row_h = avail / n_rows
+    col_gap = 5
+    inner_w = pw - 2 * PAD
+    col_w = (inner_w - col_gap) / 2
+
+    def _product_total_col(cats: tuple[str, ...], col_x: float) -> None:
+        for i, label in enumerate(cats):
+            row_top = body_top - top_inset - i * row_h
+            micro_label(c, col_x, row_top - 6.5, label)
+            field_h = min(9.5, max(7.0, row_h - 10))
+            field_bot = row_top - row_h + 2
+            put_textfield(
+                form, f"product_total_{label.lower()}",
+                col_x, field_bot,
+                col_w - 1, field_h,
+                font_size=7.5, fill=CLEAR, field_flags="readOnly",
+            )
+            hline(c, col_x, field_bot, col_w - 1)
+
+    _product_total_col(left_cats, MARGIN + PAD)
+    _product_total_col(right_cats, MARGIN + PAD + col_w + col_gap)
+
+    # Hidden Bundles total — keeps Acrobat/JS rollups working without a 3rd right row.
+    # put_textfield rejects h<=2; place a normal-size widget just off the left page edge.
+    for label in PRODUCT_TOTAL_HIDDEN:
         put_textfield(
             form, f"product_total_{label.lower()}",
-            field_x, field_bot,
-            field_w, field_h,
-            font_size=8, fill=CLEAR, field_flags="readOnly",
+            -60, block_bot + 4,
+            40, 10,
+            font_size=6, fill=CLEAR, field_flags="readOnly",
         )
-        hline(c, field_x, field_bot, field_w)
 
-    # --- Special instructions ---
+    # --- Special instructions (narrower + shorter with compact block_h) ---
+    si_bot = block_bot + 3
+    si_h = body_h - top_inset - 2
     area_field(
         form, "special_instructions",
-        ix + PAD, block_bot + BODY_INSET - 2,
-        iw - 2 * PAD, body_h - BODY_INSET - (BODY_INSET - 2),
+        ix + PAD, si_bot,
+        iw - 2 * PAD, max(si_h, 18),
         font_size=7,
     )
 
-    # --- Totals band ---
+    # --- Totals band (shorter half-panels reclaim vertical space) ---
     mid_tot = block_bot + body_h / 2
     c.setStrokeColor(RULE)
     c.setLineWidth(0.45)
     c.line(tx, mid_tot, tx + tw, mid_tot)
 
-    micro_label(c, tx + PAD, body_top - BODY_INSET - 1, "Total Piece Count")
-    pieces_top = body_top - BODY_INSET - 12
+    micro_label(c, tx + PAD, body_top - 6, "Total Piece Count")
+    pieces_bot = mid_tot + 3
+    pieces_top = body_top - 14
     put_textfield(
         form, "total_pieces",
-        tx + PAD, mid_tot + 5,
-        tw - 2 * PAD, max(pieces_top - (mid_tot + 5), 11),
-        font_size=8, fill=CLEAR, field_flags="readOnly",
+        tx + PAD, pieces_bot,
+        tw - 2 * PAD, max(pieces_top - pieces_bot, 9),
+        font_size=7.5, fill=CLEAR, field_flags="readOnly",
     )
 
-    micro_label(c, tx + PAD, mid_tot - BODY_INSET - 1, "Total Weight")
+    micro_label(c, tx + PAD, mid_tot - 6, "Total Weight")
+    weight_bot = block_bot + 11
+    weight_top = mid_tot - 14
     put_textfield(
         form, "total_weight",
-        tx + PAD, block_bot + 16,
-        tw - 2 * PAD, max(mid_tot - BODY_INSET - 12 - (block_bot + 16), 11),
-        font_size=8, fill=CLEAR, field_flags="readOnly",
+        tx + PAD, weight_bot,
+        tw - 2 * PAD, max(weight_top - weight_bot, 9),
+        font_size=7.5, fill=CLEAR, field_flags="readOnly",
     )
     c.setFillColor(INK_HINT)
     c.setFont("Helvetica", 5)
-    c.drawString(tx + PAD, block_bot + 6, "LBS")
+    c.drawString(tx + PAD, block_bot + 3, "LBS")
 
 
 def draw_meta_strip(c: canvas.Canvas, form, y: float) -> float:
@@ -1487,13 +1514,14 @@ def draw_bol_page(
         y -= lr
     y -= GAP
 
-    block_h = 1.40 * inch
-    draw_aligned_bottom_row(c, form, y, block_h, 16)
+    # Compact mid band (2-col Product Total) frees height for 10 goods rows.
+    block_h = 0.92 * inch
+    draw_aligned_bottom_row(c, form, y, block_h, 14)
     y -= block_h + GAP
 
     sw = (CONTENT_W - 2 * GAP) / 3
-    sh = 1.38 * inch
-    hdr = 16
+    sh = 1.28 * inch
+    hdr = 14
     sx = MARGIN
     body_top = y - hdr
     body_bot = body_top - sh

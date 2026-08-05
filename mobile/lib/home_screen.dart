@@ -79,7 +79,7 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
   ),
 ];
 
-const _bolMaxLines = 7;
+const _bolMaxLines = 10;
 
 const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   (
