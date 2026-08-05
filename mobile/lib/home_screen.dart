@@ -498,27 +498,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<String?> _askString(String title, String label, String initial) async {
     final ctrl = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(labelText: label.toUpperCase()),
-          autofocus: true,
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: ctrl,
+            decoration: InputDecoration(labelText: label.toUpperCase()),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('OK'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<List<String>> _pickImages({required bool multiple}) =>
@@ -1395,8 +1399,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildItemTypeField(String key) {
     final raw = _controllers[key]?.text ?? '';
     final normalized = BolItemTypes.normalizeStored(raw);
+    // Never mutate controllers during build — schedule a post-frame write.
     if (normalized != raw && normalized.isNotEmpty) {
-      _controllers[key]?.text = normalized;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final ctrl = _controllers[key];
+        if (ctrl != null && ctrl.text != normalized) {
+          ctrl.text = normalized;
+        }
+      });
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -2258,6 +2269,25 @@ class _HomeScreenState extends State<HomeScreen> {
         ..._buildDocumentFormCards(dualColumn: dualColumn),
         const SizedBox(height: 4),
         _buildUtilityActions(toolbarStyle: true),
+        // When the workspace pane is hidden (narrow window / user toggle),
+        // keep Generate visible in the form column — menu/Ctrl+Enter still work.
+        if (!showWorkspace) ...[
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : _generateAndShare,
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            label: Text(_busy ? 'Generating…' : 'Generate PDF'),
+          ),
+        ],
       ],
     );
 
@@ -2373,13 +2403,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       leading: Padding(
                         padding: EdgeInsets.only(
-                          top: 8,
-                          bottom: railExtended ? 16 : 8,
+                          top: 10,
+                          bottom: railExtended ? 16 : 10,
                         ),
-                        child: Icon(
-                          Icons.description_outlined,
-                          color: SwiftColors.accent.withValues(alpha: 0.85),
-                          size: 22,
+                        child: Container(
+                          width: railExtended ? 40 : 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: chrome.accentSoft,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: SwiftColors.accent.withValues(alpha: 0.22),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.description_outlined,
+                            color: SwiftColors.accent,
+                            size: 20,
+                          ),
                         ),
                       ),
                       destinations: const [
@@ -2476,33 +2517,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMobileScaffold() {
     return Scaffold(
+      backgroundColor: SwiftColors.bg,
       body: Column(
         children: [
           RepaintBoundary(child: _Header(busy: _busy)),
           // Pin document-type switching so it never scrolls away with the form.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildMobileKindSelector(),
-                const SizedBox(height: 8),
-                Text(
-                  _kindHint,
-                  style: const TextStyle(
-                    color: SwiftColors.muted,
-                    fontSize: 13,
-                    height: 1.3,
+          Material(
+            color: SwiftColors.surface,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildMobileKindSelector(),
+                  const SizedBox(height: 8),
+                  Text(
+                    _kindHint,
+                    style: const TextStyle(
+                      color: SwiftColors.muted,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          const Divider(height: 1),
           Expanded(
             child: ListView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               children: [
                 if (_kind == LabelKind.bol) ...[
                   _buildBolCopiesCard(),
@@ -2559,9 +2605,18 @@ class _DesktopToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final chrome = SwiftChromeColors.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
       child: Row(
         children: [
+          Container(
+            width: 3,
+            height: 28,
+            decoration: BoxDecoration(
+              color: SwiftColors.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
           Image.asset(
             'assets/images/swift_supply_logo_orange.png',
             height: 26,
@@ -2586,13 +2641,24 @@ class _DesktopToolbar extends StatelessWidget {
             color: chrome.border,
           ),
           const SizedBox(width: 12),
-          Text(
-            kindTitle,
-            style: TextStyle(
-              fontFamily: 'Calibri',
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: chrome.muted,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: chrome.accentSoft,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: SwiftColors.accent.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Text(
+              kindTitle,
+              style: const TextStyle(
+                fontFamily: 'Oswald',
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                letterSpacing: 0.3,
+                color: SwiftColors.accent,
+              ),
             ),
           ),
           const Spacer(),
@@ -2606,9 +2672,15 @@ class _DesktopToolbar extends StatelessWidget {
               ),
             ),
           IconButton(
-            tooltip: isDark ? 'Light mode (Ctrl+Shift+D)' : 'Dark mode (Ctrl+Shift+D)',
+            tooltip: isDark
+                ? 'Light mode (Ctrl+Shift+D)'
+                : 'Dark mode (Ctrl+Shift+D)',
             onPressed: busy ? null : onToggleDark,
-            icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+            icon: Icon(
+              isDark
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
           ),
           if (showUpdate) ...[
             const SizedBox(width: 4),
@@ -2624,7 +2696,7 @@ class _DesktopToolbar extends StatelessWidget {
   }
 }
 
-/// Android / mobile orange brand header (unchanged).
+/// Android / mobile orange brand header.
 class _Header extends StatelessWidget {
   const _Header({required this.busy});
 
@@ -2634,70 +2706,84 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: SwiftColors.accent,
+      elevation: 0,
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 16, 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Image.asset(
-                      'assets/images/swift_supply_header_white.png',
-                      height: 44,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.centerLeft,
-                      filterQuality: FilterQuality.high,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 14, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Image.asset(
+                          'assets/images/swift_supply_header_white.png',
+                          height: 42,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.centerLeft,
+                          filterQuality: FilterQuality.high,
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Document Generator',
+                          style: TextStyle(
+                            fontFamily: 'Oswald',
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                            letterSpacing: 0.4,
+                            color: SwiftColors.accentOn,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Document Generator',
-                      style: TextStyle(
-                        fontFamily: 'Calibri',
-                        fontSize: 13,
-                        color: Color(0xFFFFE8E0),
+                  ),
+                  if (busy)
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    TextButton.icon(
+                      onPressed: () => showUpdateFlow(context),
+                      style: TextButton.styleFrom(
+                        foregroundColor: SwiftColors.accent,
+                        backgroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                      ),
+                      icon: const Icon(Icons.system_update_alt, size: 18),
+                      label: const Text(
+                        'Update',
+                        style: TextStyle(
+                          fontFamily: 'Oswald',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          letterSpacing: 0.3,
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
-              if (busy)
-                const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              else
-                TextButton.icon(
-                  onPressed: () => showUpdateFlow(context),
-                  style: TextButton.styleFrom(
-                    foregroundColor: SwiftColors.accent,
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  icon: const Icon(Icons.system_update_alt, size: 18),
-                  label: const Text(
-                    'Update',
-                    style: TextStyle(
-                      fontFamily: 'Oswald',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+            ),
+            Container(
+              height: 3,
+              color: SwiftColors.accentHover.withValues(alpha: 0.55),
+            ),
+          ],
         ),
       ),
     );
@@ -2714,18 +2800,41 @@ class _BottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: SwiftColors.surface,
-      elevation: 8,
-      shadowColor: Colors.black26,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: busy ? null : onGenerate,
-              icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-              label: Text(busy ? 'Generating…' : 'Generate PDF'),
+      elevation: 0,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: SwiftColors.border),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 10,
+              offset: Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: busy ? null : onGenerate,
+                icon: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                label: Text(busy ? 'Generating…' : 'Generate PDF'),
+              ),
             ),
           ),
         ),
@@ -2751,13 +2860,14 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
     return Padding(
-      padding: EdgeInsets.only(bottom: dense ? 8 : 8),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Card(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             dense ? 12 : 14,
-            dense ? 8 : 10,
+            dense ? 10 : 12,
             dense ? 12 : 14,
             dense ? 10 : 12,
           ),
@@ -2777,16 +2887,17 @@ class _Card extends StatelessWidget {
                             fontFamily: 'Oswald',
                             fontWeight: FontWeight.w600,
                             fontSize: dense ? 14 : 15,
-                            color: SwiftColors.ink,
+                            color: chrome.ink,
                             letterSpacing: 0.3,
                           ),
                         ),
-                        const SizedBox(height: 1),
+                        const SizedBox(height: 2),
                         Text(
                           hint,
                           style: TextStyle(
                             fontSize: dense ? 11 : 12,
-                            color: SwiftColors.muted,
+                            color: chrome.muted,
+                            height: 1.3,
                           ),
                         ),
                       ],
@@ -2795,7 +2906,7 @@ class _Card extends StatelessWidget {
                   ?trailing,
                 ],
               ),
-              SizedBox(height: dense ? 6 : 8),
+              SizedBox(height: dense ? 8 : 10),
               child,
             ],
           ),
@@ -2839,6 +2950,7 @@ class _RecreateCheckbox extends StatelessWidget {
         : 'Online: Fly.io Python cloud tracer. Offline: on-device Rust. '
             'Strips background, rebuilds clean vectors, stores SVG + '
             'crisp PNG. Slower — usually ~5–30 s (cold start may add a bit).';
+    final chrome = SwiftChromeColors.of(context);
     return Tooltip(
       message: 'Vectorize and clean the next logo before saving.',
       child: InkWell(
@@ -2867,20 +2979,20 @@ class _RecreateCheckbox extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Recreate (vectorize & clean background)',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: SwiftColors.ink,
+                        color: chrome.ink,
                       ),
                     ),
                     const SizedBox(height: 1),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: SwiftColors.muted,
+                        color: chrome.muted,
                       ),
                     ),
                   ],

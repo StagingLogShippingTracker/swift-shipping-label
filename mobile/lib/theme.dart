@@ -2,10 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-/// Shared brand tokens — keep in sync with Windows `fill_shipping_label.py`.
+/// Shared brand tokens — keep in sync with Windows `fill_shipping_label.py`
+/// and PDF brand stripe (`PdfColor` `#CE4E30`).
 class SwiftColors {
   static const accent = Color(0xFFCE4E30);
+  static const accentHover = Color(0xFFB8442A);
+  static const accentPressed = Color(0xFFA33C26);
   static const accentSoft = Color(0xFFF8EBE7);
+  static const accentOn = Color(0xFFFFE8E0);
   static const bg = Color(0xFFF4F2EF);
   static const surface = Color(0xFFFFFFFF);
   static const ink = Color(0xFF1A1A1A);
@@ -14,6 +18,7 @@ class SwiftColors {
   /// Slightly cooler panel wash for desktop chrome (rails / sidebars).
   static const panel = Color(0xFFF7F5F2);
   static const railSelected = Color(0xFFF3E4DF);
+  static const inputFill = Color(0xFFFAFAF8);
 
   // Dark-mode counterparts (Windows View → Dark mode).
   static const darkBg = Color(0xFF121417);
@@ -24,6 +29,25 @@ class SwiftColors {
   static const darkBorder = Color(0xFF2E333A);
   static const darkAccentSoft = Color(0xFF3A221C);
   static const darkRailSelected = Color(0xFF4A2A22);
+  static const darkInputFill = Color(0xFF15181C);
+  static const darkElevated = Color(0xFF2A2E35);
+}
+
+/// Spacing scale — prefer these over magic numbers in chrome widgets.
+class SwiftSpace {
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 24;
+}
+
+/// Corner radii: desktop tighter, mobile more touch-friendly.
+class SwiftRadius {
+  static double card(bool desktop) => desktop ? 8 : 14;
+  static double control(bool desktop) => desktop ? 6 : 10;
+  static double dialog(bool desktop) => desktop ? 10 : 16;
+  static double chip(bool desktop) => desktop ? 6 : 8;
 }
 
 class SwiftTheme {
@@ -50,14 +74,28 @@ class SwiftTheme {
         dark ? SwiftColors.darkAccentSoft : SwiftColors.accentSoft;
     final railSelected =
         dark ? SwiftColors.darkRailSelected : SwiftColors.railSelected;
-    final inputFill = dark ? const Color(0xFF15181C) : const Color(0xFFFAFAF8);
+    final inputFill =
+        dark ? SwiftColors.darkInputFill : SwiftColors.inputFill;
     final chromePanel = dark ? SwiftColors.darkPanel : SwiftColors.panel;
+    final elevated = dark ? SwiftColors.darkElevated : SwiftColors.ink;
+
+    final cardR = SwiftRadius.card(desktop);
+    final controlR = SwiftRadius.control(desktop);
+    final dialogR = SwiftRadius.dialog(desktop);
 
     final base = ColorScheme.fromSeed(
       seedColor: SwiftColors.accent,
       primary: SwiftColors.accent,
       surface: surface,
       brightness: brightness,
+    );
+
+    final labelStyle = TextStyle(
+      fontFamily: 'Oswald',
+      fontSize: 12 * scale,
+      fontWeight: FontWeight.w500,
+      color: muted,
+      letterSpacing: 0.6,
     );
 
     return ThemeData(
@@ -68,16 +106,57 @@ class SwiftTheme {
       colorScheme: base.copyWith(
         primary: SwiftColors.accent,
         onPrimary: Colors.white,
+        secondary: SwiftColors.accent,
+        onSecondary: Colors.white,
         surface: surface,
         onSurface: ink,
+        onSurfaceVariant: muted,
+        outline: border,
+        error: const Color(0xFFB3261E),
       ),
       scaffoldBackgroundColor: bg,
+      canvasColor: bg,
       fontFamily: 'Calibri',
       textTheme: ThemeData(brightness: brightness).textTheme.apply(
             fontFamily: 'Calibri',
             bodyColor: ink,
             displayColor: ink,
             fontSizeFactor: scale,
+          ).copyWith(
+            titleLarge: TextStyle(
+              fontFamily: 'Oswald',
+              fontWeight: FontWeight.w600,
+              fontSize: (desktop ? 20 : 22) * scale,
+              letterSpacing: 0.3,
+              color: ink,
+            ),
+            titleMedium: TextStyle(
+              fontFamily: 'Oswald',
+              fontWeight: FontWeight.w600,
+              fontSize: (desktop ? 15 : 16) * scale,
+              letterSpacing: 0.3,
+              color: ink,
+            ),
+            titleSmall: TextStyle(
+              fontFamily: 'Oswald',
+              fontWeight: FontWeight.w600,
+              fontSize: 13 * scale,
+              letterSpacing: 0.4,
+              color: ink,
+            ),
+            labelLarge: TextStyle(
+              fontFamily: 'Oswald',
+              fontWeight: FontWeight.w600,
+              fontSize: 13 * scale,
+              letterSpacing: 0.4,
+              color: ink,
+            ),
+            bodySmall: TextStyle(
+              fontFamily: 'Calibri',
+              fontSize: 12 * scale,
+              color: muted,
+              height: 1.35,
+            ),
           ),
       appBarTheme: AppBarTheme(
         backgroundColor: desktop
@@ -102,6 +181,9 @@ class SwiftTheme {
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: chromePanel,
         indicatorColor: railSelected,
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
         selectedIconTheme: const IconThemeData(
           color: SwiftColors.accent,
           size: 22,
@@ -127,8 +209,9 @@ class SwiftTheme {
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(desktop ? 8 : 14),
+          borderRadius: BorderRadius.circular(cardR),
           side: BorderSide(color: border),
         ),
         margin: EdgeInsets.zero,
@@ -139,14 +222,13 @@ class SwiftTheme {
         isDense: true,
         contentPadding: EdgeInsets.symmetric(
           horizontal: 12,
-          vertical: desktop ? 8 : 10,
+          vertical: desktop ? 8 : 11,
         ),
-        labelStyle: TextStyle(
-          fontFamily: 'Oswald',
-          fontSize: 12 * scale,
-          fontWeight: FontWeight.w500,
-          color: muted,
-          letterSpacing: 0.6,
+        labelStyle: labelStyle,
+        hintStyle: TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 13 * scale,
+          color: muted.withValues(alpha: 0.85),
         ),
         floatingLabelStyle: TextStyle(
           fontFamily: 'Oswald',
@@ -155,22 +237,32 @@ class SwiftTheme {
           color: SwiftColors.accent,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 6 : 10),
+          borderRadius: BorderRadius.circular(controlR),
           borderSide: BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 6 : 10),
+          borderRadius: BorderRadius.circular(controlR),
           borderSide: BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 6 : 10),
-          borderSide: const BorderSide(color: SwiftColors.accent, width: 1.4),
+          borderRadius: BorderRadius.circular(controlR),
+          borderSide: BorderSide(
+            color: SwiftColors.accent,
+            width: desktop ? 1.4 : 1.5,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(controlR),
+          borderSide: const BorderSide(color: Color(0xFFB3261E)),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: SwiftColors.accent,
           foregroundColor: Colors.white,
+          disabledBackgroundColor:
+              SwiftColors.accent.withValues(alpha: 0.38),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
           elevation: 0,
           padding: EdgeInsets.symmetric(
             horizontal: desktop ? 18 : 22,
@@ -183,8 +275,18 @@ class SwiftTheme {
             letterSpacing: 0.4,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(desktop ? 6 : 10),
+            borderRadius: BorderRadius.circular(controlR),
           ),
+        ).copyWith(
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return Colors.black.withValues(alpha: 0.14);
+            }
+            if (states.contains(WidgetState.hovered)) {
+              return Colors.black.withValues(alpha: 0.08);
+            }
+            return null;
+          }),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -201,7 +303,11 @@ class SwiftTheme {
             fontSize: 13 * scale,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(desktop ? 6 : 10),
+            borderRadius: BorderRadius.circular(controlR),
+          ),
+        ).copyWith(
+          overlayColor: WidgetStatePropertyAll(
+            SwiftColors.accent.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -213,6 +319,12 @@ class SwiftTheme {
             fontWeight: FontWeight.w600,
             fontSize: 13 * scale,
           ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: muted,
+          hoverColor: SwiftColors.accent.withValues(alpha: 0.08),
         ),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
@@ -230,32 +342,148 @@ class SwiftTheme {
             return muted;
           }),
           side: WidgetStatePropertyAll(BorderSide(color: border)),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(controlR),
+            ),
+          ),
+          visualDensity: desktop
+              ? VisualDensity.compact
+              : VisualDensity.standard,
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(
+              horizontal: desktop ? 10 : 8,
+              vertical: desktop ? 8 : 10,
+            ),
+          ),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: dark ? const Color(0xFF2A2E35) : SwiftColors.ink,
-        contentTextStyle:
-            const TextStyle(fontFamily: 'Calibri', color: Colors.white),
+        backgroundColor: elevated,
+        contentTextStyle: const TextStyle(
+          fontFamily: 'Calibri',
+          color: Colors.white,
+          fontSize: 13,
+        ),
+        actionTextColor: SwiftColors.accentOn,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(desktop ? 8 : 10),
         ),
+        elevation: 4,
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: desktop ? 8 : 6,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(desktop ? 10 : 16),
+          borderRadius: BorderRadius.circular(dialogR),
+          side: BorderSide(color: border.withValues(alpha: 0.6)),
         ),
+        titleTextStyle: TextStyle(
+          fontFamily: 'Oswald',
+          fontWeight: FontWeight.w600,
+          fontSize: 18 * scale,
+          letterSpacing: 0.3,
+          color: ink,
+        ),
+        contentTextStyle: TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 14 * scale,
+          color: ink,
+          height: 1.4,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(dialogR),
+          ),
+        ),
+        dragHandleColor: border,
+        showDragHandle: true,
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: SwiftColors.accent,
+        unselectedLabelColor: muted,
+        indicatorColor: SwiftColors.accent,
+        labelStyle: TextStyle(
+          fontFamily: 'Oswald',
+          fontWeight: FontWeight.w600,
+          fontSize: 13 * scale,
+          letterSpacing: 0.3,
+        ),
+        unselectedLabelStyle: TextStyle(
+          fontFamily: 'Oswald',
+          fontWeight: FontWeight.w500,
+          fontSize: 13 * scale,
+        ),
+        dividerColor: border,
+      ),
+      listTileTheme: ListTileThemeData(
+        dense: desktop,
+        iconColor: muted,
+        textColor: ink,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: desktop ? 8 : 12,
+        ),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return null;
+        }),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+        side: BorderSide(color: border, width: 1.4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(3),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.white;
+          }
+          return muted;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return border;
+        }),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: SwiftColors.accent,
+        linearTrackColor: SwiftColors.accentSoft,
       ),
       menuBarTheme: MenuBarThemeData(
         style: MenuStyle(
           backgroundColor: WidgetStatePropertyAll(surface),
           elevation: const WidgetStatePropertyAll(0),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 4),
+          ),
+          shape: const WidgetStatePropertyAll(
+            RoundedRectangleBorder(),
+          ),
         ),
       ),
       menuButtonTheme: MenuButtonThemeData(
         style: ButtonStyle(
           foregroundColor: WidgetStatePropertyAll(ink),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused)) {
+              return accentSoft;
+            }
+            return null;
+          }),
           textStyle: WidgetStatePropertyAll(
             TextStyle(
               fontFamily: 'Calibri',
@@ -263,6 +491,20 @@ class SwiftTheme {
               fontWeight: FontWeight.w600,
             ),
           ),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(controlR),
+          side: BorderSide(color: border),
+        ),
+        textStyle: TextStyle(
+          fontFamily: 'Calibri',
+          fontSize: 13 * scale,
+          color: ink,
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -273,7 +515,7 @@ class SwiftTheme {
       tooltipTheme: TooltipThemeData(
         waitDuration: const Duration(milliseconds: 400),
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFF2A2E35) : SwiftColors.ink,
+          color: elevated,
           borderRadius: BorderRadius.circular(6),
         ),
         textStyle: const TextStyle(
@@ -281,14 +523,6 @@ class SwiftTheme {
           fontSize: 12,
           color: Colors.white,
         ),
-      ),
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return SwiftColors.accent;
-          }
-          return null;
-        }),
       ),
       extensions: <ThemeExtension<dynamic>>[
         SwiftChromeColors(
@@ -298,6 +532,8 @@ class SwiftTheme {
           ink: ink,
           muted: muted,
           border: border,
+          accentSoft: accentSoft,
+          elevated: elevated,
         ),
       ],
     );
@@ -313,6 +549,8 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
     required this.ink,
     required this.muted,
     required this.border,
+    this.accentSoft = SwiftColors.accentSoft,
+    this.elevated = SwiftColors.ink,
   });
 
   final Color bg;
@@ -321,6 +559,8 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
   final Color ink;
   final Color muted;
   final Color border;
+  final Color accentSoft;
+  final Color elevated;
 
   static SwiftChromeColors of(BuildContext context) {
     return Theme.of(context).extension<SwiftChromeColors>() ??
@@ -342,6 +582,8 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
     Color? ink,
     Color? muted,
     Color? border,
+    Color? accentSoft,
+    Color? elevated,
   }) {
     return SwiftChromeColors(
       bg: bg ?? this.bg,
@@ -350,6 +592,8 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
       ink: ink ?? this.ink,
       muted: muted ?? this.muted,
       border: border ?? this.border,
+      accentSoft: accentSoft ?? this.accentSoft,
+      elevated: elevated ?? this.elevated,
     );
   }
 
@@ -363,6 +607,8 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
       ink: Color.lerp(ink, other.ink, t)!,
       muted: Color.lerp(muted, other.muted, t)!,
       border: Color.lerp(border, other.border, t)!,
+      accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
+      elevated: Color.lerp(elevated, other.elevated, t)!,
     );
   }
 }

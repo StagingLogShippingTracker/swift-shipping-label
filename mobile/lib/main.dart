@@ -18,7 +18,10 @@ Future<void> main() async {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
         systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
       ),
     );
@@ -35,9 +38,7 @@ Future<void> main() async {
   );
 }
 
-/// App-level theme + UI settings (Windows dark mode persists here).
-// See app_theme_scope.dart
-
+/// App-level theme + UI settings (Windows dark mode persists via [AppThemeScope]).
 class SwiftShippingLabelApp extends StatefulWidget {
   const SwiftShippingLabelApp({
     super.key,
