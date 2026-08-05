@@ -10,6 +10,23 @@ import 'logo_image_process.dart';
 import 'logo_import_options.dart';
 import 'logo_recreate.dart';
 
+/// Result of [AppStorage.importLogoBytes] / [AppStorage.importLogo].
+class ImportLogoResult {
+  const ImportLogoResult({
+    required this.file,
+    this.recreateSucceeded,
+    this.recreateError,
+  });
+
+  final File file;
+
+  /// `null` when Recreate was not requested; otherwise whether vectorize succeeded.
+  final bool? recreateSucceeded;
+
+  /// Present when Recreate was requested but failed or was unavailable.
+  final String? recreateError;
+}
+
 /// App-private storage for presets, logos, and generated PDFs.
 class AppStorage {
   AppStorage._(this.root);
@@ -222,7 +239,7 @@ class AppStorage {
     if (changed) await savePresets();
   }
 
-  Future<File> importLogo(
+  Future<ImportLogoResult> importLogo(
     File source, {
     String? preferredName,
     bool recreate = false,
@@ -248,11 +265,10 @@ class AppStorage {
   ///   already transparent, or the corners disagree, the input passes through
   ///   unchanged.
   /// - `recreate == true`: hand the raster to the premium recreate pipeline.
-  ///   Priority: Windows local Python Bezier → on-device Rust
-  ///   (`native/logo_recreate`) → Supabase cloud vtracer fallback.
-  ///   Failures degrade gracefully to the raw raster with a diagnostic on
-  ///   `onLog`.
-  Future<File> importLogoBytes(
+  ///   Priority: Windows local Python Bezier → Fly cloud → on-device Rust
+  ///   (`native/logo_recreate`) → Supabase last. Failures degrade gracefully
+  ///   to the processed raster with diagnostics on `onLog` / [ImportLogoResult].
+  Future<ImportLogoResult> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
     bool recreate = false,
@@ -308,6 +324,7 @@ class AppStorage {
     List<int> outputBytes = working;
     Uint8List? recreatedSvg;
     var usedRecreate = false;
+    String? recreateError;
 
     if (recreate && await LogoRecreate.isAvailable()) {
       Directory? work;
@@ -328,6 +345,7 @@ class AppStorage {
         usedRecreate = true;
         onLog?.call('Recreate: success');
       } catch (e) {
+        recreateError = '$e';
         onLog?.call('Recreate failed, kept original: $e');
         outputBytes = working;
         usedRecreate = false;
@@ -339,7 +357,8 @@ class AppStorage {
         }
       }
     } else if (recreate) {
-      onLog?.call(await LogoRecreate.diagnostic());
+      recreateError = await LogoRecreate.diagnostic();
+      onLog?.call(recreateError);
     }
 
     // Non-recreate path: apply raster options (bg removal, auto-crop).
@@ -363,7 +382,11 @@ class AppStorage {
         await File(svgPath).writeAsBytes(recreatedSvg, flush: true);
       } catch (_) {}
     }
-    return dest;
+    return ImportLogoResult(
+      file: dest,
+      recreateSucceeded: recreate ? usedRecreate : null,
+      recreateError: recreateError,
+    );
   }
 
   /// Write PDF under [filledDir], uniquifying with `(1)`, `(2)`, … if needed

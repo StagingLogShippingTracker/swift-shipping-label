@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -147,16 +148,35 @@ class AppUpdateService {
   );
 
   Future<AppReleaseInfo> fetchLatestRelease() async {
-    final res = await http.get(
-      Uri.parse(AppConfig.githubLatestReleaseApi),
-      headers: const {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'SwiftDocumentGenerator',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    );
+    late final http.Response res;
+    try {
+      res = await http
+          .get(
+            Uri.parse(AppConfig.githubLatestReleaseApi),
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'SwiftDocumentGenerator',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw Exception(
+        'Update check timed out. Check your network and try again.',
+      );
+    } on SocketException {
+      throw Exception(
+        'Could not reach GitHub. Check your network and try again.',
+      );
+    }
     if (res.statusCode == 404) {
       throw Exception('No GitHub releases published yet.');
+    }
+    if (res.statusCode == 403 || res.statusCode == 429) {
+      throw Exception(
+        'GitHub rate-limited the update check (HTTP ${res.statusCode}). '
+        'Wait a minute or open Releases in the browser.',
+      );
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('Could not check for updates (HTTP ${res.statusCode}).');

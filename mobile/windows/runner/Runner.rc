@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.swiftoilfield" "\0"
-            VALUE "FileDescription", "swift_shipping_label" "\0"
+            VALUE "FileDescription", "Swift Document Generator" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "swift_shipping_label" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.swiftoilfield. All rights reserved." "\0"
             VALUE "OriginalFilename", "swift_shipping_label.exe" "\0"
-            VALUE "ProductName", "swift_shipping_label" "\0"
+            VALUE "ProductName", "Swift Document Generator" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -144,11 +144,24 @@ class _InstallProgressDialogState extends State<_InstallProgressDialog> {
   }
 }
 
-/// Header Update control — bottom sheet on all supported platforms.
+/// Header Update control — dialog on Windows, bottom sheet on mobile.
 Future<void> showUpdateFlow(BuildContext context) async {
   if (kIsWeb) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Updates are not supported on web.')),
+    );
+    return;
+  }
+
+  if (Platform.isWindows) {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: const _UpdateSheet(asDialog: true),
+        ),
+      ),
     );
     return;
   }
@@ -165,7 +178,9 @@ Future<void> showUpdateFlow(BuildContext context) async {
 }
 
 class _UpdateSheet extends StatefulWidget {
-  const _UpdateSheet();
+  const _UpdateSheet({this.asDialog = false});
+
+  final bool asDialog;
 
   @override
   State<_UpdateSheet> createState() => _UpdateSheetState();
@@ -282,12 +297,13 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         : '${_info!.version}+${_info!.buildNumber}';
     final busy = _checking;
     final isAndroid = Platform.isAndroid;
+    final asDialog = widget.asDialog;
 
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           20,
-          12,
+          asDialog ? 20 : 12,
           20,
           20 + MediaQuery.viewInsetsOf(context).bottom,
         ),
@@ -295,25 +311,39 @@ class _UpdateSheetState extends State<_UpdateSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: SwiftColors.border,
-                  borderRadius: BorderRadius.circular(2),
+            if (!asDialog) ...[
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: SwiftColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Update',
-              style: TextStyle(
-                fontFamily: 'Oswald',
-                fontWeight: FontWeight.w600,
-                fontSize: 18,
-                color: SwiftColors.ink,
-              ),
+              const SizedBox(height: 16),
+            ],
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Update',
+                    style: TextStyle(
+                      fontFamily: 'Oswald',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                      color: SwiftColors.ink,
+                    ),
+                  ),
+                ),
+                if (asDialog)
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close),
+                  ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(

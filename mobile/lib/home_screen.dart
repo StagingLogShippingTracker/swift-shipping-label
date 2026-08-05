@@ -14,6 +14,7 @@ import 'signature_sync.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'logo_import_options.dart';
+import 'form_scroll_text_field.dart';
 import 'pdf/bol_label_pdf.dart';
 import 'pdf/shipping_label_pdf.dart';
 import 'platform_io.dart';
@@ -158,9 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<String> _logoPaths = [];
   bool _busy = false;
   bool _findingLogo = false;
-  /// When true, next logo import runs through the premium Python vectorizer
-  /// (bg strip + manual-quality trace). Default false — raster stored as-is
-  /// (with the light [LogoImageProcessor] fast trim already applied).
+  /// When true, next logo import runs through the premium Recreate pipeline
+  /// (Windows: Python → Fly → Rust; Android: Fly → Rust). Default false.
   bool _recreateLogo = false;
   bool _recreatingLogo = false;
   LabelKind _kind = LabelKind.shipping;
@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final v = _normalizeFreightCharges(
       _controllers[BolFields.freightCharges]?.text ?? '',
     );
-    return v.isEmpty ? {} : {v};
+    return {v.isEmpty ? BolFields.freightPrepaid : v};
   }
 
   int _detectBolLineCount() {
@@ -396,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
         logoNames.add(p.basename(lp.path));
       } else {
         final imported = await widget.storage.importLogo(lp);
-        logoNames.add(p.basename(imported.path));
+        logoNames.add(p.basename(imported.file.path));
       }
     }
 
@@ -488,7 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final recreate = _recreateLogo;
     if (recreate) setState(() => _recreatingLogo = true);
     try {
-      final file = await widget.storage.importLogoBytes(
+      final result = await widget.storage.importLogoBytes(
         bytes,
         preferredName: preferredName,
         recreate: recreate,
@@ -496,6 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onLog: (line) => debugPrint('[recreate] $line'),
       );
       if (!mounted) return;
+      final file = result.file;
       if (onImported != null) {
         onImported(file.path);
       } else {
@@ -505,6 +506,26 @@ class _HomeScreenState extends State<HomeScreen> {
             _logoPaths.add(file.path);
           }
         });
+      }
+      if (recreate && mounted) {
+        if (result.recreateSucceeded == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recreate finished — logo cleaned.')),
+          );
+        } else {
+          final detail = (result.recreateError ?? 'unknown error').trim();
+          final short = detail.length > 140
+              ? '${detail.substring(0, 140)}…'
+              : detail;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Recreate failed — imported original instead. $short',
+              ),
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
       }
     } finally {
       if (recreate && mounted) setState(() => _recreatingLogo = false);
@@ -662,6 +683,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (picked == null || !mounted) return;
+
+    // Attach an existing stored logo without re-importing a duplicate file.
+    // When Recreate is on, re-run the edit/vectorize pipeline on a fresh copy.
+    if (!_recreateLogo) {
+      setState(() {
+        if (_logoPaths.length < maxCustomerLogos &&
+            !_logoPaths.contains(picked.path)) {
+          _logoPaths.add(picked.path);
+        }
+      });
+      return;
+    }
+
     final bytes = await picked.readAsBytes();
     await _importBytesWithPrompt(
       bytes,
@@ -1108,6 +1142,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (_kind == LabelKind.bol) {
       _bolLineCount = 1;
+      _setField(BolFields.freightCharges, BolFields.freightPrepaid);
     }
     setState(() {});
   }
@@ -1117,6 +1152,7 @@ class _HomeScreenState extends State<HomeScreen> {
       c.clear();
     }
     _bolLineCount = 1;
+    _setField(BolFields.freightCharges, BolFields.freightPrepaid);
     setState(() {});
   }
 
@@ -1554,13 +1590,22 @@ class _HomeScreenState extends State<HomeScreen> {
             : 3;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: TextField(
-        controller: _controllers[key],
-        maxLines: lines,
-        decoration: InputDecoration(
-          labelText: m.$2.toUpperCase(),
-        ),
-      ),
+      child: lines <= 1
+          ? TextField(
+              controller: _controllers[key],
+              maxLines: 1,
+              decoration: InputDecoration(
+                labelText: m.$2.toUpperCase(),
+              ),
+            )
+          : FormScrollTextField(
+              controller: _controllers[key]!,
+              minLines: 1,
+              maxLines: lines,
+              decoration: InputDecoration(
+                labelText: m.$2.toUpperCase(),
+              ),
+            ),
     );
   }
 
@@ -1626,19 +1671,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           SegmentedButton<String>(
-            emptySelectionAllowed: true,
+            emptySelectionAllowed: false,
+            showSelectedIcon: false,
             segments: [
               for (final o in BolFields.freightChargeOptions)
                 ButtonSegment<String>(
                   value: o.$1,
-                  label: Text(o.$2),
+                  label: Text(o.$2, textAlign: TextAlign.center),
                 ),
             ],
-            selected: _selectedFreightCharges(),
+            selected: _selectedFreightCharges().isEmpty
+                ? {BolFields.freightPrepaid}
+                : _selectedFreightCharges(),
             onSelectionChanged: (selection) {
               _setField(
                 BolFields.freightCharges,
-                selection.isEmpty ? '' : selection.first,
+                selection.isEmpty
+                    ? BolFields.freightPrepaid
+                    : selection.first,
               );
               setState(() {});
             },
@@ -2275,14 +2325,14 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           RepaintBoundary(child: _Header(busy: _busy)),
-          Expanded(
-            child: ListView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          // Pin document-type switching so it never scrolls away with the form.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildMobileKindSelector(),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   _kindHint,
                   style: const TextStyle(
@@ -2291,11 +2341,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 1.3,
                   ),
                 ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              children: [
                 if (_kind == LabelKind.bol) ...[
-                  const SizedBox(height: 10),
                   _buildBolCopiesCard(),
+                  const SizedBox(height: 10),
                 ],
-                const SizedBox(height: 10),
                 _buildPresetCard(),
                 _buildLogosCard(),
                 ..._buildDocumentFormCards(dualColumn: false),

@@ -2,13 +2,22 @@
 
 Platform-branched UI so **Windows** feels like a native productivity app while **Android** keeps the existing mobile layout.
 
-## What changed (this pass)
+## What changed
 
-### Shell
+### Shell (v1.1.44+)
 - **NavigationRail** for Shipping / Receiving / BOL (labels extend on wide windows).
 - **Compact toolbar** (surface, not full orange mobile header): brand mark, app name, current document type, **Update** + **Generate PDF**.
 - **Split layout** (≥1180px): scrollable form left, fixed **Workspace** pane right (presets, logos/Recreate, BOL copies, sticky Generate).
 - Narrower Windows widths keep Generate in the toolbar and fold Workspace cards into the main scroll.
+
+### QA follow-ups (v1.1.45)
+- Win32 + VERSIONINFO product name **Swift Document Generator**.
+- Multiline fields prefer **form scroll** (wheel / PageUp / PageDown) when content does not overflow.
+- Android document-type selector **pinned** above the scrollable form.
+- Freight charges always selected (defaults to Prepaid); 3rd-party billing saved in BOL presets.
+- Add-from-storage attaches existing files (no duplicate) unless Recreate is on.
+- Recreate success/failure **SnackBars**; **No crop** skips background removal.
+- Update check: 20s timeout, clearer rate-limit errors; **dialog** on Windows.
 
 ### Forms & chrome
 - **Two-column** single-line fields on Windows; multiline fields stay full width.
@@ -23,8 +32,9 @@ Platform-branched UI so **Windows** feels like a native productivity app while *
 
 ## Files
 - `mobile/lib/home_screen.dart` — dual scaffolds + shared section builders
+- `mobile/lib/form_scroll_text_field.dart` — desktop scroll forwarding
 - `mobile/lib/theme.dart` — Windows density / rail / card tokens
-- `mobile/windows/runner/main.cpp` — title + default size
+- `mobile/windows/runner/main.cpp` / `Runner.rc` — title + product name
 
 ## Next polish backlog
 1. Live PDF / label preview pane (replace or complement Workspace).

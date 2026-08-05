@@ -219,6 +219,7 @@ List<String> presetKeysFor(LabelKind kind) {
         BolFields.consigneeContactName,
         BolFields.consigneeContactNumber,
         BolFields.freightCharges,
+        BolFields.thirdPartyBilling,
         BolFields.packingList,
         LabelFields.salesOrder,
         BolFields.driverCompany,

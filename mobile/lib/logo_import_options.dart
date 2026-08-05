@@ -15,7 +15,7 @@ enum LogoCropMode {
   String get label => switch (this) {
         LogoCropMode.auto => 'Auto-crop',
         LogoCropMode.manual => 'Manual crop',
-        LogoCropMode.none => 'Leave as is',
+        LogoCropMode.none => 'No crop',
       };
 }
 
@@ -160,10 +160,26 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                     ButtonSegment(value: mode, label: Text(mode.label)),
                 ],
                 selected: {_cropMode},
-                onSelectionChanged: (s) =>
-                    setState(() => _cropMode = s.first),
+                onSelectionChanged: (s) {
+                  final mode = s.first;
+                  setState(() {
+                    _cropMode = mode;
+                    // "No crop" means keep the file untouched — also skip BG strip.
+                    if (mode == LogoCropMode.none) {
+                      _removeBg = false;
+                    }
+                  });
+                },
               ),
-              if (!widget.recreate) ...[
+              if (_cropMode == LogoCropMode.none && !widget.recreate)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Imports the image without cropping or background removal.',
+                    style: TextStyle(fontSize: 12, color: SwiftColors.muted),
+                  ),
+                ),
+              if (!widget.recreate && _cropMode != LogoCropMode.none) ...[
                 const SizedBox(height: 14),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -205,7 +221,8 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                       manualCropRect: _manualCrop,
                     )
                   : LogoImportOptions.standard(
-                      removeBackground: _removeBg,
+                      removeBackground:
+                          _cropMode == LogoCropMode.none ? false : _removeBg,
                       cropMode: _cropMode,
                       manualCropRect: _manualCrop,
                     ),

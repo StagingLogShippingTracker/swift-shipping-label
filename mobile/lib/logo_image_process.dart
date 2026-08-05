@@ -30,6 +30,11 @@ class LogoImageProcessor {
     Uint8List input,
     LogoImportOptions options,
   ) {
+    // True leave-as-is: no crop and no background strip.
+    if (options.cropMode == LogoCropMode.none && !options.removeBackground) {
+      return input;
+    }
+
     final decoded = img.decodeImage(input);
     if (decoded == null) return input;
 

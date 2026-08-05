@@ -292,11 +292,11 @@ class PresetSync {
     final res = await http.get(uri).timeout(_timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) return null;
 
-    dest = await storage.importLogoBytes(
+    final imported = await storage.importLogoBytes(
       res.bodyBytes,
       preferredName: fileName,
     );
-    return p.basename(dest.path);
+    return p.basename(imported.file.path);
   }
 
   static String _logoStoragePath(
