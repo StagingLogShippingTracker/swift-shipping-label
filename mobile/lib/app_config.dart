@@ -27,4 +27,14 @@ class AppConfig {
     'RETOOL_CLEARBIT_LOGO_URL',
     defaultValue: '',
   );
+
+  /// Cloud Recreate fallback (Supabase Deno/`vtracer` edge function).
+  /// Preferred paths are Windows local Python and on-device Rust — see
+  /// `logo_recreate.dart`. Override with `--dart-define=RECREATE_LOGO_URL=...`.
+  /// Do not point this at Fly.io (that experiment was aborted).
+  static const recreateLogoUrl = String.fromEnvironment(
+    'RECREATE_LOGO_URL',
+    defaultValue:
+        'https://gdrpdiwykmnybmkadlrv.supabase.co/functions/v1/recreate-logo',
+  );
 }

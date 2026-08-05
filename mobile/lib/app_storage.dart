@@ -248,12 +248,8 @@ class AppStorage {
   ///   already transparent, or the corners disagree, the input passes through
   ///   unchanged.
   /// - `recreate == true`: hand the raster to the premium recreate pipeline.
-  ///   On Windows this runs `tools/logo_vectorizer --recreate-customer`
-  ///   locally (manual-quality Bezier fitter). On Android — and as a Windows
-  ///   fallback — it calls the shared Supabase edge function `recreate-logo`,
-  ///   which performs the same background strip → color-region trace →
-  ///   SVG + rasterized PNG using vtracer/resvg WASM. Either way the caller
-  ///   gets a clean transparent PNG plus (when available) an SVG derivative.
+  ///   Priority: Windows local Python Bezier → on-device Rust
+  ///   (`native/logo_recreate`) → Supabase cloud vtracer fallback.
   ///   Failures degrade gracefully to the raw raster with a diagnostic on
   ///   `onLog`.
   Future<File> importLogoBytes(

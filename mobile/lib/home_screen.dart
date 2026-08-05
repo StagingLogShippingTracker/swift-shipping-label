@@ -2169,13 +2169,10 @@ class _Card extends StatelessWidget {
 /// (with only the existing light `LogoImageProcessor` fast-trim applied).
 ///
 /// The recreate pipeline runs on both Windows and Android:
-///   - Windows prefers the bundled local Python tracer (highest
-///     fidelity manual-Bezier fitter) and falls back to the shared
-///     cloud service if Python isn't installed alongside the app.
-///   - Android always calls the shared Supabase edge function
-///     `recreate-logo`, which runs the same background strip → color-
-///     region trace → SVG + rasterize pipeline in Deno + WASM. Output
-///     quality is equivalent to the local path for real customer logos.
+///   - Windows prefers local Python (manual Bezier), then on-device Rust,
+///     then Supabase cloud vtracer.
+///   - Android prefers on-device Rust when the native lib is shipped, else
+///     Supabase cloud fallback (Fly.io Python recreate was aborted).
 class _RecreateCheckbox extends StatelessWidget {
   const _RecreateCheckbox({
     required this.value,
@@ -2194,11 +2191,11 @@ class _RecreateCheckbox extends StatelessWidget {
         ? 'Runs the premium tracer on the next logo you find or '
             'upload: strips background, rebuilds it as clean vectors, '
             'stores SVG + crisp PNG. Slower — ~5–30 s '
-            '(local Python fast path, shared cloud fallback).'
-        : 'Runs the shared cloud tracer on the next logo you find or '
-            'upload: strips background, rebuilds it as clean vectors, '
-            'stores SVG + crisp PNG. Slower — usually ~5–15 s over '
-            'network.';
+            '(local Python fast path, Python cloud fallback).'
+        : 'Runs the premium Python cloud tracer on the next logo you '
+            'find or upload: strips background, rebuilds it as clean '
+            'vectors, stores SVG + crisp PNG. Slower — usually ~5–30 s '
+            'over network (cold start may add a bit).';
     return Tooltip(
       message: 'Vectorize and clean the next logo before saving.',
       child: InkWell(

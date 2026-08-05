@@ -5,56 +5,56 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'logo_recreate_cloud.dart';
+import 'logo_recreate_native.dart';
 
 /// Cross-platform "Recreate" bridge.
 ///
-/// Two independent backends produce equivalent premium recreate output:
+/// Backends (priority order):
 ///
-/// * **Windows local** — shells out to `python -m tools.logo_vectorizer
-///   --recreate-customer`, which runs the manual-quality Bezier tracer +
-///   sectional composer. This is the highest-fidelity backend and is kept
-///   unchanged on Windows so we never regress the local UX. It's only
-///   available when a Python 3 interpreter and the `tools/logo_vectorizer`
-///   folder can both be located next to the app.
+/// 1. **Windows local Python** — `tools/logo_vectorizer --recreate-customer`
+///    (manual-quality Bezier + sectional). Highest fidelity when available.
+/// 2. **On-device Rust** — `native/logo_recreate` via `dart:ffi`
+///    ([LogoRecreateNative]). Primary path for Android once the `.so` is
+///    shipped; optional on Windows without Python. MVP uses palette +
+///    contour polylines (Bezier parity is a follow-up).
+/// 3. **Cloud fallback** — Supabase Deno/`vtracer` edge function
+///    ([LogoRecreateCloud]). Used only when local/native paths fail or are
+///    unavailable. **Not** Fly.io (that experiment was aborted).
 ///
-/// * **Cloud (Supabase Edge Function `recreate-logo`)** — runs the same
-///   pipeline (background strip → color-region trace → SVG + rasterized
-///   PNG) on Deno + WASM (vtracer + resvg). This is what Android uses;
-///   Windows falls back to it whenever the local Python path isn't
-///   available.
-///
-/// Both backends return a [LogoRecreateResult] with a rasterized PNG
-/// (transparent background, print-ready) and, when possible, the source
-/// SVG. Callers (see [AppStorage.importLogoBytes]) persist both.
+/// All backends return a [LogoRecreateResult] with a rasterized PNG
+/// (transparent background) and, when possible, the source SVG.
 class LogoRecreate {
   LogoRecreate._();
 
   static Directory? _cachedToolsDir;
   static String? _cachedPython;
 
-  /// Recreate is always available now: local Python on Windows when we
-  /// find it, cloud otherwise. We can only meaningfully answer "yes" when
-  /// the app has *some* path to run — for the cloud path this means we
-  /// trust it will reach Supabase at call time.
+  /// True when at least one backend can be attempted (always true: cloud
+  /// is the last resort; native/Python are opportunistic).
   static Future<bool> isAvailable() async => true;
 
-  /// Which backend we'd use for the next call, in priority order.
+  /// Which backend we'd prefer for the next call.
   static Future<String> diagnostic() async {
     final local = await _resolveLocalBackend();
     if (local != null) {
       return 'Recreate ready — local python=${local.python} '
-          'tools=${local.toolsDir.path} (cloud fallback available)';
+          'tools=${local.toolsDir.path} '
+          '(native + cloud fallback available)';
+    }
+    if (await LogoRecreateNative.isAvailable()) {
+      return await LogoRecreateNative.diagnostic();
     }
     if (Platform.isWindows) {
-      return 'Recreate: local Python not found — using cloud recreate service.';
+      return 'Recreate: local Python not found, native Rust not loaded — '
+          'using Supabase cloud recreate fallback.';
     }
-    return 'Recreate: cloud recreate service (${Platform.operatingSystem}).';
+    return 'Recreate: native Rust not loaded — '
+        'using Supabase cloud recreate fallback (${Platform.operatingSystem}).';
   }
 
-  /// Run recreate on [input]. Prefers local Python on Windows when
-  /// available (highest fidelity) and falls back to the cloud edge
-  /// function otherwise. Throws on total failure; callers catch and
-  /// fall back to the raw raster.
+  /// Run recreate on [input]. Prefers Windows Python, then on-device Rust,
+  /// then cloud. Throws on total failure; callers catch and keep the raw
+  /// raster.
   static Future<LogoRecreateResult> run(
     File input, {
     Directory? scratchDir,
@@ -72,10 +72,38 @@ class LogoRecreate {
           onLog: onLog,
         );
       } catch (e) {
-        onLog?.call('Recreate local failed, trying cloud: $e');
+        onLog?.call('Recreate local Python failed, trying native/cloud: $e');
       }
     }
+
+    if (await LogoRecreateNative.isAvailable()) {
+      try {
+        return await _runNative(input, onLog: onLog);
+      } catch (e) {
+        onLog?.call('Recreate native failed, trying cloud: $e');
+      }
+    }
+
     return _runCloud(input, timeout: timeout, onLog: onLog);
+  }
+
+  static Future<LogoRecreateResult> _runNative(
+    File input, {
+    void Function(String)? onLog,
+  }) async {
+    final bytes = await input.readAsBytes();
+    final native = await LogoRecreateNative.runBytes(bytes, onLog: onLog);
+    return LogoRecreateResult(
+      pngBytes: native.pngBytes,
+      svgBytes: native.svgBytes,
+      workDir: null,
+      log: 'native recreate (${native.elapsed.inMilliseconds}ms, '
+          'sections=${native.sectionCount}, '
+          'palette=${native.paletteHex.join(",")}, '
+          'bg_stripped=${native.backgroundStripped}, '
+          'backend=${native.backend})',
+      backend: LogoRecreateBackend.nativeRust,
+    );
   }
 
   static Future<LogoRecreateResult> _runCloud(
@@ -262,7 +290,7 @@ class LogoRecreate {
   }
 }
 
-enum LogoRecreateBackend { localPython, cloud }
+enum LogoRecreateBackend { localPython, nativeRust, cloud }
 
 class _LocalBackend {
   const _LocalBackend({required this.python, required this.toolsDir});

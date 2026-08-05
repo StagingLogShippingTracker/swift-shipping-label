@@ -7,23 +7,27 @@ import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 
-/// Cross-platform "Recreate" bridge that calls the shared Supabase Edge
-/// Function `recreate-logo`. The function runs the same premium-quality
-/// vectorization pipeline (background strip → color-region trace → SVG +
-/// rasterized PNG) on Supabase's Deno/WASM edge runtime, so Android and
-/// Windows both get equivalent recreate output when the local Python
-/// tool-chain isn't available (i.e. always on Android, opportunistically
-/// on Windows).
+/// Cross-platform "Recreate" bridge that calls the Supabase edge function.
+///
+/// Fallback only — preferred paths are Windows local Python and on-device
+/// Rust (`LogoRecreateNative`). This Deno/`vtracer` function is weaker than
+/// the Python Bezier pipeline but needs no native binary.
+///
+/// Fly.io Python recreate was aborted; do not point here at fly.dev.
 class LogoRecreateCloud {
   LogoRecreateCloud._();
 
-  /// Endpoint of the Edge Function. The Supabase project + anon key already
-  /// ship with the app for BOL serial issuance and preset sync, so this
-  /// reuses the same credentials.
-  static Uri get _endpoint => Uri.parse(
-        '${AppConfig.supabaseUrl}/functions/v1/recreate-logo'
-        '?render_width=3000',
-      );
+  /// Supabase `recreate-logo` edge function. Override via
+  /// [AppConfig.recreateLogoUrl] (`--dart-define=RECREATE_LOGO_URL=...`).
+  static Uri get _endpoint {
+    final base = Uri.parse(AppConfig.recreateLogoUrl);
+    return base.replace(
+      queryParameters: {
+        ...base.queryParameters,
+        'render_width': '3000',
+      },
+    );
+  }
 
   /// True when we're online enough to at least try. We treat unavailable
   /// network as a graceful failure at call time rather than a hard gate,
@@ -32,7 +36,7 @@ class LogoRecreateCloud {
 
   static Future<CloudRecreateResult> run(
     File input, {
-    Duration timeout = const Duration(seconds: 90),
+    Duration timeout = const Duration(seconds: 120),
     void Function(String)? onLog,
   }) async {
     onLog?.call('Recreate (cloud): uploading ${input.path}');
@@ -42,7 +46,7 @@ class LogoRecreateCloud {
 
   static Future<CloudRecreateResult> runBytes(
     List<int> bytes, {
-    Duration timeout = const Duration(seconds: 90),
+    Duration timeout = const Duration(seconds: 120),
     void Function(String)? onLog,
   }) async {
     if (bytes.isEmpty) {
