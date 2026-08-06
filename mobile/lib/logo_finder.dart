@@ -3217,7 +3217,11 @@ class LogoFinder {
     if (n == 'comco' || n.contains('comco pipe')) {
       return const ['comcopipe.com', 'russelmetals.com'];
     }
-    if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
+    // Bare "Apex" in Swift Oilfield flow = Apex Distribution (Russell Metals).
+    if (n == 'apex' ||
+        n.contains('apex valve') ||
+        n == 'apex valves' ||
+        n.contains('apex distribution')) {
       return const ['russelmetals.com', 'apexdistribution.com'];
     }
     // User typo "Sureus" -> Surerus Murphy Joint Venture.
@@ -3308,7 +3312,10 @@ class LogoFinder {
         'https://www.russelmetals.com/wp-content/uploads/comco-pipe-supply-company-1-5.png',
       );
     }
-    if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
+    if (n == 'apex' ||
+        n.contains('apex valve') ||
+        n == 'apex valves' ||
+        n.contains('apex distribution')) {
       urls.add('https://www.russelmetals.com/wp-content/uploads/apex-logo.jpg');
     }
     if (n.contains('sureus') || n.contains('surerus')) {

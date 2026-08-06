@@ -825,57 +825,41 @@ class _HomeScreenState extends State<HomeScreen> {
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
 
+    // MenuItemButton sets an inherited anchor near the menu (bottom-right).
+    // Force the dialog anchor to the window center so DisplayFeatureSubScreen
+    // cannot pin the card off-screen.
+    final viewSize = MediaQuery.sizeOf(context);
     final confirmed = await showGeneralDialog<bool>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss find logo',
       barrierColor: Colors.transparent,
       useRootNavigator: true,
+      anchorPoint: Offset(viewSize.width / 2, viewSize.height / 2),
       transitionDuration: const Duration(milliseconds: 120),
       pageBuilder: (ctx, animation, secondaryAnimation) {
-        // LayoutBuilder uses the real overlay constraints (window), not a
-        // possibly-stale MediaQuery. Absolute Positioned centering avoids the
-        // Windows MenuBar bottom-right clip bug with Dialog/Center.
-        return LayoutBuilder(
-          builder: (ctx, constraints) {
-            final size = MediaQuery.sizeOf(ctx);
-            // Prefer tight window size; ignore absurd LayoutBuilder maxima.
-            final maxW = (constraints.maxWidth.isFinite &&
-                    constraints.maxWidth > 0 &&
-                    constraints.maxWidth <= size.width + 1)
-                ? constraints.maxWidth
-                : size.width;
-            final maxH = (constraints.maxHeight.isFinite &&
-                    constraints.maxHeight > 0 &&
-                    constraints.maxHeight <= size.height + 1)
-                ? constraints.maxHeight
-                : size.height;
-            final cardW = (maxW - 72).clamp(300.0, 420.0);
-            final left = ((maxW - cardW) / 2).clamp(12.0, maxW - cardW);
-            // Vertically center a compact intrinsic-height card (~320px).
-            final top = (maxH * 0.18).clamp(24.0, maxH * 0.28);
-            // SizedBox.expand is required: a Stack of only Positioned children
-            // otherwise collapses and pins to the bottom-right on Windows.
-            return SizedBox.expand(
-              child: Stack(
-              children: [
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.pop(ctx, false),
-                    child: const ColoredBox(color: Color(0x8A000000)),
-                  ),
+        // SizedBox.expand + Center (no MediaQuery math). A Positioned-only
+        // Stack collapses to bottom-right on Windows; MediaQuery width can
+        // also exceed the window and push the card off-screen.
+        return SizedBox.expand(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.pop(ctx, false),
+                  child: const ColoredBox(color: Color(0x8A000000)),
                 ),
-                Positioned(
-                  left: left,
-                  top: top,
-                  width: cardW,
-                  child: Material(
-                    color: Theme.of(ctx).dialogTheme.backgroundColor ??
-                        Theme.of(ctx).colorScheme.surface,
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
+              ),
+              Center(
+                child: Material(
+                  color: Theme.of(ctx).dialogTheme.backgroundColor ??
+                      Theme.of(ctx).colorScheme.surface,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                       child: Column(
@@ -941,13 +925,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-              ],
-            ),
-            );
-          },
+              ),
+            ],
+          ),
         );
       },
     );
+
     if (confirmed != true || !mounted) return;
 
     await widget.storage.saveLogoSearchEngine(selectedEngine.id);
