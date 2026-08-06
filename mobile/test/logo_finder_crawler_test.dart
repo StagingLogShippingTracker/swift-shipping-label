@@ -3,9 +3,10 @@ import 'package:swift_shipping_label/logo_finder.dart';
 
 void main() {
   group('Logo crawler parsers & query expansion', () {
-    test('primary query starts with "{name} logo png"', () {
+    test('primary query starts with bare name then logo variants', () {
       final q = LogoFinder.debugPrimaryQueries('Keyera');
-      expect(q.first, 'Keyera logo png');
+      expect(q.first, 'Keyera');
+      expect(q, contains('Keyera logo png'));
       expect(q, contains('Keyera logo'));
     });
 

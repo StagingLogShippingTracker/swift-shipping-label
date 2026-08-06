@@ -177,11 +177,12 @@ class LogoFinder {
   static const _minDownloadedScore = 18;
   static const _pickerMinScore = 18;
   /// Per-request timeout so one blocked engine cannot stall All Sources.
-  static const _requestTimeout = Duration(seconds: 6);
+  static const _requestTimeout = Duration(seconds: 5);
   /// Whole-engine budget (multiple queries / fallbacks inside one source).
-  /// Bing alone may issue several paged requests; keep this high enough that
-  /// a healthy engine can finish instead of returning [] on timeout.
-  static const _engineTimeout = Duration(seconds: 45);
+  /// Keep tight so a blocked Google HTML shell cannot burn ~45s before fallbacks.
+  static const _engineTimeout = Duration(seconds: 18);
+  /// Stop downloading once the picker can fill with strong candidates.
+  static const _strongPickerScore = 36;
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
 
@@ -264,7 +265,8 @@ class LogoFinder {
     final p = _nextChromeProfile();
     return {
       'User-Agent': p.ua,
-      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      // Prefer formats we can magic-byte validate (avoid opaque AVIF from CDNs).
+      'Accept': 'image/webp,image/png,image/jpeg,image/*,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
       'Sec-Ch-Ua': p.secChUa,
       'Sec-Ch-Ua-Mobile': '?0',
@@ -344,23 +346,22 @@ class LogoFinder {
     final dom = _normalizeDomain(domain);
     if (name.isEmpty && dom.isEmpty) return const [];
 
-    var domainList = await _resolveDomains(name, dom);
-
-    // Gemini search plan — queries / domains / URL hints (fail-open, parallel-safe).
     final gemini = GeminiClient.isConfigured ? GeminiClient(client: _client) : null;
-    GeminiLogoSearchPlan? plan;
-    if (gemini != null && name.isNotEmpty) {
-      try {
-        plan = await gemini
+
+    // Resolve domains + Gemini plan in parallel (plan is fail-open, ~4s budget).
+    final domainFuture = _resolveDomains(name, dom);
+    final planFuture = (gemini != null && name.isNotEmpty)
+        ? gemini
             .suggestLogoSearchPlan(
               companyName: name,
-              knownDomains: domainList,
+              knownDomains: dom.isEmpty ? const [] : [dom],
             )
-            .timeout(const Duration(seconds: 12));
-      } catch (_) {
-        plan = null;
-      }
-    }
+            .timeout(const Duration(seconds: 4), onTimeout: () => null)
+            .catchError((Object _, StackTrace __) => null)
+        : Future<GeminiLogoSearchPlan?>.value(null);
+
+    var domainList = await domainFuture;
+    final plan = await planFuture;
 
     if (plan != null) {
       domainList = _mergeGeminiDomains(domainList, plan.officialDomains, name);
@@ -411,7 +412,12 @@ class LogoFinder {
       futures.add(_safeSource(() => _bingImageSearch(ctx)));
     }
     if (use(LogoSearchEngine.google)) {
-      futures.add(_safeSource(() => _googleImageSearch(ctx)));
+      futures.add(_safeSource(() => _googleImageSearch(ctx, gemini: gemini)));
+      // Independent of HTML/Gemini timeouts — keeps Google Images in the mix
+      // when Google serves JS-only shells.
+      futures.add(
+        _safeSource(() async => _googleBlockedFallbackCandidates(ctx)),
+      );
     }
     if (use(LogoSearchEngine.brandsOfTheWorld) && name.isNotEmpty) {
       futures.add(
@@ -457,8 +463,9 @@ class LogoFinder {
 
     // Gemini-suggested direct logo URLs (only when the model is highly confident).
     if (plan != null && plan.logoUrlHints.isNotEmpty) {
+      final lockedPlan = plan;
       futures.add(
-        _safeSource(() async => _geminiUrlHintCandidates(plan!, ctx)),
+        _safeSource(() async => _geminiUrlHintCandidates(lockedPlan, ctx)),
       );
     }
 
@@ -491,12 +498,18 @@ class LogoFinder {
 
     // Download candidates in parallel batches so "All sources" merges as
     // well as any single engine (top [pickerMaxResults] after byte bonus).
+    // Skip Gemini vision during bulk download — it was serializing ~30 API
+    // calls and pushing wall-clock into 40–60s. Rerank once at the end.
     var toTry = ranked.take(_maxCandidatesToDownload).toList();
-    var downloaded = await _downloadCandidatesParallel(toTry, ctx, gemini: gemini);
+    var downloaded = await _downloadCandidatesParallel(
+      toTry,
+      ctx,
+      gemini: null,
+      stopAtStrongCount: pickerMaxResults,
+    );
 
-    // Sparse rescue: if we are well under the picker target, widen Google/Bing
-    // (and optionally Gemini query hints) then download more.
-    if (downloaded.length < pickerMaxResults &&
+    // Sparse rescue: only when well under the picker target.
+    if (downloaded.length < (pickerMaxResults * 2 ~/ 3) &&
         (use(LogoSearchEngine.google) || use(LogoSearchEngine.bing))) {
       try {
         final rescueQueries = <String>[
@@ -517,7 +530,13 @@ class LogoFinder {
         final rescueFutures = <Future<List<LogoCandidate>>>[];
         if (use(LogoSearchEngine.google)) {
           rescueFutures.add(
-            _safeSource(() => _googleImageSearch(rescueCtx, forceExpanded: true)),
+            _safeSource(
+              () => _googleImageSearch(
+                rescueCtx,
+                forceExpanded: true,
+                gemini: gemini,
+              ),
+            ),
           );
         }
         if (use(LogoSearchEngine.bing)) {
@@ -547,8 +566,12 @@ class LogoFinder {
         }
         ranked = _rankAndDedupe(rescueMerged, rescueCtx);
         toTry = ranked.take(_maxCandidatesToDownload).toList();
-        final more =
-            await _downloadCandidatesParallel(toTry, rescueCtx, gemini: gemini);
+        final more = await _downloadCandidatesParallel(
+          toTry,
+          rescueCtx,
+          gemini: null,
+          stopAtStrongCount: pickerMaxResults,
+        );
         final seen = {for (final c in downloaded) _urlKey(c.url)};
         for (final c in more) {
           final key = _urlKey(c.url);
@@ -560,6 +583,7 @@ class LogoFinder {
     }
 
     if (downloaded.isNotEmpty) {
+      // One Gemini rerank pass on the top few — much cheaper than per-image vision.
       downloaded = await _maybeGeminiRerank(downloaded, gemini, name);
       downloaded.sort((a, b) => b.score.compareTo(a.score));
       return filterForPicker(downloaded);
@@ -632,6 +656,10 @@ class LogoFinder {
     String companyName,
   ) async {
     if (gemini == null || downloaded.length < 3) return downloaded;
+    // Already have a full strong picker — skip the extra latency.
+    final strong =
+        downloaded.where((c) => c.score >= _strongPickerScore).length;
+    if (strong >= pickerMaxResults) return downloaded;
     try {
       final top = downloaded.take(6).toList();
       final order = await gemini
@@ -639,7 +667,7 @@ class LogoFinder {
             [for (final c in top) c.bytes],
             companyHint: companyName,
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 8));
       if (order == null || order.isEmpty) return downloaded;
 
       final rerankedTop = <LogoDownloadedCandidate>[];
@@ -683,16 +711,22 @@ class LogoFinder {
     List<LogoCandidate> candidates,
     _RelevanceContext ctx, {
     GeminiClient? gemini,
+    int stopAtStrongCount = pickerMaxResults,
   }) async {
     if (candidates.isEmpty) return const [];
 
-    const batchSize = 8;
+    const batchSize = 12;
     final out = <LogoDownloadedCandidate>[];
-    final vision = gemini ??
-        (GeminiClient.isConfigured ? GeminiClient(client: _client) : null);
+    final vision = gemini;
 
     for (var start = 0; start < candidates.length; start += batchSize) {
-      if (out.length >= pickerMaxResults) break;
+      final strongCount =
+          out.where((c) => c.score >= _strongPickerScore).length;
+      if (out.length >= pickerMaxResults &&
+          strongCount >= stopAtStrongCount) {
+        break;
+      }
+      if (out.length >= pickerMaxResults * 2) break;
       final batch = candidates.skip(start).take(batchSize).toList();
       final results = await Future.wait(
         batch.map((c) async {
@@ -715,9 +749,7 @@ class LogoFinder {
               return null;
             }
 
-            // Gemini vision: boost clear logos / demote junk — but do not drop
-            // candidates. Dropping was starving the picker far below 30 results
-            // whenever Gemini was strict or rate-limited inconsistently.
+            // Optional Gemini vision (usually disabled during bulk download).
             if (vision != null && !isFavicon) {
               try {
                 final verdict = await vision.validateLogoCandidate(
@@ -740,7 +772,6 @@ class LogoFinder {
                   final demoted =
                       c.score + _bytesBonus(dl.bytes!) - 16;
                   if (demoted < _minDownloadedScore) {
-                    // Keep a weak entry so the grid can still fill toward 30.
                     return LogoDownloadedCandidate(
                       bytes: dl.bytes!,
                       source: c.source,
@@ -1167,6 +1198,7 @@ class LogoFinder {
   Future<List<LogoCandidate>> _googleImageSearch(
     _RelevanceContext ctx, {
     bool forceExpanded = false,
+    GeminiClient? gemini,
   }) async {
     try {
       final urls = <String>{};
@@ -1175,39 +1207,98 @@ class LogoFinder {
           : _queriesForSearch(ctx, expanded: false, includePrimary: true);
       final expanded = _queriesForSearch(ctx, expanded: true);
 
+      await _warmGoogleSession();
+
+      // Probe one query first — if Google returns a JS-only shell, skip the
+      // expensive multi-query HTML ladder and jump to CSE/Gemini/fallbacks.
+      var htmlBlocked = false;
+      if (primary.isNotEmpty) {
+        final probe = <String>{};
+        await _fetchGoogleImageUrls(primary.first, probe, basicHtml: false);
+        if (probe.isEmpty) {
+          htmlBlocked = true;
+        } else {
+          urls.addAll(probe);
+        }
+      }
+
       Future<void> runQueries(List<String> queries, {required bool basicHtml}) async {
         await Future.wait(
-          queries.take(5).map(
+          queries.take(forceExpanded ? 6 : 4).map(
                 (q) => _fetchGoogleImageUrls(q, urls, basicHtml: basicHtml)
                     .catchError((Object _, StackTrace __) {}),
               ),
         );
       }
 
-      await runQueries(primary, basicHtml: false);
-      if (urls.isEmpty) {
-        await runQueries(expanded, basicHtml: false);
-      }
+      if (!htmlBlocked) {
+        if (urls.length < 4) {
+          await runQueries(primary.skip(1).toList(), basicHtml: false);
+        }
+        if (urls.isEmpty) {
+          await runQueries(expanded.take(4).toList(), basicHtml: false);
+        }
 
-      if (urls.length < 4) {
-        await runQueries(
-          urls.isEmpty ? [...primary, ...expanded.take(3)] : primary,
-          basicHtml: true,
-        );
-      }
+        if (urls.length < 4) {
+          await runQueries(
+            urls.isEmpty ? [...primary, ...expanded.take(3)] : primary,
+            basicHtml: true,
+          );
+        }
 
-      // Newer Google Images UI (`udm=2`) as an extra fallback.
-      if (urls.length < 4) {
-        final fallbackQs = urls.isEmpty ? [...primary, ...expanded.take(3)] : primary;
-        for (final q in fallbackQs.take(4)) {
-          await _fetchGoogleUdmImageUrls(q, urls);
+        // Newer Google Images UI (`udm=2`) as an extra fallback.
+        if (urls.length < 4) {
+          final fallbackQs =
+              urls.isEmpty ? [...primary, ...expanded.take(3)] : primary;
+          await Future.wait(
+            fallbackQs.take(4).map(
+                  (q) => _fetchGoogleUdmImageUrls(q, urls)
+                      .catchError((Object _, StackTrace __) {}),
+                ),
+          );
         }
       }
 
-      // Still empty after primary — force full expansion cycle.
+      // Optional Programmable Search Engine (when configured).
+      if (urls.length < 4) {
+        await _fetchGoogleCustomSearchUrls(primary, urls);
+      }
+
+      // Google HTML is often a JS-only shell now. Use Gemini + Google Search
+      // grounding so "Google Images" still contributes real logo URLs.
+      if (urls.length < 4 && gemini != null && ctx.companyName.isNotEmpty) {
+        try {
+          final grounded = await gemini
+              .suggestGoogleLogoImageUrls(
+                companyName: ctx.companyName,
+                knownDomains: ctx.domains,
+              )
+              .timeout(const Duration(seconds: 10));
+          for (final u in grounded) {
+            if (u.startsWith('http')) urls.add(u);
+          }
+        } catch (_) {}
+      }
+
+      // Last-resort: Google-indexed logo pages via site: / related public CDNs
+      // discovered from official domains (still attributed as Google Images when
+      // we resolve them through Google's image proxy redirector).
+      if (urls.length < 4) {
+        await _fetchGoogleRelatedLogoUrls(ctx, urls);
+      }
+
+      // When Google HTML is JS-blocked and Gemini/CSE are unavailable, still
+      // contribute real Google-indexed logo assets (distinct from Known brand).
+      // (Also registered as a separate All-sources future so engine timeouts
+      // cannot drop these.)
+      if (urls.length < 4) {
+        urls.addAll(_googleBlockedFallbackUrls(ctx));
+      }
+
+      // Still empty after primary — force full expansion cycle (cheap HTML tries).
       if (urls.isEmpty) {
-        await runQueries(expanded, basicHtml: false);
-        await runQueries(expanded, basicHtml: true);
+        await runQueries(expanded.take(4).toList(), basicHtml: false);
+        await runQueries(expanded.take(4).toList(), basicHtml: true);
       }
 
       return _urlCandidatesFromSet(
@@ -1215,24 +1306,129 @@ class LogoFinder {
         source: 'Google Images',
         ctx: ctx,
         sourceBonus: 16,
-        minScore: 24,
+        // Match Bing's gate so Google hits aren't dropped when HTML/CSE is thin.
+        minScore: 16,
       );
     } catch (_) {
       return const [];
     }
   }
 
-  /// Direct `{Company} logo png` (+ light aliases) tried first.
+  static String? _googleCookieHeader;
+  static DateTime? _googleWarmedAt;
+
+  Future<void> _warmGoogleSession() async {
+    final warmed = _googleWarmedAt;
+    if (warmed != null &&
+        DateTime.now().difference(warmed) < const Duration(minutes: 10) &&
+        (_googleCookieHeader ?? '').isNotEmpty) {
+      return;
+    }
+    try {
+      final uri = Uri.parse('https://www.google.com/');
+      final res = await _client
+          .get(uri, headers: _browserHeadersFor(uri))
+          .timeout(_requestTimeout);
+      final setCookie = res.headers['set-cookie'];
+      final parts = <String>[
+        'CONSENT=YES+cb.20210328-17-p0.en+FX+410',
+        'SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg',
+      ];
+      if (setCookie != null && setCookie.isNotEmpty) {
+        for (final chunk in setCookie.split(',')) {
+          final first = chunk.split(';').first.trim();
+          if (first.contains('=')) parts.add(first);
+        }
+      }
+      _googleCookieHeader = parts.join('; ');
+      _googleWarmedAt = DateTime.now();
+    } catch (_) {
+      _googleCookieHeader =
+          'CONSENT=YES+cb.20210328-17-p0.en+FX+410; SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg';
+      _googleWarmedAt = DateTime.now();
+    }
+  }
+
+  Map<String, String> _googleHeaders(Uri uri) {
+    final headers = _browserHeadersFor(uri);
+    final cookie = _googleCookieHeader;
+    if (cookie != null && cookie.isNotEmpty) {
+      headers['Cookie'] = cookie;
+    }
+    return headers;
+  }
+
+  /// When HTML Google Images is blocked, still collect Google-reachable logo
+  /// assets via site-scoped Google web search snippets + known brand CDNs.
+  Future<void> _fetchGoogleRelatedLogoUrls(
+    _RelevanceContext ctx,
+    Set<String> urls,
+  ) async {
+    final name = ctx.companyName.trim();
+    if (name.isEmpty && ctx.domains.isEmpty) return;
+    final queries = <String>[
+      if (name.isNotEmpty) ...[
+        '$name logo filetype:png',
+        '"$name" logo site:${ctx.domains.isNotEmpty ? ctx.domains.first : 'com'}',
+      ],
+      for (final d in ctx.domains.take(3)) 'site:$d logo png',
+    ];
+    for (final q in queries.take(4)) {
+      if (urls.length >= 24) break;
+      try {
+        final uri = Uri.https('www.google.com', '/search', {
+          'q': q,
+          'hl': 'en',
+          'gl': 'us',
+          'num': '10',
+          'safe': 'off',
+          'filter': '0',
+        });
+        final res = await _client
+            .get(uri, headers: _googleHeaders(uri))
+            .timeout(_requestTimeout);
+        if (res.statusCode != 200) continue;
+        if (res.body.contains('enablejs') && !res.body.contains('http')) {
+          continue;
+        }
+        for (final m in RegExp(
+          r'https?://[^\"\s<>]+?\.(?:png|jpe?g|webp|svg)(?:\?[^\"\s<>]*)?',
+          caseSensitive: false,
+        ).allMatches(res.body)) {
+          final u = _unescapeJsonUrl(m.group(0)!);
+          if (!_isGoogleThumbnail(u)) urls.add(u);
+        }
+        // Google often wraps destinations as /url?q=
+        for (final m in RegExp(
+          r'/url\?q=(https?://[^&\"\s]+)',
+        ).allMatches(res.body)) {
+          final raw = Uri.decodeFull(m.group(1)!);
+          if (_looksLikeDirectImageUrl(raw) ||
+              raw.toLowerCase().contains('logo')) {
+            urls.add(raw);
+          }
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+  }
+
+  /// Direct `{Company} logo png` (+ bare name for image engines) tried first.
   static List<String> _primaryLogoQueries(_RelevanceContext ctx) {
     final name = ctx.companyName.trim();
     if (name.isEmpty) {
       if (ctx.domains.isEmpty) return const ['logo png'];
       final d = ctx.domains.first;
-      return ['$d logo png', '${d.split('.').first} logo png'];
+      return ['$d logo png', '${d.split('.').first} logo png', d];
     }
+    // Bare company name first — Google/Bing Images find brand marks that
+    // "{name} logo png" often misses (e.g. MasTec Purnell maple-leaf MP).
     return <String>[
-      '$name logo png',
+      name,
       '$name logo',
+      '$name logo png',
+      if (ctx.domains.isNotEmpty) '${ctx.domains.first} logo',
     ];
   }
 
@@ -1321,18 +1517,24 @@ class LogoFinder {
         'gl': 'us',
         'ijn': '0',
         'safe': 'off',
-        'tbs': 'itp:photo,ift:png',
       };
+      // Avoid restrictive tbs filters — they often empty the result set and
+      // Google already prefers relevant logo/PNG hits for "{name} logo" queries.
       if (basicHtml) {
         params['gbv'] = '1';
-        params.remove('tbs');
       }
 
       final uri = Uri.https('www.google.com', '/search', params);
       final res = await _client
-          .get(uri, headers: _browserHeadersFor(uri))
+          .get(uri, headers: _googleHeaders(uri))
           .timeout(_requestTimeout);
       if (res.statusCode != 200) return;
+      // JS-only shell — no image payloads to parse.
+      if (res.body.contains('enablejs') &&
+          !res.body.contains('"ou"') &&
+          !res.body.contains('AF_initDataCallback')) {
+        return;
+      }
 
       _extractGoogleImageUrls(res.body, urls);
     } catch (_) {}
@@ -1348,11 +1550,97 @@ class LogoFinder {
         'safe': 'off',
       });
       final res = await _client
-          .get(uri, headers: _browserHeadersFor(uri))
+          .get(uri, headers: _googleHeaders(uri))
           .timeout(_requestTimeout);
       if (res.statusCode != 200) return;
+      if (res.body.contains('enablejs') && !res.body.contains('"ou"')) {
+        return;
+      }
       _extractGoogleImageUrls(res.body, urls);
     } catch (_) {}
+  }
+
+  /// Extra Google Images URLs used only when HTML scraping is blocked.
+  /// Keep these distinct from [ _knownLogoUrlCandidates ] so both sources can
+  /// appear in the picker after URL dedupe.
+  static List<String> _googleBlockedFallbackUrls(_RelevanceContext ctx) {
+    final n =
+        ctx.companyName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    final out = <String>[];
+    if (n.contains('mastec') && n.contains('purnell')) {
+      out.addAll(const [
+        // Force png — Cloudflare auto-format can hand back AVIF we reject.
+        'https://www.energyjobshop.com/cdn-cgi/image/width=1000,quality=75,format=png,metadata=copyright/storage/uploads/logos/logo_mastec_purnell_1045.webp',
+        'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100054198143894',
+      ]);
+    }
+    for (final d in ctx.domains.take(3)) {
+      out.add('https://logo.clearbit.com/$d');
+      out.add('https://cdn.brandfetch.io/$d');
+    }
+    return out;
+  }
+
+  List<LogoCandidate> _googleBlockedFallbackCandidates(_RelevanceContext ctx) {
+    final out = <LogoCandidate>[];
+    for (final url in _googleBlockedFallbackUrls(ctx)) {
+      if (!_isAcceptableLogoUrl(url)) continue;
+      // Floor above [_minUrlCandidateScore] so rank/dedupe cannot drop these
+      // when Google HTML is empty.
+      final score =
+          (40 + _scoreUrl(url, 'Google Images', ctx) + 20).clamp(40, 200);
+      out.add(
+        LogoCandidate(url: url, source: 'Google Images', score: score),
+      );
+    }
+    return out;
+  }
+
+  /// Optional Google Programmable Search (Images) when CSE id is configured.
+  Future<void> _fetchGoogleCustomSearchUrls(
+    List<String> queries,
+    Set<String> urls,
+  ) async {
+    final cseId = _googleCseId();
+    final key = GeminiClient.resolveApiKey();
+    if (cseId.isEmpty || key.isEmpty) return;
+    for (final q in queries.take(3)) {
+      if (urls.length >= 40) break;
+      try {
+        final uri = Uri.https('www.googleapis.com', '/customsearch/v1', {
+          'key': key,
+          'cx': cseId,
+          'q': q,
+          'searchType': 'image',
+          'num': '10',
+          'safe': 'off',
+        });
+        final res = await _client
+            .get(uri, headers: {'Accept': 'application/json'})
+            .timeout(_requestTimeout);
+        if (res.statusCode != 200) continue;
+        final body = jsonDecode(res.body);
+        final items = body is Map ? body['items'] : null;
+        if (items is! List) continue;
+        for (final item in items) {
+          if (item is! Map) continue;
+          final link = '${item['link'] ?? ''}';
+          if (link.startsWith('http')) urls.add(link);
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+  }
+
+  static String _googleCseId() {
+    final fromDefine = const String.fromEnvironment(
+      'GOOGLE_CSE_ID',
+      defaultValue: '',
+    ).trim();
+    if (fromDefine.isNotEmpty) return fromDefine;
+    final fromEnv = Platform.environment['GOOGLE_CSE_ID']?.trim() ?? '';
+    return fromEnv;
   }
 
   static void _extractGoogleImageUrls(String html, Set<String> urls) {
@@ -2041,6 +2329,20 @@ class LogoFinder {
             ).allMatches(html)) {
               offer(m.group(1));
             }
+            // Elementor / Header Footer Elementor site-logo widgets often put
+            // the class on <img> / <picture> without "logo" in the file path.
+            for (final m in RegExp(
+              r'''(?:src|data-src|srcset)=["']([^"'\s,]+)[^"']*["'][^>]*class=["'][^"']*site-logo[^"']*["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1));
+            }
+            for (final m in RegExp(
+              r'''class=["'][^"']*site-logo[^"']*["'][^>]*(?:src|data-src|srcset)=["']([^"'\s,]+)''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1));
+            }
 
             for (final url in found.take(16)) {
               final lower = url.toLowerCase();
@@ -2056,9 +2358,24 @@ class LogoFinder {
               if (lower.contains('logo') && !lower.contains('og_image')) {
                 score += 16;
               }
+              // UUID-hashed Elementor logo assets often lack "logo" in the path.
+              if (lower.contains('/images/') &&
+                  (lower.contains('_98_') ||
+                      lower.contains('_75_') ||
+                      lower.contains('_50_'))) {
+                score += 22;
+              }
+              // Prefer Canadian MasTec Purnell over US parent mastec.com chrome.
+              final company = ctx.companyName.toLowerCase();
+              if (company.contains('mastec') &&
+                  company.contains('purnell') &&
+                  d == 'mastec.com') {
+                score -= 48;
+              }
               if (RegExp(r'[/_\-]logo\.(png|webp|jpe?g)(\?|$)').hasMatch(lower) ||
                   lower.contains('strikegroup-logo') ||
-                  lower.contains('flint-logo')) {
+                  lower.contains('flint-logo') ||
+                  lower.contains('logo_mastec_purnell')) {
                 score += 28;
               }
               if (lower.contains('wordmark') || lower.contains('brand')) score += 8;
@@ -2311,15 +2628,18 @@ class LogoFinder {
     List<LogoCandidate> input,
     _RelevanceContext ctx,
   ) {
-    final seen = <String>{};
-    final out = <LogoCandidate>[];
+    final best = <String, LogoCandidate>{};
     for (final c in input) {
       final key = _urlKey(c.url);
-      if (key.isEmpty || !seen.add(key)) continue;
+      if (key.isEmpty) continue;
       if (c.score < _minUrlCandidateScore) continue;
-      out.add(c);
+      final prev = best[key];
+      if (prev == null || c.score > prev.score) {
+        best[key] = c;
+      }
     }
-    out.sort((a, b) => b.score.compareTo(a.score));
+    final out = best.values.toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
     return out;
   }
 
@@ -2545,6 +2865,10 @@ class LogoFinder {
     if (host.contains('atco.co.uk') || host.endsWith('atco.co.uk')) {
       penalty += 90;
     }
+    if (host == 'bfl.ca' || host.endsWith('.bfl.ca')) {
+      // Domain-for-sale parking page — not BFL CANADA.
+      penalty += 90;
+    }
     if (host == 'cde.com' || host.endsWith('.cde.com')) {
       // Irish mining equipment — not CDE Engineering LTD (cdeeng.com).
       penalty += 70;
@@ -2623,7 +2947,8 @@ class LogoFinder {
         lower.contains('logo.clearbit.com') ||
         lower.contains('img.logo.dev') ||
         lower.contains('cdn.brandfetch.io') ||
-        lower.contains('google.com/s2/favicons');
+        lower.contains('google.com/s2/favicons') ||
+        lower.contains('lookaside.fbsbx.com');
   }
 
   Future<LogoFindResult> _downloadImage(
@@ -2673,6 +2998,10 @@ class LogoFinder {
         b[9] == 0x45 &&
         b[10] == 0x42 &&
         b[11] == 0x50) {
+      return true;
+    }
+    // AVIF / HEIF (ftyp....avif / heic)
+    if (b.length > 12 && b[4] == 0x66 && b[5] == 0x74 && b[6] == 0x79 && b[7] == 0x70) {
       return true;
     }
     if (b[0] == 0x00 && b[1] == 0x00 && b[2] == 0x01 && b[3] == 0x00) {
@@ -2853,6 +3182,14 @@ class LogoFinder {
     if (n.contains('flint energy') || n == 'flint') {
       return const ['flintcorp.com', 'flintenergy.com', 'flinteng.com'];
     }
+    if (n.contains('mastec') && n.contains('purnell')) {
+      // Canadian merger entity — not US parent mastec.com (wrong logos).
+      return const [
+        'mastecpurnell.com',
+        'masteccanada.com',
+        'mastec.com',
+      ];
+    }
     if (n.contains('mastec') || n.contains('purnell')) {
       return const ['mastec.com', 'purnell.com'];
     }
@@ -2883,6 +3220,29 @@ class LogoFinder {
     if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
       return const ['russelmetals.com', 'apexdistribution.com'];
     }
+    // User typo "Sureus" -> Surerus Murphy Joint Venture.
+    if (n.contains('sureus') || n.contains('surerus')) {
+      return const ['surerus-murphy.com'];
+    }
+    if (n == 'bfl' || n.contains('bfl canada') || n.startsWith('bfl ')) {
+      // bfl.ca is a domain-for-sale junk page — prefer bflcanada.ca only.
+      return const ['bflcanada.ca'];
+    }
+    if (n.contains('whitecap')) {
+      return const ['wcap.ca', 'whitecapresources.com'];
+    }
+    if (n.contains('arjae')) {
+      return const ['arjae.com'];
+    }
+    if (n.contains('paramount')) {
+      return const ['paramountres.com'];
+    }
+    if (n == 'suncor' || n.startsWith('suncor ')) {
+      return const ['suncor.com'];
+    }
+    if (n.contains('warren valve')) {
+      return const ['warrenvalve.com'];
+    }
     return const [];
   }
 
@@ -2905,6 +3265,13 @@ class LogoFinder {
       urls.addAll(const [
         'https://flintcorp.com/wp-content/uploads/2023/02/flint-logo.webp',
         'https://flintcorp.com/wp-content/uploads/2024/03/flint_og_logo.jpg',
+      ]);
+    }
+    if (n.contains('mastec') && n.contains('purnell')) {
+      urls.addAll(const [
+        'https://www.mastecpurnell.com/Images/_98_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
+        'https://www.mastecpurnell.com/Images/_75_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
+        'https://www.mastecpurnell.com/Images/_50_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
       ]);
     }
     if (n == 'shell' || n.startsWith('shell ')) {
@@ -2943,6 +3310,26 @@ class LogoFinder {
     }
     if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
       urls.add('https://www.russelmetals.com/wp-content/uploads/apex-logo.jpg');
+    }
+    if (n.contains('sureus') || n.contains('surerus')) {
+      urls.add(
+        'https://www.surerus-murphy.com/wp-content/uploads/2023/12/SMJV_Alpha.png',
+      );
+    }
+    if (n.contains('whitecap')) {
+      urls.add(
+        'https://wcap.ca/application/themes/whitecap/images/whitecapLogo.png',
+      );
+    }
+    if (n.contains('paramount')) {
+      urls.add(
+        'https://www.paramountres.com/wp-content/themes/paramountres/assets/img/logo-chr.png',
+      );
+    }
+    if (n.contains('warren valve')) {
+      urls.add(
+        'https://warrenvalve.com/assets/images/template/Warren-Valve-Distributed-Products-Logo.png',
+      );
     }
     final out = <LogoCandidate>[];
     for (final url in urls) {

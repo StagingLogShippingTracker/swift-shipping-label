@@ -40,7 +40,7 @@ class GeminiClient {
     return true;
   }
 
-  static void _tripQuotaCooldown([Duration duration = const Duration(minutes: 20)]) {
+  static void _tripQuotaCooldown([Duration duration = const Duration(minutes: 3)]) {
     _quotaCooldownUntil = DateTime.now().add(duration);
   }
 
@@ -154,6 +154,134 @@ Return JSON only:
     );
     if (data == null) return null;
     return GeminiLogoValidation.fromJson(data);
+  }
+
+  /// Use Gemini + Google Search grounding to recover logo image URLs when the
+  /// HTML Google Images scraper is blocked (JS-only shells).
+  ///
+  /// Fail-open: returns [] when unconfigured, rate-limited, or malformed.
+  Future<List<String>> suggestGoogleLogoImageUrls({
+    required String companyName,
+    List<String> knownDomains = const [],
+  }) async {
+    final key = resolveApiKey();
+    final name = companyName.trim();
+    if (key.isEmpty || name.isEmpty || isTemporarilyUnavailable) {
+      return const [];
+    }
+
+    final known =
+        knownDomains.where((d) => d.trim().isNotEmpty).take(6).join(', ');
+    final prompt = '''
+Find direct public image URLs for the official company logo of "$name".
+Prefer PNG/SVG/JPEG/WebP links to clean brand marks (wordmark or icon).
+Known domains (may help): ${known.isEmpty ? '(none)' : known}
+
+Return JSON only:
+{
+  "logo_urls": ["https://..."],
+  "notes": "brief"
+}
+
+Rules:
+- Only include URLs you believe are real, publicly reachable logo assets.
+- Prefer official company sites and reputable brand CDN / press assets.
+- Prefer Google Images-style logo results a human would pick in ~2 seconds.
+- Omit social profile photos, screenshots, and unrelated stock images.
+''';
+
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/'
+      '$model:generateContent?key=$key',
+    );
+    final payload = {
+      'contents': [
+        {
+          'parts': [
+            {'text': prompt},
+          ],
+        },
+      ],
+      'tools': [
+        {'google_search': <String, dynamic>{}},
+      ],
+      'generationConfig': {
+        'temperature': 0.2,
+      },
+    };
+
+    try {
+      final res = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 429) {
+        _tripQuotaCooldown();
+        return const [];
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) return const [];
+      final body = jsonDecode(res.body);
+      if (body is! Map) return const [];
+
+      final out = <String>{};
+
+      // Model text JSON (when present).
+      final text = _extractText(body);
+      if (text != null && text.isNotEmpty) {
+        final parsed = _parseJsonObject(text);
+        final list = parsed?['logo_urls'];
+        if (list is List) {
+          for (final item in list) {
+            final u = '$item'.trim();
+            if (u.startsWith('http')) out.add(u);
+          }
+        }
+        // Also harvest any raw http URLs from the text blob.
+        for (final m in RegExp(r'https?://[^\s\"<>\]]+').allMatches(text)) {
+          final u = m.group(0)!;
+          if (_looksLikeImageUrl(u)) out.add(u);
+        }
+      }
+
+      // Grounding chunks often carry the Google Search result URIs.
+      final cands = body['candidates'];
+      if (cands is List && cands.isNotEmpty && cands.first is Map) {
+        final gm = (cands.first as Map)['groundingMetadata'];
+        if (gm is Map) {
+          final chunks = gm['groundingChunks'];
+          if (chunks is List) {
+            for (final ch in chunks) {
+              if (ch is! Map) continue;
+              final web = ch['web'];
+              if (web is! Map) continue;
+              final u = '${web['uri'] ?? ''}'.trim();
+              if (u.startsWith('http') && _looksLikeImageUrl(u)) out.add(u);
+            }
+          }
+        }
+      }
+
+      return out.take(12).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static bool _looksLikeImageUrl(String url) {
+    final lower = url.toLowerCase();
+    if (lower.contains('.png') ||
+        lower.contains('.jpg') ||
+        lower.contains('.jpeg') ||
+        lower.contains('.webp') ||
+        lower.contains('.svg') ||
+        lower.contains('/logo') ||
+        lower.contains('logo_')) {
+      return true;
+    }
+    return false;
   }
 
   /// Text-only search plan to close gaps when scrapers return sparse/junk results.

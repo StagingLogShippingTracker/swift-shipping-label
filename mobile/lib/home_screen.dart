@@ -819,97 +819,128 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    // Wait for Tools MenuBar overlay to dismiss before presenting.
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    if (!mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final confirmed = await showGeneralDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final media = MediaQuery.of(ctx);
-          final viewInsets = media.viewInsets;
-          final padding = media.padding;
-          final screenHeight = media.size.height;
-          const horizontalInset = 24.0;
-          const verticalInset = 24.0;
-          final topInset = padding.top + verticalInset;
-          final bottomInset = viewInsets.bottom + verticalInset;
-          final maxDialogHeight = (screenHeight - topInset - bottomInset)
-              .clamp(200.0, screenHeight);
-          final maxContentHeight = (maxDialogHeight - 140)
-              .clamp(120.0, screenHeight * 0.55);
-          return MediaQuery.removeViewInsets(
-            removeBottom: true,
-            context: ctx,
-            child: AlertDialog(
-              insetPadding: EdgeInsets.fromLTRB(
-                horizontalInset,
-                topInset,
-                horizontalInset,
-                bottomInset,
-              ),
-              title: const Text('Find logo on the web'),
-              content: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxContentHeight),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Search Google, Bing, Clearbit, Brands of the World, and other '
-                        'sources. A website domain improves accuracy.',
-                        style: TextStyle(fontSize: 13, color: SwiftColors.muted),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'CUSTOMER / COMPANY',
-                        ),
-                        autofocus: true,
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: domainCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'WEBSITE DOMAIN (OPTIONAL)',
-                          hintText: 'e.g. conocophillips.com',
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      DropdownButtonFormField<LogoSearchEngine>(
-                        value: selectedEngine,
-                        decoration: const InputDecoration(
-                          labelText: 'SEARCH SOURCE',
-                        ),
-                        items: [
-                          for (final engine in engineOptions)
-                            DropdownMenuItem(
-                              value: engine,
-                              child: Text(engine.label),
-                            ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setDialogState(() => selectedEngine = value);
-                        },
-                      ),
-                    ],
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss find logo',
+      barrierColor: Colors.transparent,
+      useRootNavigator: true,
+      transitionDuration: const Duration(milliseconds: 120),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        // LayoutBuilder uses the real overlay constraints (window), not a
+        // possibly-stale MediaQuery. Absolute Positioned centering avoids the
+        // Windows MenuBar bottom-right clip bug with Dialog/Center.
+        return LayoutBuilder(
+          builder: (ctx, constraints) {
+            final maxW = constraints.maxWidth.isFinite
+                ? constraints.maxWidth
+                : MediaQuery.sizeOf(ctx).width;
+            final maxH = constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(ctx).height;
+            final cardW = maxW < 480 ? (maxW - 24).clamp(280.0, 440.0) : 440.0;
+            final cardH = (maxH - 48).clamp(280.0, 520.0);
+            final left = ((maxW - cardW) / 2).clamp(8.0, maxW);
+            final top = ((maxH - cardH) / 2).clamp(8.0, maxH);
+            // SizedBox.expand is required: a Stack of only Positioned children
+            // otherwise collapses and pins to the bottom-right on Windows.
+            return SizedBox.expand(
+              child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.pop(ctx, false),
+                    child: const ColoredBox(color: Color(0x8A000000)),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Search'),
+                Positioned(
+                  left: left,
+                  top: top,
+                  width: cardW,
+                  height: cardH,
+                  child: Material(
+                    color: Theme.of(ctx).dialogTheme.backgroundColor ??
+                        Theme.of(ctx).colorScheme.surface,
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Find logo on the web',
+                            style: Theme.of(ctx).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Search Google, Bing, Clearbit, Brands of the World, and other '
+                            'sources. A website domain improves accuracy.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: SwiftColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'CUSTOMER / COMPANY',
+                            ),
+                            autofocus: true,
+                            onSubmitted: (_) => Navigator.pop(ctx, true),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: domainCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'WEBSITE DOMAIN (OPTIONAL)',
+                              hintText: 'e.g. conocophillips.com',
+                            ),
+                            onSubmitted: (_) => Navigator.pop(ctx, true),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Source: ${selectedEngine.label}  (Tools → Logo search engine…)',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: SwiftColors.muted,
+                            ),
+                          ),
+                          const Spacer(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Search'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
     if (confirmed != true || !mounted) return;
 
@@ -940,76 +971,91 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final picked = await showDialog<LogoDownloadedCandidate>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Choose a logo'),
-          content: SizedBox(
-            width: 560,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Top ${candidates.length} of up to ${LogoFinder.pickerMaxResults} '
-                  'result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
-                  style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
-                ),
-                const SizedBox(height: 12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 520),
-                  child: SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final c in candidates)
-                          InkWell(
-                            onTap: () => Navigator.pop(ctx, c),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              width: 96,
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: SwiftColors.muted),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Image.memory(
-                                    c.bytes,
-                                    height: 56,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.broken_image_outlined,
-                                      size: 40,
+        builder: (ctx) {
+          final mq = MediaQuery.of(ctx);
+          final maxW = (mq.size.width - 32).clamp(280.0, 560.0);
+          final maxH = (mq.size.height -
+                  mq.padding.vertical -
+                  mq.viewInsets.bottom -
+                  96)
+              .clamp(220.0, mq.size.height);
+          // Leave room for title + actions inside the dialog.
+          final gridH = (maxH * 0.72).clamp(160.0, 520.0);
+          return AlertDialog(
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            title: const Text('Choose a logo'),
+            content: SizedBox(
+              width: maxW,
+              height: gridH + 36,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Top ${candidates.length} of up to ${LogoFinder.pickerMaxResults} '
+                    'result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
+                    style:
+                        const TextStyle(fontSize: 13, color: SwiftColors.muted),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final c in candidates)
+                            InkWell(
+                              onTap: () => Navigator.pop(ctx, c),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 96,
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  border:
+                                      Border.all(color: SwiftColors.muted),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Image.memory(
+                                      c.bytes,
+                                      height: 56,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(
+                                        Icons.broken_image_outlined,
+                                        size: 40,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    c.source,
-                                    style: const TextStyle(fontSize: 10),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      c.source,
+                                      style: const TextStyle(fontSize: 10),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
       );
       if (picked == null || !mounted) return;
       final chosen = picked;
@@ -1971,6 +2017,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     : const Icon(Icons.travel_explore, size: 18),
                 label: Text(
                   _findingLogo ? 'Searching…' : 'Find logo on the web',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1980,7 +2028,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ? null
                     : _showUploadManuallyMenu,
                 icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('Upload manually'),
+                label: const Text(
+                  'Upload manually',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           )
@@ -2002,6 +2054,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       : const Icon(Icons.travel_explore, size: 18),
                   label: Text(
                     _findingLogo ? 'Searching…' : 'Find logo on the web',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
@@ -2013,7 +2067,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : _showUploadManuallyMenu,
                   icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('Upload manually'),
+                  label: const Text(
+                    'Upload manually',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],
@@ -2593,7 +2651,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 10),
                     ],
                     _buildPresetCard(),
-                    _buildLogosCard(),
+                    _buildLogosCard(stackActions: true),
                     ..._buildDocumentFormCards(dualColumn: false),
                     _buildUtilityActions(),
                   ],
