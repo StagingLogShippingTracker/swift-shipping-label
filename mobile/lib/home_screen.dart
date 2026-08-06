@@ -2357,6 +2357,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onCheckUpdates: () => showUpdateFlow(context),
         onErrorCapture: _openErrorCapture,
         onToggleDark: _toggleDarkMode,
+        onFindLogo: _findLogoOnWeb,
       ),
       child: Focus(
         autofocus: true,

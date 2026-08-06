@@ -867,6 +867,11 @@ class WindowsAppMenuBar extends StatelessWidget {
             ),
             MenuItemButton(
               onPressed: actions.onFindLogo,
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyF,
+                control: true,
+                shift: true,
+              ),
               child: const Text('Find logo on web…'),
             ),
             MenuItemButton(
@@ -1020,6 +1025,7 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
   required VoidCallback onCheckUpdates,
   required VoidCallback onErrorCapture,
   VoidCallback? onToggleDark,
+  VoidCallback? onFindLogo,
 }) {
   return {
     const SingleActivator(LogicalKeyboardKey.enter, control: true): onGenerate,
@@ -1042,5 +1048,11 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
     if (onToggleDark != null)
       const SingleActivator(LogicalKeyboardKey.keyD, control: true, shift: true):
           onToggleDark,
+    if (onFindLogo != null)
+      const SingleActivator(
+        LogicalKeyboardKey.keyF,
+        control: true,
+        shift: true,
+      ): onFindLogo,
   };
 }

@@ -1863,10 +1863,9 @@ class LogoFinder {
                 score += 28;
               }
               if (lower.contains('wordmark') || lower.contains('brand')) score += 8;
-              if (lower.contains('favicon') ||
-                  lower.contains('apple-touch') ||
-                  lower.contains('/icon')) {
-                score -= 14;
+              if (_isWeakChromeIconUrl(lower)) {
+                // Skip site chrome icons entirely — they poison Shell/ATCO pickers.
+                continue;
               }
               // Prefer actual brand marks over social share cards / hero photos.
               if (lower.contains('og_image') ||
@@ -2322,14 +2321,36 @@ class LogoFinder {
       '/articles/',
       'press-release',
       'thumbnail',
+      'apple-touch-icon',
+      '/favicon/',
+      'favicon.ico',
     ];
     for (final junk in junkPaths) {
       if (lower.contains(junk)) {
-        penalty += 20;
+        penalty += junk.contains('favicon') || junk.contains('apple-touch')
+            ? 80
+            : 20;
         break;
       }
     }
+    // Wrong-country / homonym traps for warehouse customers.
+    if (host.contains('atco.co.uk') || host.endsWith('atco.co.uk')) {
+      penalty += 90;
+    }
+    if (host == 'cde.com' || host.endsWith('.cde.com')) {
+      // Irish mining equipment — not CDE Engineering LTD (cdeeng.com).
+      penalty += 70;
+    }
     return penalty;
+  }
+
+  static bool _isWeakChromeIconUrl(String lowerUrl) {
+    return lowerUrl.contains('apple-touch') ||
+        lowerUrl.contains('/favicon/') ||
+        lowerUrl.contains('favicon.ico') ||
+        lowerUrl.contains('favicon-') ||
+        RegExp(r'/[^/]*favicon[^/]*\.(png|ico|jpe?g|webp)(\?|$)')
+            .hasMatch(lowerUrl);
   }
 
   static String _hostOf(String url) {
@@ -2562,6 +2583,8 @@ class LogoFinder {
   static List<String> _guessDomains(String companyName) {
     final lower = companyName.toLowerCase().trim();
     final known = _knownDomainHints(lower);
+    // Hand-tuned domains win exclusively — TLD spray poisons ATCO/Comco/etc.
+    if (known.isNotEmpty) return List<String>.from(known);
 
     final cleaned = companyName
         .toLowerCase()
@@ -2574,7 +2597,7 @@ class LogoFinder {
         .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (cleaned.isEmpty && known.isEmpty) return const [];
+    if (cleaned.isEmpty) return const [];
     final compact = cleaned.replaceAll(' ', '');
     final dashed = cleaned.replaceAll(' ', '-');
     const tlds = [
@@ -2589,7 +2612,7 @@ class LogoFinder {
       '.energy',
       '.oil',
     ];
-    final out = <String>{...known};
+    final out = <String>{};
     if (cleaned.isNotEmpty) {
       for (final tld in tlds) {
         out.add('$compact$tld');
@@ -2628,6 +2651,30 @@ class LogoFinder {
     if (n == 'shell' || n.startsWith('shell ')) {
       return const ['shell.com', 'shell.ca'];
     }
+    if (n == 'atco' || n.startsWith('atco ')) {
+      // Prefer Canadian ATCO Ltd — not UK lawn-mower atco.co.uk.
+      return const ['atco.com', 'atco.ca', 'atcoltd.com'];
+    }
+    if (n.contains('arc resources') || n == 'arc') {
+      return const ['arcresources.com'];
+    }
+    if (n.contains('cde engineering') ||
+        n == 'cde' ||
+        (n.startsWith('cde ') && n.contains('eng'))) {
+      return const ['cdeeng.com', 'cdeengineering.com'];
+    }
+    if (n == 'epcor' || n.startsWith('epcor ')) {
+      return const ['epcor.com'];
+    }
+    if (n == 'dnow' || n.contains('distributionnow') || n.contains('distribution now')) {
+      return const ['dnow.com'];
+    }
+    if (n == 'comco' || n.contains('comco pipe')) {
+      return const ['comcopipe.com', 'russelmetals.com'];
+    }
+    if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
+      return const ['russelmetals.com', 'apexdistribution.com'];
+    }
     return const [];
   }
 
@@ -2652,6 +2699,43 @@ class LogoFinder {
         'https://flintcorp.com/wp-content/uploads/2024/03/flint_og_logo.jpg',
       ]);
     }
+    if (n == 'shell' || n.startsWith('shell ')) {
+      // Shell marketing sites often expose only apple-touch icons to scrapes.
+      urls.addAll(const [
+        'https://brandslogos.com/wp-content/uploads/images/large/shell-logo.png',
+        'https://1000logos.net/wp-content/uploads/2017/06/Shell-Logo.png',
+      ]);
+    }
+    if (n == 'atco' || n.startsWith('atco ')) {
+      urls.add(
+        'https://www.atco.com/content/dam/atco-website/en-ca/web/assets/global-files/atco-logo.png',
+      );
+    }
+    if (n.contains('arc resources') || n == 'arc') {
+      urls.addAll(const [
+        'https://www.arcresources.com/wp-content/uploads/2022/02/arc_Logo_PNG_.png',
+        'https://www.arcresources.com/wp-content/uploads/2022/08/ARC-Logo-Colour.png',
+      ]);
+    }
+    if (n.contains('cde engineering') || n.startsWith('cde ')) {
+      urls.add('https://cdeeng.com/wp-content/uploads/2022/12/logo-for-print-1.png');
+    }
+    if (n == 'epcor' || n.startsWith('epcor ')) {
+      urls.add(
+        'https://epcor.com/content/dam/epcor/images/dm-images/logos-and-icons/epcor-logo.png',
+      );
+    }
+    if (n == 'dnow' || n.contains('distribution now')) {
+      urls.add('https://www.dnow.com/hubfs/Logos/DNOW_logo_featured.png');
+    }
+    if (n == 'comco' || n.contains('comco pipe')) {
+      urls.add(
+        'https://www.russelmetals.com/wp-content/uploads/comco-pipe-supply-company-1-5.png',
+      );
+    }
+    if (n.contains('apex valve') || n == 'apex valves' || n.contains('apex distribution')) {
+      urls.add('https://www.russelmetals.com/wp-content/uploads/apex-logo.jpg');
+    }
     final out = <LogoCandidate>[];
     for (final url in urls) {
       if (!_isAcceptableLogoUrl(url)) continue;
@@ -2659,7 +2743,8 @@ class LogoFinder {
         LogoCandidate(
           url: url,
           source: 'Known brand logo',
-          score: 110 + _domainMatchBonus(_hostOf(url), ctx),
+          // Must outrank aggressive site scrapes / Bing homonyms (Shell, ATCO).
+          score: 300 + _domainMatchBonus(_hostOf(url), ctx),
         ),
       );
     }
