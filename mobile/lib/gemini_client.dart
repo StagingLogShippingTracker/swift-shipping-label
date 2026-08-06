@@ -25,7 +25,25 @@ class GeminiClient {
   static String? _cachedKey;
   static bool _envLoaded = false;
 
-  static bool get isConfigured => resolveApiKey().isNotEmpty;
+  static bool get isConfigured =>
+      resolveApiKey().isNotEmpty && !isTemporarilyUnavailable;
+
+  /// After repeated 429/5xx, skip Gemini for a cool-down so crawlers stay fast.
+  static DateTime? _quotaCooldownUntil;
+  static bool get isTemporarilyUnavailable {
+    final until = _quotaCooldownUntil;
+    if (until == null) return false;
+    if (DateTime.now().isAfter(until)) {
+      _quotaCooldownUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  static void _tripQuotaCooldown([Duration duration = const Duration(minutes: 20)]) {
+    _quotaCooldownUntil = DateTime.now().add(duration);
+  }
+
 
   static String resolveApiKey() {
     if (_cachedKey != null && _cachedKey!.isNotEmpty) return _cachedKey!;
@@ -110,7 +128,7 @@ class GeminiClient {
     String companyHint = '',
   }) async {
     final key = resolveApiKey();
-    if (key.isEmpty || bytes.isEmpty) return null;
+    if (key.isEmpty || bytes.isEmpty || isTemporarilyUnavailable) return null;
 
     final prompt = '''
 You are filtering scraped web images for a corporate logo picker${companyHint.isEmpty ? '' : ' for "$companyHint"'}.
@@ -147,7 +165,7 @@ Return JSON only:
   }) async {
     final key = resolveApiKey();
     final name = companyName.trim();
-    if (key.isEmpty || name.isEmpty) return null;
+    if (key.isEmpty || name.isEmpty || isTemporarilyUnavailable) return null;
 
     final known = knownDomains.where((d) => d.trim().isNotEmpty).take(6).join(', ');
     final prompt = '''
@@ -193,7 +211,7 @@ Rules:
     String companyHint = '',
   }) async {
     final key = resolveApiKey();
-    if (key.isEmpty || images.isEmpty) return null;
+    if (key.isEmpty || images.isEmpty || isTemporarilyUnavailable) return null;
     final capped = images.take(6).toList();
     if (capped.length == 1) return const [0];
 
@@ -323,6 +341,11 @@ Return JSON only:
             .timeout(timeout);
         if (res.statusCode == 429 || res.statusCode >= 500) {
           lastError = 'HTTP ${res.statusCode}';
+          if (res.statusCode == 429) {
+            // Don't burn retries across every logo candidate — cool down.
+            _tripQuotaCooldown();
+            break;
+          }
           await Future<void>.delayed(
             Duration(milliseconds: (800 * math.pow(2, attempt)).toInt()),
           );

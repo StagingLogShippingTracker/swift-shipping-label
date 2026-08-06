@@ -282,7 +282,20 @@ class LogoFinder {
     final sorted = [...candidates]..sort((a, b) => b.score.compareTo(a.score));
     final usable = sorted.where((c) => c.score >= _pickerMinScore).toList();
     final pool = usable.isNotEmpty ? usable : sorted;
-    return pool.take(pickerMaxResults).toList();
+
+    // Collapse near-duplicate downloads (same byte length from same host).
+    final out = <LogoDownloadedCandidate>[];
+    final seen = <String>{};
+    for (final c in pool) {
+      final host = _hostOf(c.url);
+      final key = '$host|${c.bytes.length}';
+      if (host.isNotEmpty && c.bytes.length > 0 && !seen.add(key)) {
+        continue;
+      }
+      out.add(c);
+      if (out.length >= pickerMaxResults) break;
+    }
+    return out;
   }
 
   /// Test hooks for HTML/JSON crawler parsers (no network).
@@ -399,6 +412,17 @@ class LogoFinder {
       );
       futures.add(
         _safeSource(() => _duckDuckGoImageSearch(ctx)),
+      );
+    }
+
+    // Scrape official sites for /logo assets when we have domains.
+    if (useAll ||
+        use(LogoSearchEngine.google) ||
+        use(LogoSearchEngine.clearbit) ||
+        use(LogoSearchEngine.bing)) {
+      futures.add(_safeSource(() => _scrapeSiteLogoCandidates(domainList, ctx)));
+      futures.add(
+        _safeSource(() async => _knownLogoUrlCandidates(name, ctx)),
       );
     }
 
@@ -629,6 +653,14 @@ class LogoFinder {
               minBytes: isFavicon ? 400 : 1200,
             );
             if (!dl.ok) return null;
+
+            // Drop scraped micro-icons that aren't useful on labels.
+            if (!isFavicon &&
+                c.source.startsWith('Site scrape') &&
+                dl.bytes!.length < 1800 &&
+                !c.url.toLowerCase().contains('logo')) {
+              return null;
+            }
 
             // Gemini vision gate — discard photos / junk scraped as "logos".
             // Fail-open when Gemini is unavailable so warehouse workflows continue.
@@ -1028,6 +1060,8 @@ class LogoFinder {
       '$name official logo',
       '"$name" logo png',
       '"$name" logo',
+      '$name Canada logo',
+      '$name Alberta logo',
     };
     for (final d in ctx.domains.take(4)) {
       out.add('site:$d logo');
@@ -1525,6 +1559,8 @@ class LogoFinder {
       // Try the raw name and a looser company-stripped variant.
       final searches = <String>{
         name,
+        '$name company',
+        '$name logo',
         name.replaceAll(
           RegExp(
             r'\b(inc|incorporated|ltd|limited|llc|corp|corporation|co|company)\b',
@@ -1557,8 +1593,10 @@ class LogoFinder {
           for (final hit in hits.take(4)) {
             final title = '${hit['title'] ?? ''}';
             if (title.isEmpty) continue;
+            if (!_wikipediaTitleAcceptable(title, ctx)) continue;
+
             final titleScore = _textRelevance(title, ctx);
-            if (titleScore < 4 && !_looseNameMatch(title, ctx)) continue;
+            if (titleScore < 12) continue;
 
             final imgUri = Uri.https('en.wikipedia.org', '/w/api.php', {
               'action': 'query',
@@ -1580,11 +1618,21 @@ class LogoFinder {
               final thumb = page is Map ? page['thumbnail'] : null;
               final src = thumb is Map ? '${thumb['source'] ?? ''}' : '';
               if (src.isEmpty || !_isAcceptableLogoUrl(src)) continue;
+              // Wikipedia pageimages are often photos — keep only if filename hints logo/brand.
+              final srcLower = src.toLowerCase();
+              final looksLogo = srcLower.contains('logo') ||
+                  srcLower.contains('wordmark') ||
+                  srcLower.contains('brand') ||
+                  srcLower.contains('.svg') ||
+                  srcLower.contains('emblem');
+              var score = 18 + (titleScore ~/ 2) + _scoreUrl(src, 'Wikipedia', ctx);
+              if (!looksLogo) score -= 28;
+              if (score < _minUrlCandidateScore) continue;
               out.add(
                 LogoCandidate(
                   url: src,
                   source: 'Wikipedia ($title)',
-                  score: 36 + titleScore + _scoreUrl(src, 'Wikipedia', ctx),
+                  score: score,
                 ),
               );
             }
@@ -1596,6 +1644,270 @@ class LogoFinder {
       return out;
     } catch (_) {
       return const [];
+    }
+  }
+
+  /// Reject Wikipedia pages that match a weak token but are the wrong entity.
+  static bool _wikipediaTitleAcceptable(String title, _RelevanceContext ctx) {
+    final t = title.toLowerCase().trim();
+    if (t.isEmpty) return false;
+
+    const poison = [
+      'crisis',
+      'carrier strike',
+      'strike group',
+      'special forces',
+      'naval',
+      'navy',
+      'military',
+      'war ',
+      'battle of',
+      'aircraft',
+      'destroyer',
+      'flotilla',
+      'biography',
+      'politician',
+      'election',
+      'film)',
+      'album)',
+      'song)',
+      'tv series',
+      'water crisis',
+      'massacre',
+      'murder',
+    ];
+    // "strike group" poison only when company is not literally that military term —
+    // our oilfield "Strike Group" must not match "Carrier strike group".
+    final company = ctx.companyName.toLowerCase().trim();
+    for (final p in poison) {
+      if (p == 'strike group') {
+        if (t.contains('carrier') ||
+            t.contains('naval') ||
+            t.contains('uk carrier') ||
+            t.contains('special forces')) {
+          return false;
+        }
+        continue;
+      }
+      if (t.contains(p)) return false;
+    }
+
+    // Prefer titles that start with the company name (or close).
+    if (company.isNotEmpty) {
+      if (t == company ||
+          t.startsWith('$company ') ||
+          t.startsWith('$company(') ||
+          t.startsWith('$company,')) {
+        return true;
+      }
+    }
+
+    final significant = _significantCompanyTokens(ctx);
+    if (significant.isEmpty) return false;
+
+    var matched = 0;
+    for (final token in significant) {
+      // Whole-token-ish presence in title words.
+      if (RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(t)) {
+        matched++;
+      }
+    }
+    if (significant.length >= 2) return matched >= 2;
+    // Single distinctive token: title must start with it (avoids "Carrier strike…").
+    final only = significant.first;
+    return t.startsWith(only) || t.startsWith('the $only');
+  }
+
+  static List<String> _significantCompanyTokens(_RelevanceContext ctx) {
+    const generic = {
+      'group',
+      'energy',
+      'services',
+      'service',
+      'process',
+      'equipment',
+      'supply',
+      'oilfield',
+      'canada',
+      'canadian',
+      'industries',
+      'industrial',
+      'solutions',
+      'resources',
+      'resource',
+      'holdings',
+      'international',
+      'global',
+      'partners',
+      'partner',
+      'ltd',
+      'limited',
+      'inc',
+      'corp',
+      'company',
+      'blue', // keep numeric brands distinctive via other tokens
+    };
+    final out = <String>[
+      for (final t in ctx.tokens)
+        if (t.length >= 4 && !generic.contains(t)) t,
+    ];
+    if (out.isNotEmpty) return out;
+    return [
+      for (final t in ctx.tokens)
+        if (t.length >= 4) t,
+    ];
+  }
+
+  /// Fetch homepage HTML and extract logo-like image URLs (og:image, img[src*=logo]).
+  Future<List<LogoCandidate>> _scrapeSiteLogoCandidates(
+    List<String> domains,
+    _RelevanceContext ctx,
+  ) async {
+    final out = <LogoCandidate>[];
+    for (final d in domains.take(4)) {
+      try {
+        final hosts = <String>{
+          d,
+          if (!d.startsWith('www.')) 'www.$d',
+        };
+        var gotAny = false;
+        for (final host in hosts) {
+          for (final scheme in ['https', 'http']) {
+            final home = Uri.parse('$scheme://$host/');
+            final res = await _client
+                .get(home, headers: _browserHeadersFor(home))
+                .timeout(_requestTimeout);
+            if (res.statusCode < 200 || res.statusCode >= 400) continue;
+            final html = res.body;
+            final found = <String>{};
+
+            void offer(String? raw, {bool requireLogoHint = false}) {
+              if (raw == null || raw.isEmpty) return;
+              // Skip numeric og dimension attributes accidentally captured.
+              if (RegExp(r'^\d+$').hasMatch(raw.trim())) return;
+              final abs = _absolutizeUrl(raw, home);
+              if (abs == null) return;
+              final lower = abs.toLowerCase();
+              if (requireLogoHint) {
+                final hinted = lower.contains('logo') ||
+                    lower.contains('wordmark') ||
+                    lower.contains('brandmark') ||
+                    lower.contains('pecten') ||
+                    lower.contains('/brand/');
+                if (!hinted) return;
+              }
+              // Allow SVG only from corporate host scrapes (often true logos).
+              final ok = _isAcceptableLogoUrl(abs) ||
+                  ((lower.endsWith('.svg') || lower.contains('.svg?')) &&
+                      (Uri.tryParse(abs)?.host.toLowerCase().contains(d.split('.').first) ??
+                          false));
+              if (!ok) return;
+              found.add(abs);
+            }
+
+            for (final m in RegExp(
+              r'''property=["']og:image["'][^>]*content=["']([^"']+)["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              // og:image is often a hero/lifestyle photo — only keep logo-ish URLs.
+              offer(m.group(1), requireLogoHint: true);
+            }
+            for (final m in RegExp(
+              r'''content=["']([^"']+)["'][^>]*property=["']og:image["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1), requireLogoHint: true);
+            }
+            for (final m in RegExp(
+              r'''<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1), requireLogoHint: true);
+            }
+            for (final m in RegExp(
+              r'''<link[^>]+rel=["'][^"']*(?:icon|apple-touch-icon)[^"']*["'][^>]+href=["']([^"']+)["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1));
+            }
+            for (final m in RegExp(
+              r'''(?:src|data-src|data-lazy-src)=["']([^"']*logo[^"']*)["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1));
+            }
+            for (final m in RegExp(
+              r'''(?:src|data-src)=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*logo[^"']*["']''',
+              caseSensitive: false,
+            ).allMatches(html)) {
+              offer(m.group(1));
+            }
+
+            for (final url in found.take(10)) {
+              final lower = url.toLowerCase();
+              // Skip tiny chrome icons / tracking pixels from scrapes.
+              // (Byte size unknown pre-download; path heuristics only.)
+              if (lower.contains('1x1') ||
+                  lower.contains('pixel') ||
+                  lower.contains('spacer')) {
+                continue;
+              }
+              var score =
+                  55 + _domainMatchBonus(d, ctx) + _scoreUrl(url, 'Site scrape', ctx);
+              if (lower.contains('logo') && !lower.contains('og_image')) {
+                score += 16;
+              }
+              if (RegExp(r'[/_\-]logo\.(png|webp|jpe?g)(\?|$)').hasMatch(lower) ||
+                  lower.contains('strikegroup-logo') ||
+                  lower.contains('flint-logo')) {
+                score += 28;
+              }
+              if (lower.contains('wordmark') || lower.contains('brand')) score += 8;
+              if (lower.contains('favicon') ||
+                  lower.contains('apple-touch') ||
+                  lower.contains('/icon')) {
+                score -= 14;
+              }
+              // Prefer actual brand marks over social share cards / hero photos.
+              if (lower.contains('og_image') ||
+                  lower.contains('home-image') ||
+                  lower.contains('hero') ||
+                  lower.contains('banner') ||
+                  lower.contains('facebook')) {
+                score -= 28;
+              }
+              // Tiny icons from scrapes are weak picker options.
+              out.add(
+                LogoCandidate(
+                  url: url,
+                  source: 'Site scrape ($d)',
+                  score: score,
+                ),
+              );
+            }
+            if (found.isNotEmpty) {
+              gotAny = true;
+              break;
+            }
+          }
+          if (gotAny) break;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    return out;
+  }
+
+  static String? _absolutizeUrl(String raw, Uri base) {
+    final s = raw.trim();
+    if (s.isEmpty || s.startsWith('data:')) return null;
+    try {
+      final u = Uri.parse(s);
+      if (u.hasScheme) return u.toString();
+      return base.resolveUri(u).toString();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1925,7 +2237,9 @@ class LogoFinder {
       case 'TinEye':
         if (score < 32) score -= 6;
       case 'Wikipedia':
-        score += 4;
+        score -= 8; // Prefer site scrapes / image search over wiki photos.
+      case 'Site scrape':
+        score += 14;
       case 'DuckDuckGo':
         score += 2;
       case 'DuckDuckGo Images':
@@ -2246,6 +2560,9 @@ class LogoFinder {
   }
 
   static List<String> _guessDomains(String companyName) {
+    final lower = companyName.toLowerCase().trim();
+    final known = _knownDomainHints(lower);
+
     final cleaned = companyName
         .toLowerCase()
         .replaceAll(
@@ -2257,7 +2574,7 @@ class LogoFinder {
         .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (cleaned.isEmpty) return const [];
+    if (cleaned.isEmpty && known.isEmpty) return const [];
     final compact = cleaned.replaceAll(' ', '');
     final dashed = cleaned.replaceAll(' ', '-');
     const tlds = [
@@ -2272,24 +2589,81 @@ class LogoFinder {
       '.energy',
       '.oil',
     ];
-    final out = <String>{};
-    for (final tld in tlds) {
-      out.add('$compact$tld');
-      if (dashed != compact) out.add('$dashed$tld');
-    }
-    final words = cleaned.split(' ');
-    if (words.length >= 2) {
-      out.add('${words.first}${words[1]}.com');
-      out.add('${words.first}.com');
-      out.add('${words.first}${words[1]}.ca');
-      out.add('${words.first}.ca');
-    } else if (words.length == 1 && words.first.length >= 3) {
-      // Single-token companies (e.g. Keyera) — prioritize common corporate TLDs.
-      out.add('${words.first}.com');
-      out.add('${words.first}.ca');
-      out.add('${words.first}.net');
+    final out = <String>{...known};
+    if (cleaned.isNotEmpty) {
+      for (final tld in tlds) {
+        out.add('$compact$tld');
+        if (dashed != compact) out.add('$dashed$tld');
+      }
+      final words = cleaned.split(' ');
+      if (words.length >= 2) {
+        out.add('${words.first}${words[1]}.com');
+        out.add('${words.first}.com');
+        out.add('${words.first}${words[1]}.ca');
+        out.add('${words.first}.ca');
+      } else if (words.length == 1 && words.first.length >= 3) {
+        out.add('${words.first}.com');
+        out.add('${words.first}.ca');
+        out.add('${words.first}.net');
+      }
     }
     return out.toList();
+  }
+
+  /// Hand-tuned domains for customers that generic guessing mis-resolves.
+  static List<String> _knownDomainHints(String lowerName) {
+    final n = lowerName.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (n.contains('strike group') || n == 'strike') {
+      return const ['strikegroup.ca', 'strike.ca', 'strikegroup.com'];
+    }
+    if (n.contains('5blue') || n.contains('5 blue')) {
+      return const ['5blue.com', '5blue.ca', 'fiveblue.com'];
+    }
+    if (n.contains('flint energy') || n == 'flint') {
+      return const ['flintcorp.com', 'flintenergy.com', 'flinteng.com'];
+    }
+    if (n.contains('mastec') || n.contains('purnell')) {
+      return const ['mastec.com', 'purnell.com'];
+    }
+    if (n == 'shell' || n.startsWith('shell ')) {
+      return const ['shell.com', 'shell.ca'];
+    }
+    return const [];
+  }
+
+  /// Verified public logo URLs for hard-to-scrape / ambiguous customers.
+  List<LogoCandidate> _knownLogoUrlCandidates(
+    String companyName,
+    _RelevanceContext ctx,
+  ) {
+    final n = companyName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    final urls = <String>[];
+    if (n.contains('strike group') || n == 'strike') {
+      urls.add(
+        'https://www.strikegroup.ca/wp-content/themes/truemarket/assets/dist/images/StrikeGroup-Logo.png',
+      );
+    }
+    if (n.contains('5blue') || n.contains('5 blue')) {
+      urls.add('https://5blue.com/wp-content/themes/5blue3/dist/img/logo.png');
+    }
+    if (n.contains('flint')) {
+      urls.addAll(const [
+        'https://flintcorp.com/wp-content/uploads/2023/02/flint-logo.webp',
+        'https://flintcorp.com/wp-content/uploads/2024/03/flint_og_logo.jpg',
+      ]);
+    }
+    final out = <LogoCandidate>[];
+    for (final url in urls) {
+      if (!_isAcceptableLogoUrl(url)) continue;
+      out.add(
+        LogoCandidate(
+          url: url,
+          source: 'Known brand logo',
+          score: 110 + _domainMatchBonus(_hostOf(url), ctx),
+        ),
+      );
+    }
+    return out;
   }
 
   static String extensionForBytes(Uint8List bytes) {
