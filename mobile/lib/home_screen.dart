@@ -838,16 +838,22 @@ class _HomeScreenState extends State<HomeScreen> {
         // Windows MenuBar bottom-right clip bug with Dialog/Center.
         return LayoutBuilder(
           builder: (ctx, constraints) {
-            final maxW = constraints.maxWidth.isFinite
+            final size = MediaQuery.sizeOf(ctx);
+            // Prefer tight window size; ignore absurd LayoutBuilder maxima.
+            final maxW = (constraints.maxWidth.isFinite &&
+                    constraints.maxWidth > 0 &&
+                    constraints.maxWidth <= size.width + 1)
                 ? constraints.maxWidth
-                : MediaQuery.sizeOf(ctx).width;
-            final maxH = constraints.maxHeight.isFinite
+                : size.width;
+            final maxH = (constraints.maxHeight.isFinite &&
+                    constraints.maxHeight > 0 &&
+                    constraints.maxHeight <= size.height + 1)
                 ? constraints.maxHeight
-                : MediaQuery.sizeOf(ctx).height;
-            final cardW = maxW < 480 ? (maxW - 24).clamp(280.0, 440.0) : 440.0;
-            final cardH = (maxH - 48).clamp(280.0, 520.0);
-            final left = ((maxW - cardW) / 2).clamp(8.0, maxW);
-            final top = ((maxH - cardH) / 2).clamp(8.0, maxH);
+                : size.height;
+            final cardW = (maxW - 72).clamp(300.0, 420.0);
+            final left = ((maxW - cardW) / 2).clamp(12.0, maxW - cardW);
+            // Vertically center a compact intrinsic-height card (~320px).
+            final top = (maxH * 0.18).clamp(24.0, maxH * 0.28);
             // SizedBox.expand is required: a Stack of only Positioned children
             // otherwise collapses and pins to the bottom-right on Windows.
             return SizedBox.expand(
@@ -864,7 +870,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   left: left,
                   top: top,
                   width: cardW,
-                  height: cardH,
                   child: Material(
                     color: Theme.of(ctx).dialogTheme.backgroundColor ??
                         Theme.of(ctx).colorScheme.surface,
@@ -874,6 +879,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
@@ -915,7 +921,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: SwiftColors.muted,
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(height: 16),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
