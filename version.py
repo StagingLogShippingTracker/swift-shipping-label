@@ -1,4 +1,4 @@
-"""Embedded app version for Windows Update checks (semver)."""
+﻿"""Embedded app version for Windows Update checks (semver)."""
 
 __version__ = "1.1.58"
 APP_NAME = "Swift Document Generator"
