@@ -19,6 +19,8 @@ class SwiftColors {
   static const panel = Color(0xFFF7F5F2);
   static const railSelected = Color(0xFFF3E4DF);
   static const inputFill = Color(0xFFFAFAF8);
+  /// Slightly elevated light sheets (date picker, menus, chips) — never ink.
+  static const elevated = Color(0xFFEDE9E3);
 
   // Dark-mode counterparts (Windows + Android).
   static const darkBg = Color(0xFF121417);
@@ -77,7 +79,9 @@ class SwiftTheme {
     final inputFill =
         dark ? SwiftColors.darkInputFill : SwiftColors.inputFill;
     final chromePanel = dark ? SwiftColors.darkPanel : SwiftColors.panel;
-    final elevated = dark ? SwiftColors.darkElevated : SwiftColors.ink;
+    // M3 date picker / menus use surfaceContainer* — light mode must stay light.
+    // (Previously light used ink here, which made the calendar black/unreadable.)
+    final elevated = dark ? SwiftColors.darkElevated : SwiftColors.elevated;
 
     final cardR = SwiftRadius.card(desktop);
     final controlR = SwiftRadius.control(desktop);
@@ -396,6 +400,59 @@ class SwiftTheme {
           height: 1.4,
         ),
       ),
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        headerBackgroundColor: dark ? elevated : accentSoft,
+        headerForegroundColor: ink,
+        dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          if (states.contains(WidgetState.selected)) return Colors.white;
+          return ink;
+        }),
+        dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return null;
+        }),
+        todayForegroundColor: WidgetStatePropertyAll(SwiftColors.accent),
+        todayBackgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+        todayBorder: const BorderSide(color: SwiftColors.accent),
+        yearForegroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          if (states.contains(WidgetState.selected)) return Colors.white;
+          return ink;
+        }),
+        yearBackgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return null;
+        }),
+        weekdayStyle: TextStyle(
+          fontFamily: 'Calibri',
+          color: muted,
+          fontSize: 12 * scale,
+        ),
+        dayStyle: TextStyle(
+          fontFamily: 'Calibri',
+          color: ink,
+          fontSize: 13 * scale,
+        ),
+        yearStyle: TextStyle(
+          fontFamily: 'Calibri',
+          color: ink,
+          fontSize: 13 * scale,
+        ),
+        rangePickerBackgroundColor: surface,
+        rangePickerHeaderBackgroundColor: dark ? elevated : accentSoft,
+        rangePickerHeaderForegroundColor: ink,
+        dividerColor: border,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(dialogR),
+        ),
+      ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
@@ -609,7 +666,7 @@ class SwiftChromeColors extends ThemeExtension<SwiftChromeColors> {
     required this.muted,
     required this.border,
     this.accentSoft = SwiftColors.accentSoft,
-    this.elevated = SwiftColors.ink,
+    this.elevated = SwiftColors.elevated,
   });
 
   final Color bg;
