@@ -943,18 +943,19 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (ctx) => AlertDialog(
           title: const Text('Choose a logo'),
           content: SizedBox(
-            width: 520,
+            width: 560,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Top ${candidates.length} result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
+                  'Top ${candidates.length} of up to ${LogoFinder.pickerMaxResults} '
+                  'result${candidates.length == 1 ? '' : 's'} — tap a thumbnail',
                   style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
                 ),
                 const SizedBox(height: 12),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 440),
+                  constraints: const BoxConstraints(maxHeight: 520),
                   child: SingleChildScrollView(
                     child: Wrap(
                       spacing: 8,

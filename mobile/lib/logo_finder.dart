@@ -169,15 +169,19 @@ class LogoFinder {
   final http.Client _client;
   static const maxBytes = 5 * 1024 * 1024;
   /// Max thumbnails shown in the post-search logo picker grid.
-  static const pickerMaxResults = 20;
-  static const _maxCandidatesToDownload = 40;
-  static const _minUrlCandidateScore = 24;
-  static const _minDownloadedScore = 26;
-  static const _pickerMinScore = 24;
+  static const pickerMaxResults = 30;
+  /// Try enough ranked URLs that we can still fill [pickerMaxResults] after
+  /// download/filter losses (timeouts, junk, duplicates).
+  static const _maxCandidatesToDownload = 120;
+  static const _minUrlCandidateScore = 20;
+  static const _minDownloadedScore = 18;
+  static const _pickerMinScore = 18;
   /// Per-request timeout so one blocked engine cannot stall All Sources.
   static const _requestTimeout = Duration(seconds: 6);
   /// Whole-engine budget (multiple queries / fallbacks inside one source).
-  static const _engineTimeout = Duration(seconds: 18);
+  /// Bing alone may issue several paged requests; keep this high enough that
+  /// a healthy engine can finish instead of returning [] on timeout.
+  static const _engineTimeout = Duration(seconds: 45);
   static const _ua =
       'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
 
@@ -283,13 +287,13 @@ class LogoFinder {
     final usable = sorted.where((c) => c.score >= _pickerMinScore).toList();
     final pool = usable.isNotEmpty ? usable : sorted;
 
-    // Collapse near-duplicate downloads (same byte length from same host).
+    // Collapse exact URL duplicates only — same-host distinct assets must remain
+    // so the picker can approach [pickerMaxResults] (was host|bytes, too aggressive).
     final out = <LogoDownloadedCandidate>[];
     final seen = <String>{};
     for (final c in pool) {
-      final host = _hostOf(c.url);
-      final key = '$host|${c.bytes.length}';
-      if (host.isNotEmpty && c.bytes.length > 0 && !seen.add(key)) {
+      final key = _urlKey(c.url);
+      if (key.isNotEmpty && !seen.add(key)) {
         continue;
       }
       out.add(c);
@@ -316,6 +320,18 @@ class LogoFinder {
   static List<String> debugExpandedQueries(String companyName, {String domain = ''}) {
     final domains = domain.trim().isEmpty ? <String>[] : [domain.trim()];
     return _expandedLogoQueries(_RelevanceContext.from(companyName, domains));
+  }
+
+  /// Test hook: score a URL the same way live ranking does.
+  static int debugScoreUrl(
+    String url,
+    String source,
+    String companyName, {
+    String domain = '',
+  }) {
+    final domains = domain.trim().isEmpty ? <String>[] : [domain.trim()];
+    final ctx = _RelevanceContext.from(companyName, domains);
+    return _scoreUrl(url, source, ctx);
   }
 
   /// Returns ranked, successfully downloaded logo candidates from selected sources.
@@ -413,6 +429,19 @@ class LogoFinder {
       futures.add(
         _safeSource(() => _duckDuckGoImageSearch(ctx)),
       );
+      futures.add(
+        _safeSource(() => _wikimediaCommonsLogoSearch(name, ctx)),
+      );
+    }
+
+    // Public CDN logo endpoints (no API key) — helps fill the picker toward 30.
+    if (useAll ||
+        use(LogoSearchEngine.clearbit) ||
+        use(LogoSearchEngine.google) ||
+        use(LogoSearchEngine.bing)) {
+      futures.add(
+        _safeSource(() async => _publicCdnLogoCandidates(domainList, ctx)),
+      );
     }
 
     // Scrape official sites for /logo assets when we have domains.
@@ -461,41 +490,65 @@ class LogoFinder {
     var ranked = _rankAndDedupe(merged, ctx);
 
     // Download candidates in parallel batches so "All sources" merges as
-    // well as any single engine (top ~20 by score after byte bonus).
+    // well as any single engine (top [pickerMaxResults] after byte bonus).
     var toTry = ranked.take(_maxCandidatesToDownload).toList();
     var downloaded = await _downloadCandidatesParallel(toTry, ctx, gemini: gemini);
 
-    // Sparse rescue: if scrapers under-delivered, re-run Google/Bing with Gemini queries only.
-    if (downloaded.length < 3 &&
-        gemini != null &&
-        plan != null &&
+    // Sparse rescue: if we are well under the picker target, widen Google/Bing
+    // (and optionally Gemini query hints) then download more.
+    if (downloaded.length < pickerMaxResults &&
         (use(LogoSearchEngine.google) || use(LogoSearchEngine.bing))) {
       try {
-        final rescueCtx = ctx.withExtras(
-          extraQueries: [
-            ...plan.searchQueries,
-            for (final alt in plan.alternateNames.take(3)) '$alt official logo png',
+        final rescueQueries = <String>[
+          if (plan != null) ...plan.searchQueries,
+          if (plan != null)
+            for (final alt in plan.alternateNames.take(3))
+              '$alt official logo png',
+          if (name.isNotEmpty) ...[
+            '$name logo png',
+            '$name logo transparent',
+            '$name brand logo high resolution',
+            '$name company logo filetype:png',
+            '$name official logo -favicon',
           ],
-        );
+          for (final d in domainList.take(3)) '$d logo',
+        ];
+        final rescueCtx = ctx.withExtras(extraQueries: rescueQueries);
         final rescueFutures = <Future<List<LogoCandidate>>>[];
         if (use(LogoSearchEngine.google)) {
-          rescueFutures.add(_safeSource(() => _googleImageSearch(rescueCtx, forceExpanded: true)));
+          rescueFutures.add(
+            _safeSource(() => _googleImageSearch(rescueCtx, forceExpanded: true)),
+          );
         }
         if (use(LogoSearchEngine.bing)) {
-          rescueFutures.add(_safeSource(() => _bingImageSearch(rescueCtx, forceExpanded: true)));
+          rescueFutures.add(
+            _safeSource(() => _bingImageSearch(rescueCtx, forceExpanded: true)),
+          );
+        }
+        rescueFutures.add(
+          _safeSource(() => _duckDuckGoImageSearch(rescueCtx)),
+        );
+        if (name.isNotEmpty) {
+          rescueFutures.add(
+            _safeSource(() => _wikimediaCommonsLogoSearch(name, rescueCtx)),
+          );
         }
         final rescueLists = await Future.wait(
           rescueFutures.map(
             (f) => f.catchError((Object _, StackTrace __) => <LogoCandidate>[]),
           ),
         );
-        final rescueMerged = <LogoCandidate>[...merged];
+        final rescueMerged = <LogoCandidate>[
+          ...merged,
+          ..._publicCdnLogoCandidates(domainList, rescueCtx),
+        ];
         for (final list in rescueLists) {
           rescueMerged.addAll(list);
         }
         ranked = _rankAndDedupe(rescueMerged, rescueCtx);
         toTry = ranked.take(_maxCandidatesToDownload).toList();
-        final more = await _downloadCandidatesParallel(toTry, rescueCtx, gemini: gemini);
+        final more =
+            await _downloadCandidatesParallel(toTry, rescueCtx, gemini: gemini);
         final seen = {for (final c in downloaded) _urlKey(c.url)};
         for (final c in more) {
           final key = _urlKey(c.url);
@@ -662,19 +715,17 @@ class LogoFinder {
               return null;
             }
 
-            // Gemini vision gate — discard photos / junk scraped as "logos".
-            // Fail-open when Gemini is unavailable so warehouse workflows continue.
+            // Gemini vision: boost clear logos / demote junk — but do not drop
+            // candidates. Dropping was starving the picker far below 30 results
+            // whenever Gemini was strict or rate-limited inconsistently.
             if (vision != null && !isFavicon) {
               try {
                 final verdict = await vision.validateLogoCandidate(
                   dl.bytes!,
                   companyHint: ctx.companyName,
                 );
-                if (verdict != null && !verdict.shouldKeep) {
-                  return null;
-                }
-                if (verdict != null && verdict.confidenceScore >= 0.7) {
-                  // Small bonus for high-confidence validated logos.
+                if (verdict != null && verdict.shouldKeep &&
+                    verdict.confidenceScore >= 0.7) {
                   final finalScore =
                       c.score + _bytesBonus(dl.bytes!) + 6;
                   if (finalScore < _minDownloadedScore) return null;
@@ -683,6 +734,27 @@ class LogoFinder {
                     source: '${c.source} · Gemini',
                     url: c.url,
                     score: finalScore,
+                  );
+                }
+                if (verdict != null && !verdict.shouldKeep) {
+                  final demoted =
+                      c.score + _bytesBonus(dl.bytes!) - 16;
+                  if (demoted < _minDownloadedScore) {
+                    // Keep a weak entry so the grid can still fill toward 30.
+                    return LogoDownloadedCandidate(
+                      bytes: dl.bytes!,
+                      source: c.source,
+                      url: c.url,
+                      score: _minDownloadedScore,
+                      hint: 'AI flagged — review carefully before using.',
+                    );
+                  }
+                  return LogoDownloadedCandidate(
+                    bytes: dl.bytes!,
+                    source: c.source,
+                    url: c.url,
+                    score: demoted,
+                    hint: 'AI flagged — review carefully before using.',
                   );
                 }
               } catch (_) {
@@ -753,13 +825,127 @@ class LogoFinder {
     _RelevanceContext ctx,
   ) {
     return [
-      for (final d in domains.take(5))
+      for (final d in domains.take(8))
         LogoCandidate(
           url: 'https://logo.clearbit.com/$d',
           source: 'Clearbit ($d)',
           score: _scoreDomainApi(d, 'Clearbit', ctx),
         ),
+      for (final d in domains.take(8))
+        LogoCandidate(
+          url: 'https://logo.clearbit.com/$d?size=512',
+          source: 'Clearbit ($d)',
+          score: _scoreDomainApi(d, 'Clearbit', ctx) - 1,
+        ),
     ];
+  }
+
+  /// Keyless CDN / icon endpoints that often still resolve when scrapers stall.
+  List<LogoCandidate> _publicCdnLogoCandidates(
+    List<String> domains,
+    _RelevanceContext ctx,
+  ) {
+    final out = <LogoCandidate>[];
+    for (final d in domains.take(8)) {
+      out.addAll([
+        LogoCandidate(
+          url: 'https://logo.clearbit.com/$d',
+          source: 'Clearbit CDN ($d)',
+          score: _scoreDomainApi(d, 'Clearbit', ctx) - 2,
+        ),
+        LogoCandidate(
+          url: 'https://logo.clearbit.com/$d?size=512',
+          source: 'Clearbit CDN ($d)',
+          score: _scoreDomainApi(d, 'Clearbit', ctx) - 3,
+        ),
+        LogoCandidate(
+          url: 'https://icons.duckduckgo.com/ip3/$d.ico',
+          source: 'DuckDuckGo Icon ($d)',
+          score: 34 + _domainMatchBonus(d, ctx),
+        ),
+        LogoCandidate(
+          url: 'https://www.google.com/s2/favicons?sz=128&domain_url=$d',
+          source: 'Google Favicon ($d)',
+          score: 30 + _domainMatchBonus(d, ctx),
+        ),
+        LogoCandidate(
+          url: 'https://www.google.com/s2/favicons?sz=256&domain=$d',
+          source: 'Google Favicon ($d)',
+          score: 31 + _domainMatchBonus(d, ctx),
+        ),
+        LogoCandidate(
+          url: 'https://www.google.com/s2/favicons?sz=256&domain_url=https://$d',
+          source: 'Google Favicon ($d)',
+          score: 31 + _domainMatchBonus(d, ctx),
+        ),
+      ]);
+    }
+    return out;
+  }
+
+  Future<List<LogoCandidate>> _wikimediaCommonsLogoSearch(
+    String name,
+    _RelevanceContext ctx,
+  ) async {
+    try {
+      final terms = <String>{
+        '$name logo',
+        '$name company logo',
+        '${ctx.tokens.take(2).join(' ')} logo',
+      };
+      final urls = <String>{};
+      for (final term in terms) {
+        if (term.trim().length < 3) continue;
+        final uri = Uri.https('commons.wikimedia.org', '/w/api.php', {
+          'action': 'query',
+          'format': 'json',
+          'origin': '*',
+          'generator': 'search',
+          'gsrsearch': 'File:$term',
+          'gsrlimit': '20',
+          'gsrnamespace': '6',
+          'prop': 'imageinfo',
+          'iiprop': 'url|mime|size',
+          'iiurlwidth': '800',
+        });
+        final res = await _client
+            .get(
+              uri,
+              headers: {'User-Agent': _ua, 'Accept': 'application/json'},
+            )
+            .timeout(_requestTimeout);
+        if (res.statusCode != 200) continue;
+        final body = jsonDecode(res.body);
+        final pages = body is Map ? (body as Map)['query'] : null;
+        final pageMap = pages is Map ? pages['pages'] : null;
+        if (pageMap is! Map) continue;
+        for (final page in pageMap.values) {
+          if (page is! Map) continue;
+          final pageData = Map<Object?, Object?>.from(page);
+          final infos = pageData['imageinfo'];
+          if (infos is! List || infos.isEmpty) continue;
+          final first = infos.first;
+          if (first is! Map) continue;
+          final info = Map<Object?, Object?>.from(first);
+          final mime = '${info['mime'] ?? ''}'.toLowerCase();
+          final thumb = '${info['thumburl'] ?? ''}';
+          final full = '${info['url'] ?? ''}';
+          // Prefer raster thumbnails (Commons often stores SVG masters).
+          final pick = thumb.startsWith('http')
+              ? thumb
+              : (mime.contains('svg') ? '' : full);
+          if (pick.startsWith('http')) urls.add(pick);
+        }
+      }
+      return _urlCandidatesFromSet(
+        urls,
+        source: 'Wikimedia Commons',
+        ctx: ctx,
+        sourceBonus: 4,
+      );
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<LogoCandidate>> _retoolClearbitCandidates(
@@ -846,24 +1032,36 @@ class LogoFinder {
 
       Future<void> runQueries(List<String> queries) async {
         for (final q in queries) {
-          if (urls.length >= 28) break;
+          if (urls.length >= 90) break;
           try {
             final encoded = Uri.encodeQueryComponent(q);
             final referer = 'https://www.bing.com/images/search?q=$encoded';
             final headers = _browserHeadersRotating(referer: referer)
               ..['Sec-Fetch-Site'] = 'same-origin';
 
-            final asyncUri = Uri.parse(
-              'https://www.bing.com/images/async?q=$encoded&first=0&count=35&relp=35&tsc=ImageBasicHover&qft=+filterui:photo-photo',
+            // Page through Bing in parallel; avoid photo-only filter so
+            // transparent PNG logos / clipart-style results are included.
+            final bodies = await Future.wait(
+              [0, 35, 70].map((first) async {
+                try {
+                  final asyncUri = Uri.parse(
+                    'https://www.bing.com/images/async?q=$encoded&first=$first&count=35&relp=35&tsc=ImageBasicHover',
+                  );
+                  final asyncRes = await _client
+                      .get(asyncUri, headers: headers)
+                      .timeout(_requestTimeout);
+                  if (asyncRes.statusCode == 200) return asyncRes.body;
+                } catch (_) {}
+                return '';
+              }),
             );
-            final asyncRes = await _client
-                .get(asyncUri, headers: headers)
-                .timeout(_requestTimeout);
-            if (asyncRes.statusCode == 200) {
-              urls.addAll(_parseBingImagePayload(asyncRes.body));
+            for (final body in bodies) {
+              if (body.isNotEmpty) {
+                urls.addAll(_parseBingImagePayload(body));
+              }
             }
 
-            if (urls.length < 8) {
+            if (urls.length < 12) {
               final pageUri = Uri.parse(
                 'https://www.bing.com/images/search?q=$encoded&form=HDRSC2&first=1&tsc=ImageBasicHover',
               );
@@ -881,18 +1079,19 @@ class LogoFinder {
       }
 
       await runQueries(primary);
-      if (urls.isEmpty) {
-        await runQueries(expanded);
-      } else if (urls.length < 6) {
-        await runQueries(expanded.take(4).toList());
+      if (urls.length < 20 || forceExpanded) {
+        await runQueries(expanded.take(forceExpanded ? 8 : 6).toList());
       }
 
       return _urlCandidatesFromSet(
         urls,
         source: 'Bing Images',
+        // Image-search hits are already query-scoped; do not demote them
+        // relative to domain APIs (old sourceBonus: -2 + harsh score gate
+        // left the picker with only a handful of results).
         ctx: ctx,
-        sourceBonus: -4,
-        minScore: 30,
+        sourceBonus: 4,
+        minScore: 16,
       );
     } catch (_) {
       return const [];
@@ -1518,7 +1717,7 @@ class LogoFinder {
   Future<List<LogoCandidate>> _tineyeSearch(_RelevanceContext ctx) async {
     try {
       final urls = <String>{};
-      for (final q in _imageSearchQueries(ctx).take(3)) {
+      for (final q in _imageSearchQueries(ctx).take(5)) {
         try {
           final uri = Uri.https('tineye.com', '/search', {'query': q});
           final res = await _client
@@ -1577,7 +1776,7 @@ class LogoFinder {
             'action': 'query',
             'list': 'search',
             'srsearch': term,
-            'srlimit': '5',
+            'srlimit': '12',
             'format': 'json',
             'origin': '*',
           });
@@ -1590,7 +1789,7 @@ class LogoFinder {
           final hits = body['query']?['search'];
           if (hits is! List || hits.isEmpty) continue;
 
-          for (final hit in hits.take(4)) {
+          for (final hit in hits.take(8)) {
             final title = '${hit['title'] ?? ''}';
             if (title.isEmpty) continue;
             if (!_wikipediaTitleAcceptable(title, ctx)) continue;
@@ -1843,7 +2042,7 @@ class LogoFinder {
               offer(m.group(1));
             }
 
-            for (final url in found.take(10)) {
+            for (final url in found.take(16)) {
               final lower = url.toLowerCase();
               // Skip tiny chrome icons / tracking pixels from scrapes.
               // (Byte size unknown pre-download; path heuristics only.)
@@ -1913,7 +2112,7 @@ class LogoFinder {
   Future<List<LogoCandidate>> _duckDuckGoCandidates(_RelevanceContext ctx) async {
     try {
       final out = <LogoCandidate>[];
-      for (final q in _imageSearchQueries(ctx).take(3)) {
+      for (final q in _imageSearchQueries(ctx).take(5)) {
         try {
           final uri = Uri.https('api.duckduckgo.com', '/', {
             'q': q,
@@ -1998,7 +2197,7 @@ class LogoFinder {
 
       Future<void> runQueries(List<String> queries) async {
         for (final q in queries) {
-          if (urls.length >= 24) break;
+          if (urls.length >= 48) break;
           try {
             final uri = Uri.https('duckduckgo.com', '/', {
               'q': q,
@@ -2067,7 +2266,7 @@ class LogoFinder {
       if (urls.isEmpty) {
         await runQueries(expanded);
       } else if (urls.length < 6) {
-        await runQueries(expanded.take(3).toList());
+        await runQueries(expanded.take(5).toList());
       }
 
       return _urlCandidatesFromSet(
@@ -2228,11 +2427,18 @@ class LogoFinder {
       case 'Clearbit via Retool':
         break;
       case 'Bing Images':
-        if (score < 38) score -= 18;
-        else if (score < 42) score -= 8;
+        // Bing results are already filtered by the search query. A previous
+        // rule (score < 38 → −18) wiped out most third-party logo PNGs
+        // (pngmart, logos-world, etc.) and left the picker far under 30.
+        score += 14;
+        if (lower.contains('logo') || lower.contains('wordmark')) {
+          score += 6;
+        }
       case 'Google Images':
-        score += 6;
-        if (score < 32) score -= 4;
+        score += 10;
+        if (lower.contains('logo') || lower.contains('wordmark')) {
+          score += 4;
+        }
       case 'TinEye':
         if (score < 32) score -= 6;
       case 'Wikipedia':
@@ -2262,7 +2468,9 @@ class LogoFinder {
       }
     }
     if (matched >= 2) score += 10;
-    if (matched == 0 && ctx.companyName.isNotEmpty) score -= 18;
+    // Mild demotion only — image-search CDN URLs often omit the company
+    // token in the path (hash filenames) but are still query-relevant.
+    if (matched == 0 && ctx.companyName.isNotEmpty) score -= 6;
     return score;
   }
 
