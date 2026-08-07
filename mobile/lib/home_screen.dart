@@ -200,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Box-sized (1/4 page) shipping/receiving labels. Disabled for BOL.
   bool _boxSizedLabel = false;
   final EmployeeDirectory _employeeDirectory = EmployeeDirectory();
+  List<String> _rosterNames = const [];
   List<String> _swiftContactNames = const [];
   bool _swiftContactsLoading = false;
   /// Focus nodes for employee-name autocomplete fields (one per key).
@@ -234,18 +235,39 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_swiftContactsLoading) return;
     setState(() => _swiftContactsLoading = true);
     try {
-      final names =
+      final roster =
           await _employeeDirectory.fetchNames(forceRefresh: forceRefresh);
       if (!mounted) return;
       setState(() {
-        _swiftContactNames = names;
+        _rosterNames = roster;
+        _swiftContactNames = widget.storage.contactSuggestions(roster: roster);
         _swiftContactsLoading = false;
       });
     } catch (e) {
       debugPrint('[SwiftContact] load failed: $e');
       if (!mounted) return;
-      setState(() => _swiftContactsLoading = false);
+      // Still surface locally remembered names when the roster is offline.
+      setState(() {
+        _swiftContactNames =
+            widget.storage.contactSuggestions(roster: _rosterNames);
+        _swiftContactsLoading = false;
+      });
     }
+  }
+
+  void _refreshContactSuggestions() {
+    setState(() {
+      _swiftContactNames =
+          widget.storage.contactSuggestions(roster: _rosterNames);
+    });
+  }
+
+  Future<void> _rememberContactNames(Iterable<String> rawNames) async {
+    var changed = false;
+    for (final raw in rawNames) {
+      if (await widget.storage.rememberContact(raw)) changed = true;
+    }
+    if (changed && mounted) _refreshContactSuggestions();
   }
 
   Future<void> _loadUiSettings() async {
@@ -1427,6 +1449,13 @@ class _HomeScreenState extends State<HomeScreen> {
         outputDir: widget.storage.pdfOutputDir(_uiSettings),
       );
 
+      // Local contact memory — free-text names used on generate stick for autocomplete.
+      await _rememberContactNames([
+        data.get(LabelFields.swiftContact),
+        data.get(LabelFields.receivedBy),
+        data.get(BolFields.shipperCertName),
+      ]);
+
       if (_uiSettings.autoOpenPdf) {
         await shareOrOpenFile(file: file);
       }
@@ -1820,6 +1849,7 @@ class _HomeScreenState extends State<HomeScreen> {
       hintText: hint,
       loading: _swiftContactsLoading,
       onRequestRefresh: () => _loadSwiftContacts(forceRefresh: true),
+      onNameCommitted: (name) => _rememberContactNames([name]),
     );
   }
 

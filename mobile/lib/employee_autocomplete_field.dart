@@ -18,6 +18,7 @@ class EmployeeAutocompleteField extends StatefulWidget {
     this.hintText = 'Type a name or pick from directory',
     this.loading = false,
     this.onRequestRefresh,
+    this.onNameCommitted,
     this.dense = false,
   });
 
@@ -28,6 +29,8 @@ class EmployeeAutocompleteField extends StatefulWidget {
   final String hintText;
   final bool loading;
   final VoidCallback? onRequestRefresh;
+  /// Called when the user picks a suggestion or submits the field (non-empty).
+  final ValueChanged<String>? onNameCommitted;
   final bool dense;
 
   @override
@@ -93,6 +96,7 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
             text: n,
             selection: TextSelection.collapsed(offset: n.length),
           );
+          widget.onNameCommitted?.call(n);
         },
         fieldViewBuilder: (context, textController, focusNode, onSubmit) {
           return TextField(
@@ -100,7 +104,11 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
             focusNode: focusNode,
             maxLines: 1,
             textInputAction: TextInputAction.done,
-            onSubmitted: (_) => onSubmit(),
+            onSubmitted: (value) {
+              onSubmit();
+              final t = value.trim();
+              if (t.isNotEmpty) widget.onNameCommitted?.call(t);
+            },
             decoration: InputDecoration(
               labelText: widget.labelText,
               hintText: widget.loading

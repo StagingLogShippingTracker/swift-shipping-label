@@ -38,6 +38,12 @@ _template_*.png
 # presets.json is small defaults; commit OK. Uncomment to keep local-only:
 # presets.json
 
+# Runtime AppStorage (documents dir can be the repo folder on this machine)
+remembered_contacts.json
+settings.json
+update_schedule.json
+signatures.json
+
 # OneDrive / Windows junk
 desktop.ini
 Thumbs.db

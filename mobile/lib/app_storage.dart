@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -32,6 +33,10 @@ class ImportLogoResult {
 class AppStorage {
   AppStorage._(this.root);
 
+  /// Test helper — does not load presets/signatures from disk.
+  @visibleForTesting
+  factory AppStorage.forTesting(Directory root) => AppStorage._(root);
+
   final Directory root;
 
   Directory get logosDir => Directory(p.join(root.path, 'customer_logos'));
@@ -41,9 +46,16 @@ class AppStorage {
   File get signaturesFile => File(p.join(root.path, 'signatures.json'));
   File get updateScheduleFile => File(p.join(root.path, 'update_schedule.json'));
   File get settingsFile => File(p.join(root.path, 'settings.json'));
+  /// Local memory of contact names used in autocomplete fields (most recent first).
+  File get rememberedContactsFile =>
+      File(p.join(root.path, 'remembered_contacts.json'));
 
   Map<String, CustomerPreset> presets = {};
   List<SavedSignature> signatures = [];
+  /// Most-recently-used contact / employee names (local only).
+  List<String> rememberedContacts = [];
+
+  static const maxRememberedContacts = 60;
 
   /// Storage map key for a preset (`shipping::Name`, etc.).
   static String presetStorageKey(LabelKind kind, String displayName) =>
@@ -93,6 +105,7 @@ class AppStorage {
     await store.ensureDirs();
     await store.loadPresets();
     await store.loadSignatures();
+    await store.loadRememberedContacts();
     return store;
   }
 
@@ -454,6 +467,81 @@ class AppStorage {
     await settingsFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(data),
     );
+  }
+
+  Future<void> loadRememberedContacts() async {
+    rememberedContacts = [];
+    if (!await rememberedContactsFile.exists()) return;
+    try {
+      final raw = jsonDecode(await rememberedContactsFile.readAsString());
+      if (raw is! List) return;
+      final seen = <String>{};
+      final out = <String>[];
+      for (final item in raw) {
+        final name = '$item'.trim();
+        if (name.isEmpty) continue;
+        final key = name.toLowerCase();
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        out.add(name);
+        if (out.length >= maxRememberedContacts) break;
+      }
+      rememberedContacts = out;
+    } catch (_) {
+      rememberedContacts = [];
+    }
+  }
+
+  Future<void> saveRememberedContacts() async {
+    await rememberedContactsFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(rememberedContacts),
+    );
+  }
+
+  /// Remember a typed / selected contact name (most-recent first, local only).
+  /// Returns true when the in-memory list changed.
+  Future<bool> rememberContact(String raw) async {
+    final name = raw.trim();
+    if (name.isEmpty) return false;
+    final key = name.toLowerCase();
+    final existingIdx =
+        rememberedContacts.indexWhere((n) => n.toLowerCase() == key);
+    if (existingIdx == 0) return false;
+    final next = <String>[name];
+    for (final n in rememberedContacts) {
+      if (n.toLowerCase() == key) continue;
+      next.add(n);
+      if (next.length >= maxRememberedContacts) break;
+    }
+    rememberedContacts = next;
+    await saveRememberedContacts();
+    return true;
+  }
+
+  /// Wipe local remembered contact names (does not touch Supabase roster).
+  Future<void> clearRememberedContacts() async {
+    rememberedContacts = [];
+    await saveRememberedContacts();
+  }
+
+  /// Merge local memory (recent first) with a roster list (deduped).
+  List<String> contactSuggestions({List<String> roster = const []}) {
+    final seen = <String>{};
+    final out = <String>[];
+    void addAll(Iterable<String> names) {
+      for (final n in names) {
+        final t = n.trim();
+        if (t.isEmpty) continue;
+        final k = t.toLowerCase();
+        if (seen.contains(k)) continue;
+        seen.add(k);
+        out.add(t);
+      }
+    }
+
+    addAll(rememberedContacts);
+    addAll(roster);
+    return out;
   }
 
   Future<AppUiSettings> loadUiSettings() async {

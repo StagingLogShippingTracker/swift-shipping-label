@@ -10,10 +10,9 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 MOBILE = ROOT / "mobile"
+# Canonical sharp master lives in-repo. Never fall back to a downsampled /
+# single-size ICO or the old low-res branding/app_icon.png.
 MASTER_CANDIDATES = [
-    Path(
-        r"C:\Users\Brice\.cursor\projects\c-Users-Brice-OneDrive-Documents-swift-document-generator\assets\app_icon_refined_1024.png"
-    ),
     MOBILE / "assets" / "images" / "app_icon_1024.png",
 ]
 
@@ -61,23 +60,19 @@ def square_contain(img: Image.Image, size: int, bg=(0, 0, 0, 0)) -> Image.Image:
 
 
 def write_ico(src: Image.Image, dest: Path) -> None:
-    sizes = [16, 24, 32, 48, 64, 128, 256]
-    images = []
-    for s in sizes:
-        layer = Image.new("RGBA", (s, s), CHARCOAL)
-        icon = src.convert("RGBA")
-        icon.thumbnail((s, s), Image.Resampling.LANCZOS)
-        x = (s - icon.width) // 2
-        y = (s - icon.height) // 2
-        layer.paste(icon, (x, y), icon)
-        images.append(layer)
+    """Write a multi-resolution ICO (16..256).
+
+    Pillow's ``append_images`` ICO path often emits only a single 16x16 frame
+    (the blurry Windows window/taskbar icon). Passing one large image with an
+    explicit ``sizes=`` list is the reliable API.
+    """
+    sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
     dest.parent.mkdir(parents=True, exist_ok=True)
-    images[0].save(
-        dest,
-        format="ICO",
-        sizes=[(im.width, im.height) for im in images],
-        append_images=images[1:],
-    )
+    # Charcoal letterbox so transparent masters still read at tiny sizes.
+    canvas = Image.new("RGBA", src.size, CHARCOAL)
+    rgba = src.convert("RGBA")
+    canvas.paste(rgba, (0, 0), rgba)
+    canvas.save(dest, format="ICO", sizes=sizes)
 
 
 def main() -> None:
@@ -88,11 +83,17 @@ def main() -> None:
     assets = MOBILE / "assets" / "images"
     assets.mkdir(parents=True, exist_ok=True)
     master_out = assets / "app_icon_1024.png"
-    master.resize((1024, 1024), Image.Resampling.LANCZOS).save(master_out, "PNG")
-    master.resize((512, 512), Image.Resampling.LANCZOS).save(
-        assets / "app_icon.png", "PNG"
-    )
+    master_1024 = master.resize((1024, 1024), Image.Resampling.LANCZOS)
+    master_512 = master.resize((512, 512), Image.Resampling.LANCZOS)
+    master_1024.save(master_out, "PNG")
+    master_512.save(assets / "app_icon.png", "PNG")
     print(f"Wrote {master_out}")
+
+    # Keep branding/ in sync with the sharp master (overwrite any old blurry copy).
+    branding = ROOT / "branding"
+    branding.mkdir(parents=True, exist_ok=True)
+    master_512.save(branding / "app_icon.png", "PNG")
+    print(f"Wrote {branding / 'app_icon.png'}")
 
     res = MOBILE / "android" / "app" / "src" / "main" / "res"
 
@@ -116,11 +117,19 @@ def main() -> None:
     )
 
     # Adaptive foreground drawables (padded safe zone)
+    last_fg: Path | None = None
     for folder, px in ADAPTIVE_FG.items():
         out = res / folder / "ic_launcher_foreground.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         square_contain(master, px, bg=(0, 0, 0, 0)).save(out, "PNG")
+        last_fg = out
         print(f"Wrote {out}")
+    if last_fg is not None:
+        # Default drawable/ used by mipmap-anydpi adaptive XML.
+        default_fg = res / "drawable" / "ic_launcher_foreground.png"
+        default_fg.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(last_fg, default_fg)
+        print(f"Wrote {default_fg}")
 
     anydpi = res / "mipmap-anydpi-v26"
     anydpi.mkdir(parents=True, exist_ok=True)
@@ -137,7 +146,7 @@ def main() -> None:
 
     ico = MOBILE / "windows" / "runner" / "resources" / "app_icon.ico"
     write_ico(master, ico)
-    print(f"Wrote {ico}")
+    print(f"Wrote {ico} ({ico.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":
