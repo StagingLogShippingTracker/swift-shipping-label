@@ -43,6 +43,7 @@ remembered_contacts.json
 settings.json
 update_schedule.json
 signatures.json
+data_epoch.json
 
 # OneDrive / Windows junk
 desktop.ini

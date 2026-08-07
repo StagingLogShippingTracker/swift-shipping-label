@@ -57,6 +57,13 @@ class AppStorage {
 
   static const maxRememberedContacts = 60;
 
+  /// Bump to force every install to wipe local user data once (presets, logos,
+  /// signatures, remembered contacts, filled PDFs, settings). Prevents devices
+  /// from re-uploading stale data after a cloud reset. Does not touch roster.
+  static const localDataEpoch = 2;
+
+  File get dataEpochFile => File(p.join(root.path, 'data_epoch.json'));
+
   /// Storage map key for a preset (`shipping::Name`, etc.).
   static String presetStorageKey(LabelKind kind, String displayName) =>
       '${kind.name}::$displayName';
@@ -103,6 +110,7 @@ class AppStorage {
     }
     final store = AppStorage._(root);
     await store.ensureDirs();
+    await store.applyLocalDataEpochIfNeeded();
     await store.loadPresets();
     await store.loadSignatures();
     await store.loadRememberedContacts();
@@ -114,6 +122,75 @@ class AppStorage {
     await logosDir.create(recursive: true);
     await signaturesDir.create(recursive: true);
     await filledDir.create(recursive: true);
+  }
+
+  Future<int> _readLocalDataEpoch() async {
+    if (!await dataEpochFile.exists()) return 0;
+    try {
+      final raw = jsonDecode(await dataEpochFile.readAsString());
+      if (raw is Map && raw['epoch'] is num) {
+        return (raw['epoch'] as num).toInt();
+      }
+      if (raw is num) return raw.toInt();
+    } catch (_) {}
+    return 0;
+  }
+
+  Future<void> _writeLocalDataEpoch(int epoch) async {
+    await dataEpochFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({'epoch': epoch}),
+    );
+  }
+
+  /// One-shot wipe when [localDataEpoch] advances (fresh cloud / fresh install).
+  Future<bool> applyLocalDataEpochIfNeeded() async {
+    final current = await _readLocalDataEpoch();
+    if (current >= localDataEpoch) return false;
+    await wipeLocalUserData();
+    await _writeLocalDataEpoch(localDataEpoch);
+    return true;
+  }
+
+  /// Erase local presets, logos, signatures, PDFs, remembered contacts, settings.
+  Future<void> wipeLocalUserData() async {
+    presets = {};
+    signatures = [];
+    rememberedContacts = [];
+
+    Future<void> clearDir(Directory dir) async {
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+        return;
+      }
+      await for (final entity in dir.list()) {
+        try {
+          await entity.delete(recursive: true);
+        } catch (_) {}
+      }
+      await dir.create(recursive: true);
+    }
+
+    await clearDir(logosDir);
+    await clearDir(signaturesDir);
+    await clearDir(filledDir);
+
+    for (final f in [
+      presetsFile,
+      signaturesFile,
+      rememberedContactsFile,
+      settingsFile,
+      updateScheduleFile,
+    ]) {
+      try {
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+
+    await presetsFile.writeAsString('{}\n');
+    await signaturesFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({'signatures': <Object>[]}),
+    );
+    await rememberedContactsFile.writeAsString('[]\n');
   }
 
   Future<void> loadPresets() async {
