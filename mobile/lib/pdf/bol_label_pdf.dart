@@ -343,7 +343,7 @@ class BolLabelPdf {
     _rect(c, rx, y - freightH, colW, freightH, lw: 0.75);
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
     final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
-    const radioSize = 8.0;
+    const radioSize = 9.0;
     const labelSize = 7.0;
     const radioLabelGap = 4.0;
     final freightBodyBot = y - freightH;
@@ -680,26 +680,27 @@ class BolLabelPdf {
         final label = cats[i];
         final rowTop = bodyTop - topInset - i * rowH;
         _micro(c, fonts, colX, rowTop - 6.5, label);
+        // Value band sits under the micro-label and rests on the underline.
         const labelReserve = 8.5;
         final fieldTop = rowTop - labelReserve;
         final fieldBot = rowTop - rowH + 2;
         final fieldH = (fieldTop - fieldBot).clamp(9.0, rowH);
+        final lineW = colW - 1;
         final v = typeTotals[label] ?? 0;
         final text = v > 0
             ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)
             : '';
-        _drawValue(
+        _drawCenteredInRect(
           c,
           fonts,
           text,
           colX,
           fieldBot,
-          colW - 1,
+          lineW,
           fieldH,
-          8,
-          alignCenter: true,
+          size: 8,
         );
-        _hline(c, colX, fieldBot, colW - 1);
+        _hline(c, colX, fieldBot, lineW);
       }
     }
 
@@ -728,40 +729,37 @@ class BolLabelPdf {
       ..drawLine(tx, midTot, tx + tw, midTot)
       ..strokePath();
 
+    // Totals: reserve label / LBS strips, center numerals in the remaining box.
+    const totLabelReserve = 11.0;
+    const lbsReserve = 9.0;
     _micro(c, fonts, tx + pad, bodyTop - 6, 'Total Piece Count');
-    final piecesBot = midTot + 3;
-    final piecesTop = bodyTop - 12;
     final piecesText = totalPieces > 0
         ? totalPieces.toStringAsFixed(0)
         : d.get(BolFields.totalPieces);
-    _drawValue(
+    _drawCenteredInRect(
       c,
       fonts,
       piecesText,
       tx + pad,
-      piecesBot,
+      midTot + 2,
       tw - 2 * pad,
-      (piecesTop - piecesBot).clamp(12.0, 28.0),
-      9,
-      alignCenter: true,
+      (bodyTop - totLabelReserve) - (midTot + 2),
+      size: 10,
     );
 
     _micro(c, fonts, tx + pad, midTot - 6, 'Total Weight');
-    final weightBot = blockBot + 11;
-    final weightTop = midTot - 12;
     final weightText = totalWeight > 0
         ? totalWeight.toStringAsFixed(0)
         : d.get(BolFields.totalWeight);
-    _drawValue(
+    _drawCenteredInRect(
       c,
       fonts,
       weightText,
       tx + pad,
-      weightBot,
+      blockBot + lbsReserve,
       tw - 2 * pad,
-      (weightTop - weightBot).clamp(12.0, 28.0),
-      9,
-      alignCenter: true,
+      (midTot - totLabelReserve) - (blockBot + lbsReserve),
+      size: 10,
     );
     c
       ..setFillColor(hint)
@@ -797,9 +795,11 @@ class BolLabelPdf {
     final availH = contentTop - contentBot;
     if (availH < 20 || rows.isEmpty) return;
 
-    const fieldH = 11.0;
-    const labelToRule = 13.0;
-    const stackH = labelToRule + 2;
+    // Deterministic stack per band (avoids clamp-induced line drift):
+    // label near band top → value baseline locked just above a pinned rule.
+    const valueSize = 8.0;
+    const valueAboveRule = 2.5;
+    const ruleAboveBandBot = 3.5;
     const colGap = 10.0;
     final n = rows.length;
     final rowH = availH / n;
@@ -807,10 +807,9 @@ class BolLabelPdf {
     for (var i = 0; i < n; i++) {
       final bandTop = contentTop - i * rowH;
       final bandBot = bandTop - rowH;
-      var labelY = bandBot + (rowH + stackH) / 2 - 1;
-      if (labelY > bandTop - 3) labelY = bandTop - 3;
-      if (labelY < bandBot + stackH) labelY = bandBot + stackH;
-      final yRule = labelY - labelToRule;
+      final yRule = bandBot + ruleAboveBandBot;
+      final valueBaseline = yRule + valueAboveRule;
+      final labelY = math.min(bandTop - 5.0, yRule + 11.5);
 
       final row = rows[i];
       final total = row.fold<double>(0, (a, e) => a + e.$3);
@@ -822,7 +821,6 @@ class BolLabelPdf {
         final sigImg = signatureImages?[cell.$1];
         if (sigImg != null) {
           final maxW = fw - 2;
-          // Use the full underline band up to the label (cropped PNG fills this slot).
           final maxH = (labelY - yRule - 0.5).clamp(11.0, 18.0);
           final iw = sigImg.width.toDouble();
           final ih = sigImg.height.toDouble();
@@ -833,8 +831,14 @@ class BolLabelPdf {
             c.drawImage(sigImg, cx + 1, yRule + 1, imgW, imgH);
           }
         } else {
-          final value = d.get(cell.$1);
-          _drawValue(c, fonts, value, cx, yRule + 1.5, fw, fieldH - 1, 8);
+          final value = _latin1(d.get(cell.$1)).trim();
+          if (value.isNotEmpty) {
+            // Single-line value locked to the rule (no vertical box drift).
+            c
+              ..setFillColor(black)
+              ..setFont(fonts.bold, valueSize)
+              ..drawString(fonts.bold, valueSize, value, cx, valueBaseline);
+          }
         }
         _hline(c, cx, yRule, fw);
         cx += fw + colGap;
@@ -1227,23 +1231,27 @@ class BolLabelPdf {
     c.restoreContext();
   }
 
+  /// Donut radio matching [SwiftCircleSelector]: outer stroke + inset fill with
+  /// a clear white gap (not a solid filled disc).
   void _radio(PdfGraphics c, double x, double y, double size, bool on) {
     final cx = x + size / 2;
     final cy = y + size / 2;
-    final r = size / 2 - 0.45;
+    final stroke = (size * 0.125).clamp(1.0, 1.35);
+    final gap = size * 0.20;
+    final outerR = size / 2 - stroke / 2;
     c
       ..setFillColor(white)
       ..drawEllipse(x, y, size, size)
       ..fillPath()
-      ..setStrokeColor(on ? swift : black)
-      ..setLineWidth(on ? 1.1 : 0.85)
-      ..drawEllipse(cx - r, cy - r, r * 2, r * 2)
+      ..setStrokeColor(black)
+      ..setLineWidth(stroke)
+      ..drawEllipse(cx - outerR, cy - outerR, outerR * 2, outerR * 2)
       ..strokePath();
     if (on) {
-      final dr = r * 0.45;
+      final innerR = (size / 2 - stroke - gap).clamp(1.0, outerR);
       c
         ..setFillColor(swift)
-        ..drawEllipse(cx - dr, cy - dr, dr * 2, dr * 2)
+        ..drawEllipse(cx - innerR, cy - innerR, innerR * 2, innerR * 2)
         ..fillPath();
     }
   }
@@ -1334,6 +1342,30 @@ class BolLabelPdf {
       ..setFillColor(color)
       ..setFont(font, size)
       ..drawString(font, size, text, cx - _sw(font, size, text) / 2, y);
+  }
+
+  /// Center [text] horizontally and vertically inside [x,y,w,h] (PDF bottom-left).
+  void _drawCenteredInRect(
+    PdfGraphics c,
+    _Fonts fonts,
+    String text,
+    double x,
+    double y,
+    double w,
+    double h, {
+    double size = 9,
+  }) {
+    text = _latin1(text).trim();
+    if (text.isEmpty || w <= 2 || h <= 2) return;
+    final useSize = math.min(size, h);
+    final tw = _sw(fonts.bold, useSize, text);
+    final tx = x + (w - tw) / 2;
+    // Optical vertical center: baseline so glyph box sits mid-rect.
+    final ty = y + (h - useSize) / 2;
+    c
+      ..setFillColor(black)
+      ..setFont(fonts.bold, useSize)
+      ..drawString(fonts.bold, useSize, text, tx, ty);
   }
 
   void _drawValue(

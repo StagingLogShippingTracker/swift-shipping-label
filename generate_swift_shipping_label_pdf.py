@@ -74,8 +74,8 @@ PIECE_BAND_ROW_H = (
     PIECE_BAND_LABEL_STRIP + PIECE_BAND_VALUE_H + PIECE_BAND_PAD_V * 2 + 2
 )
 ENTRY_HERO = 22
-# Sales Order matches PO / Project entry size.
-ENTRY_SO = 18
+# Sales Order matches Ship To Name (hero) entry size.
+ENTRY_SO = ENTRY_HERO
 ENTRY_NOTES = 18
 ENTRY_MIN = 9
 LINE_GAP = 3.0
@@ -586,7 +586,7 @@ def field_row(
 def draw_sales_order_row(
     c: canvas.Canvas, form, y: float, x: float, col_w: float, sample: dict
 ) -> float:
-    """Sales Order — same entry size as PO / Project; shrink only if needed."""
+    """Sales Order — same entry size as Ship To Name; shrink only if needed."""
     micro_label(c, x, y, "Swift Sales Order No.")
     y -= 4
     val = (sample.get("sales_order") or "").strip()
@@ -718,33 +718,16 @@ def draw_notes_and_meta(
 ) -> float:
     """
     Left notes + right meta share the band down to band_bottom (piece-count ceiling).
-    Sales Order gets a tall orange pill; other meta rows share the remaining space.
+    Carrier → Packing Slip → Sales Order → Contact stack with standard field gaps
+    (no artificial slot floors that opened a void under Carrier).
     """
     lx = MX
     rx = MX + COL_W + GUTTER
 
-    # Reserve space for the SO pill, then distribute the rest
-    so_reserve = 36
-    usable = max(y_right - (band_bottom + 20), 100)
-    other_slots = 3
-    other_band = max(usable - so_reserve, 72)
-    slot = other_band / other_slots
-
     y = y_right
     y = field_row(c, form, y, "Carrier", "carrier", rx, COL_W, sample)
-    y = min(y, y_right - slot)
-
     y = field_row(c, form, y, "Swift Packing Slip No.", "packing_slip", rx, COL_W, sample)
-    # Pull packing slip into its slot floor if air remains
-    pack_floor = y_right - 2 * slot
-    if y > pack_floor:
-        y = pack_floor
-
     y = draw_sales_order_row(c, form, y, rx, COL_W, sample)
-
-    contact_top = band_bottom + 20 + slot
-    if y > contact_top:
-        y = contact_top
     field_row(c, form, y, "Swift Contact", "swift_contact", rx, COL_W, sample)
 
     # Notes fill leftover left band after PO/Project wrap pushed y_left down

@@ -50,8 +50,8 @@ class ShippingLabelPdf {
 
   static const entrySize = 18.0;
   static const entryHero = 22.0;
-  /// Sales Order matches PO / Project entry size (no oversized SO digit).
-  static const entrySo = 18.0;
+  /// Sales Order matches Ship To Name (hero) entry size.
+  static const entrySo = entryHero;
   static const entryRecvSo = 48.0;
   static const entryNotes = 18.0;
   static const entryMin = 9.0;
@@ -945,6 +945,7 @@ class ShippingLabelPdf {
     halfCell(mx + half + gap, 'Received By', LabelFields.receivedBy);
   }
 
+  /// Sales Order — preferred size matches Ship To Name ([entrySo] / [entryHero]).
   double _drawSalesOrderRow(
     PdfGraphics c,
     _ResolvedFonts fonts,
@@ -1165,16 +1166,11 @@ class ShippingLabelPdf {
     final lx = mx;
     final rx = mx + colW + gutter;
 
-    const soReserve = 56.0;
-    final usable = (yRight - (bandBottom + 20)).clamp(100.0, 10000.0);
-    final otherBand = (usable - soReserve).clamp(72.0, 10000.0);
-    final slot = otherBand / 3;
-
+    // Tight vertical stack (same gap as PO → Project). Artificial "slot floors"
+    // used to open a large empty band under Carrier and shove Contact into the
+    // piece-count boxes — removed.
     var y = yRight;
     y = _fieldRow(c, fonts, y, 'Carrier', LabelFields.carrier, rx, colW, sample);
-    final packFloor = yRight - 2 * slot;
-    if (y > packFloor) y = packFloor;
-
     y = _fieldRow(
       c,
       fonts,
@@ -1185,11 +1181,17 @@ class ShippingLabelPdf {
       colW,
       sample,
     );
+    y = _drawSalesOrderRow(
+      c,
+      fonts,
+      y,
+      rx,
+      colW,
+      sample,
+      preferredSize: entrySo,
+    );
 
-    y = _drawSalesOrderRow(c, fonts, y, rx, colW, sample);
-
-    final contactTop = bandBottom + 20 + slot;
-    if (y > contactTop) y = contactTop;
+    // Natural stack keeps Contact clear of the piece band (no downward shove).
     _fieldRow(
       c,
       fonts,

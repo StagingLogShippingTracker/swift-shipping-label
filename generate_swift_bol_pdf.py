@@ -710,26 +710,29 @@ def _bezier_circle(cx: float, cy: float, r: float) -> str:
     )
 
 
-def _radio_circle_ap(on: bool, size: float = 8) -> StreamObject:
-    """Clean circular radio AP — no square frame (avoids the vertical bleed line)."""
+def _radio_circle_ap(on: bool, size: float = 9) -> StreamObject:
+    """Donut radio AP: outer stroke + inset fill with a clear white gap."""
     cx = cy = size / 2.0
-    # Keep ring fully inside the widget so stroke never clips into a square edge.
-    r = (size / 2.0) - 0.9
-    ring = _bezier_circle(cx, cy, r)
+    stroke = max(1.0, min(1.35, size * 0.125))
+    gap = size * 0.20
+    outer_r = size / 2.0 - stroke / 2.0
+    ring = _bezier_circle(cx, cy, outer_r)
     if on:
-        dot = _bezier_circle(cx, cy, r * 0.42)
+        inner_r = max(1.0, size / 2.0 - stroke - gap)
+        dot = _bezier_circle(cx, cy, inner_r)
+        # Orange fill (#CE4E30) matching Swift brand.
         data = (
             f"q\n"
             f"1 1 1 rg 0 0 {size:.2f} {size:.2f} re f\n"
-            f"0 0 0 RG 1.1 w {ring} s\n"
-            f"0 0 0 rg {dot} f\n"
+            f"0 0 0 RG {stroke:.2f} w {ring} s\n"
+            f"0.808 0.306 0.188 rg {dot} f\n"
             f"Q\n"
         )
     else:
         data = (
             f"q\n"
             f"1 1 1 rg 0 0 {size:.2f} {size:.2f} re f\n"
-            f"0 0 0 RG 1.1 w {ring} s\n"
+            f"0 0 0 RG {stroke:.2f} w {ring} s\n"
             f"Q\n"
         )
     encoded = data.encode("ascii")
@@ -857,7 +860,7 @@ def rebuild_freight_radios(pdf_path: Path) -> None:
 def sig_fields(c: canvas.Canvas, form, x: float, y_top: float, y_bottom: float, w: float,
                rows: list[list[tuple[str, str, float]]], *,
                top_inset: float | None = None) -> None:
-    """Sub-label + entry line as a tight centered pair in each row band."""
+    """Label near band top; value locked just above a rule pinned to band bottom."""
     inner_x = x + PAD
     inner_w = w - 2 * PAD
     inset_top = BODY_INSET if top_inset is None else top_inset
@@ -869,20 +872,19 @@ def sig_fields(c: canvas.Canvas, form, x: float, y_top: float, y_bottom: float, 
         return
 
     n = len(rows)
-    field_h = 11.0
-    label_to_rule = 13.0
-    stack_h = label_to_rule + 2
+    value_size = 8.0
+    value_above_rule = 2.5
+    rule_above_band_bot = 3.5
     col_gap = 10
     row_h = avail_h / n
 
     for i, row in enumerate(rows):
         band_top = content_top - i * row_h
         band_bot = band_top - row_h
-        # Center the label→line stack in the band (even air above & below).
-        label_y = band_bot + (row_h + stack_h) / 2 - 1
-        label_y = min(label_y, band_top - 3)
-        label_y = max(label_y, band_bot + stack_h)
-        y_rule = label_y - label_to_rule
+        y_rule = band_bot + rule_above_band_bot
+        # Widget sits flush above the rule so printed/typed values do not drift.
+        field_h = max(value_size + 3.0, 11.0)
+        label_y = min(band_top - 5.0, y_rule + 11.5)
 
         total = sum(frac for _, _, frac in row)
         cx = inner_x
@@ -890,7 +892,22 @@ def sig_fields(c: canvas.Canvas, form, x: float, y_top: float, y_bottom: float, 
         for name, label, frac in row:
             fw = avail * (frac / total)
             micro_label(c, cx, label_y, label)
-            ruled_field(c, form, name, cx, y_rule, fw, field_h, font_size=8)
+            form.textfield(
+                name=name,
+                tooltip=name.replace("_", " ").title(),
+                x=cx,
+                y=y_rule + value_above_rule - 1.0,
+                width=fw,
+                height=field_h,
+                borderWidth=0,
+                borderStyle="solid",
+                forceBorder=False,
+                fillColor=CLEAR,
+                textColor=BLACK,
+                fontSize=value_size,
+                value="",
+            )
+            hline(c, cx, y_rule, fw)
             cx += fw + col_gap
 
 
@@ -1114,6 +1131,7 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
                 col_w - 1, field_h,
                 font_size=8, fill=CLEAR, field_flags="readOnly",
                 align="center",
+                enforce_min_h=False,
             )
             hline(c, col_x, field_bot, col_w - 1)
 
@@ -1147,25 +1165,29 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
     c.line(tx, mid_tot, tx + tw, mid_tot)
 
     micro_label(c, tx + PAD, body_top - 6, "Total Piece Count")
-    pieces_bot = mid_tot + 3
-    pieces_top = body_top - 12
+    tot_label_reserve = 11
+    lbs_reserve = 9
+    pieces_bot = mid_tot + 2
+    pieces_top = body_top - tot_label_reserve
     put_textfield(
         form, "total_pieces",
         tx + PAD, pieces_bot,
         tw - 2 * PAD, max(pieces_top - pieces_bot, 12),
-        font_size=9, fill=CLEAR, field_flags="readOnly",
+        font_size=10, fill=CLEAR, field_flags="readOnly",
         align="center",
+        enforce_min_h=False,
     )
 
     micro_label(c, tx + PAD, mid_tot - 6, "Total Weight")
-    weight_bot = block_bot + 11
-    weight_top = mid_tot - 12
+    weight_bot = block_bot + lbs_reserve
+    weight_top = mid_tot - tot_label_reserve
     put_textfield(
         form, "total_weight",
         tx + PAD, weight_bot,
         tw - 2 * PAD, max(weight_top - weight_bot, 12),
-        font_size=9, fill=CLEAR, field_flags="readOnly",
+        font_size=10, fill=CLEAR, field_flags="readOnly",
         align="center",
+        enforce_min_h=False,
     )
     c.setFillColor(INK_HINT)
     c.setFont("Helvetica", 5)
@@ -1476,7 +1498,7 @@ def draw_bol_page(
     rect_stroke(c, rx, y - freight_h, col_w, freight_h, 0.75)
     section_title(c, rx, y, col_w, "FREIGHT CHARGES", hdr_h)
     # Vertically center radios + labels in the body; evenly distribute across the panel width.
-    radio_size = 8
+    radio_size = 9
     body_bot = y - freight_h
     body_top = y - hdr_h
     row_center = (body_bot + body_top) / 2

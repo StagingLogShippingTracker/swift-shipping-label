@@ -10,6 +10,7 @@ import 'bol_document_number.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
 import 'circle_selector.dart';
+import 'employee_autocomplete_field.dart';
 import 'employee_directory.dart';
 import 'preset_sync.dart';
 import 'signature_pad.dart';
@@ -80,8 +81,8 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Order & PM',
-    'Swift sales order and project manager',
-    [LabelFields.salesOrder, LabelFields.pm],
+    'Swift sales order, contact, and project manager',
+    [LabelFields.salesOrder, LabelFields.swiftContact, LabelFields.pm],
   ),
   (
     'Received',
@@ -119,11 +120,12 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Tracking & references',
-    'PO, packing list, sales order, project',
+    'PO, packing list, sales order, project, Swift contact',
     [
       LabelFields.poNum,
       BolFields.packingList,
       LabelFields.salesOrder,
+      LabelFields.swiftContact,
       LabelFields.project,
       LabelFields.specialInstructions,
     ],
@@ -199,7 +201,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _boxSizedLabel = false;
   final EmployeeDirectory _employeeDirectory = EmployeeDirectory();
   List<String> _swiftContactNames = const [];
-  final FocusNode _swiftContactFocus = FocusNode();
+  bool _swiftContactsLoading = false;
+  /// Focus nodes for employee-name autocomplete fields (one per key).
+  final Map<String, FocusNode> _employeeFocusNodes = {
+    LabelFields.swiftContact: FocusNode(),
+    LabelFields.receivedBy: FocusNode(),
+    BolFields.shipperCertName: FocusNode(),
+  };
   /// Desktop form column — shared with [Scrollbar] so wheel works over fields.
   final ScrollController _desktopFormScroll = ScrollController();
   /// Desktop workspace pane list.
@@ -222,13 +230,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSwiftContacts();
   }
 
-  Future<void> _loadSwiftContacts() async {
+  Future<void> _loadSwiftContacts({bool forceRefresh = false}) async {
+    if (_swiftContactsLoading) return;
+    setState(() => _swiftContactsLoading = true);
     try {
-      final names = await _employeeDirectory.fetchNames();
+      final names =
+          await _employeeDirectory.fetchNames(forceRefresh: forceRefresh);
       if (!mounted) return;
-      setState(() => _swiftContactNames = names);
-    } catch (_) {
-      // Autocomplete stays empty; free typing still works.
+      setState(() {
+        _swiftContactNames = names;
+        _swiftContactsLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[SwiftContact] load failed: $e');
+      if (!mounted) return;
+      setState(() => _swiftContactsLoading = false);
     }
   }
 
@@ -356,7 +372,9 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final c in _controllers.values) {
       c.dispose();
     }
-    _swiftContactFocus.dispose();
+    for (final n in _employeeFocusNodes.values) {
+      n.dispose();
+    }
     _desktopFormScroll.dispose();
     _desktopWorkspaceScroll.dispose();
     _employeeDirectory.dispose();
@@ -1743,8 +1761,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (appDateFieldKeys.contains(key)) {
       return _buildDateField(key);
     }
-    if (key == LabelFields.swiftContact) {
-      return _buildSwiftContactField();
+    if (key == LabelFields.swiftContact ||
+        key == LabelFields.receivedBy ||
+        key == BolFields.shipperCertName) {
+      return _buildEmployeeNameField(key);
     }
     final m = _meta(key);
     final isDeliveryAddress = key == LabelFields.location ||
@@ -1778,74 +1798,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSwiftContactField() {
-    final ctrl = _controllers[LabelFields.swiftContact]!;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: RawAutocomplete<String>(
-        textEditingController: ctrl,
-        focusNode: _swiftContactFocus,
-        optionsBuilder: (textEditingValue) {
-          final q = textEditingValue.text.trim().toLowerCase();
-          if (_swiftContactNames.isEmpty) {
-            return const Iterable<String>.empty();
-          }
-          if (q.isEmpty) {
-            return _swiftContactNames.take(12);
-          }
-          return _swiftContactNames
-              .where((n) => n.toLowerCase().contains(q))
-              .take(12);
-        },
-        displayStringForOption: (n) => n,
-        onSelected: (n) {
-          ctrl.value = TextEditingValue(
-            text: n,
-            selection: TextSelection.collapsed(offset: n.length),
-          );
-        },
-        fieldViewBuilder: (context, textController, focusNode, onSubmit) {
-          return TextField(
-            controller: textController,
-            focusNode: focusNode,
-            maxLines: 1,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => onSubmit(),
-            decoration: const InputDecoration(
-              labelText: 'SWIFT CONTACT',
-              hintText: 'Type a name or pick from directory',
-            ),
-          );
-        },
-        optionsViewBuilder: (context, onSelected, options) {
-          final opts = options.toList(growable: false);
-          if (opts.isEmpty) return const SizedBox.shrink();
-          return Align(
-            alignment: Alignment.topLeft,
-            child: Material(
-              elevation: 6,
-              borderRadius: BorderRadius.circular(8),
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(maxHeight: 240, maxWidth: 420),
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  shrinkWrap: true,
-                  itemCount: opts.length,
-                  itemBuilder: (context, i) {
-                    final name = opts[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text(name),
-                      onTap: () => onSelected(name),
-                    );
-                  },
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+  FocusNode _employeeFocusFor(String key) {
+    return _employeeFocusNodes.putIfAbsent(key, FocusNode.new);
+  }
+
+  Widget _buildEmployeeNameField(String key) {
+    final ctrl = _controllers[key]!;
+    final meta = _meta(key);
+    final label = meta.$2.toUpperCase();
+    final hint = switch (key) {
+      LabelFields.swiftContact => 'Type a name or pick from directory',
+      LabelFields.receivedBy => 'Type who received or pick from directory',
+      BolFields.shipperCertName => 'Type shipper name or pick from directory',
+      _ => 'Type a name or pick from directory',
+    };
+    return EmployeeAutocompleteField(
+      controller: ctrl,
+      focusNode: _employeeFocusFor(key),
+      names: _swiftContactNames,
+      labelText: label,
+      hintText: hint,
+      loading: _swiftContactsLoading,
+      onRequestRefresh: () => _loadSwiftContacts(forceRefresh: true),
     );
   }
 
