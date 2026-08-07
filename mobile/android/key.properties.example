@@ -1,0 +1,7 @@
+# Copy to android/key.properties (gitignored) and point storeFile at your .jks.
+# Same layout as staging-tracker / SLST. Until this file exists, release APKs
+# continue to use the debug keystore so existing installs can still update.
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=upload
+storeFile=upload-keystore.jks

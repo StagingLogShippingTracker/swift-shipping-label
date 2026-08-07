@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -153,10 +153,6 @@ class AppUpdateCheckResult {
 class AppUpdateService {
   const AppUpdateService();
 
-  static const _native = MethodChannel(
-    'com.swiftoilfield.swift_shipping_label/native',
-  );
-
   Future<AppReleaseInfo> fetchLatestRelease() async {
     late final http.Response res;
     try {
@@ -249,6 +245,39 @@ class AppUpdateService {
     );
   }
 
+  /// Windows: durable app-support path. Android: temp is fine for OpenFilex.
+  Future<File> downloadAndInstall({
+    required AppUpdatePlatform platform,
+    required AppReleaseInfo release,
+    void Function(double progress)? onProgress,
+  }) async {
+    final url = release.assetUrlFor(platform);
+    final fileName = release.assetLabelFor(platform);
+    if (url == null || url.isEmpty || fileName == null) {
+      if (platform == AppUpdatePlatform.windows) {
+        throw Exception(
+          'No Windows Setup.exe asset on this release. '
+          'In-app Update requires ${AppConfig.windowsSetupAsset}.',
+        );
+      }
+      throw Exception('No Android APK asset on this release.');
+    }
+
+    final file = platform == AppUpdatePlatform.windows
+        ? await downloadToAppStorage(
+            url: url,
+            fileName: fileName,
+            onProgress: onProgress,
+          )
+        : await downloadToTemp(
+            url: url,
+            fileName: fileName,
+            onProgress: onProgress,
+          );
+    await installDownloadedFile(platform: platform, file: file);
+    return file;
+  }
+
   Future<File> downloadToAppStorage({
     required String url,
     required String fileName,
@@ -259,7 +288,31 @@ class AppUpdateService {
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
-    final target = File(p.join(dir.path, fileName));
+    return _downloadToFile(
+      url: url,
+      target: File(p.join(dir.path, fileName)),
+      onProgress: onProgress,
+    );
+  }
+
+  Future<File> downloadToTemp({
+    required String url,
+    required String fileName,
+    void Function(double progress)? onProgress,
+  }) async {
+    final dir = await getTemporaryDirectory();
+    return _downloadToFile(
+      url: url,
+      target: File(p.join(dir.path, fileName)),
+      onProgress: onProgress,
+    );
+  }
+
+  Future<File> _downloadToFile({
+    required String url,
+    required File target,
+    void Function(double progress)? onProgress,
+  }) async {
     if (await target.exists()) {
       await target.delete();
     }
@@ -297,45 +350,49 @@ class AppUpdateService {
     return target;
   }
 
+  Future<void> installDownloadedFile({
+    required AppUpdatePlatform platform,
+    required File file,
+  }) async {
+    switch (platform) {
+      case AppUpdatePlatform.windows:
+        await Process.start(
+          file.path,
+          const <String>[],
+          mode: ProcessStartMode.detached,
+        );
+      case AppUpdatePlatform.android:
+        // Match SLST: open_filex → system package installer (ACTION_VIEW).
+        final result = await OpenFilex.open(file.path);
+        if (result.type != ResultType.done) {
+          throw Exception(
+            result.message.isEmpty
+                ? 'Could not open the downloaded package for install.'
+                : result.message,
+          );
+        }
+    }
+  }
+
+  /// Android install — same path as SLST (`open_filex` + temp download).
   Future<File> downloadAndInstallAndroid({
     required AppReleaseInfo release,
     void Function(double progress)? onProgress,
-  }) async {
-    final url = release.androidApkUrl;
-    if (url == null || url.isEmpty) {
-      throw Exception('No Android APK asset on this release.');
-    }
-    final file = await downloadToAppStorage(
-      url: url,
-      fileName: AppConfig.androidApkAsset,
-      onProgress: onProgress,
-    );
-    await _native.invokeMethod<bool>('installApk', {'path': file.path});
-    return file;
-  }
+  }) =>
+      downloadAndInstall(
+        platform: AppUpdatePlatform.android,
+        release: release,
+        onProgress: onProgress,
+      );
 
   /// Download Windows Setup.exe and launch the installer.
   Future<File> downloadAndInstallWindows({
     required AppReleaseInfo release,
     void Function(double progress)? onProgress,
-  }) async {
-    final url = release.windowsSetupUrl;
-    if (url == null || url.isEmpty) {
-      throw Exception(
-        'No Windows Setup.exe asset on this release. '
-        'In-app Update requires ${AppConfig.windowsSetupAsset}.',
+  }) =>
+      downloadAndInstall(
+        platform: AppUpdatePlatform.windows,
+        release: release,
+        onProgress: onProgress,
       );
-    }
-    final setup = await downloadToAppStorage(
-      url: url,
-      fileName: AppConfig.windowsSetupAsset,
-      onProgress: onProgress,
-    );
-    await Process.start(
-      setup.path,
-      const [],
-      mode: ProcessStartMode.detached,
-    );
-    return setup;
-  }
 }

@@ -60,41 +60,9 @@ class MainActivity : FlutterActivity() {
                             pickImages,
                         )
                     }
-                    "installApk" -> {
-                        val path = call.argument<String>("path")
-                        if (path.isNullOrBlank()) {
-                            result.error("bad_args", "Missing path", null)
-                            return@setMethodCallHandler
-                        }
-                        try {
-                            installApk(path)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("install_failed", e.message, null)
-                        }
-                    }
                     else -> result.notImplemented()
                 }
             }
-    }
-
-    private fun installApk(path: String) {
-        val file = File(path)
-        if (!file.exists() || file.length() == 0L) {
-            throw IllegalArgumentException("APK file missing or empty")
-        }
-        val installTarget = fileForProvider(file)
-        val uri = FileProvider.getUriForFile(
-            this,
-            "${applicationContext.packageName}.fileprovider",
-            installTarget,
-        )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
     }
 
     private fun shareFile(path: String, mime: String, subject: String) {

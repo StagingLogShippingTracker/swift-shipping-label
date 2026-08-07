@@ -59,40 +59,29 @@ class _InstallProgressDialogState extends State<_InstallProgressDialog> {
 
   Future<void> _run() async {
     try {
-      if (widget.platform == AppUpdatePlatform.android) {
-        await _svc.downloadAndInstallAndroid(
-          release: widget.release,
-          onProgress: (p) {
-            if (!mounted) return;
-            setState(() {
-              _progress = p;
-              _status = p >= 1.0
+      await _svc.downloadAndInstall(
+        platform: widget.platform,
+        release: widget.release,
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() {
+            _progress = p;
+            if (p >= 1.0) {
+              _status = widget.platform == AppUpdatePlatform.android
                   ? 'Opening package installer…'
-                  : 'Downloading… ${(p * 100).round()}%';
-            });
-          },
-        );
-        if (!mounted) return;
-        setState(() => _status = 'Installer opened — follow on-screen prompts.');
-      } else {
-        await _svc.downloadAndInstallWindows(
-          release: widget.release,
-          onProgress: (p) {
-            if (!mounted) return;
-            setState(() {
-              _progress = p;
-              _status = p >= 1.0
-                  ? 'Launching installer…'
-                  : 'Downloading… ${(p * 100).round()}%';
-            });
-          },
-        );
-        if (!mounted) return;
-        setState(
-          () => _status =
-              'Installer launched — follow the Setup prompts, then restart the app.',
-        );
-      }
+                  : 'Launching installer…';
+            } else {
+              _status = 'Downloading… ${(p * 100).round()}%';
+            }
+          });
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _status = widget.platform == AppUpdatePlatform.android
+            ? 'Installer opened — follow on-screen prompts.'
+            : 'Installer launched — follow the Setup prompts, then restart the app.';
+      });
       if (mounted) {
         await Future<void>.delayed(const Duration(seconds: 1));
         if (mounted) Navigator.of(context).pop();
