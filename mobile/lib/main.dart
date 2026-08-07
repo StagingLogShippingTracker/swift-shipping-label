@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_scroll_behavior.dart';
 import 'app_storage.dart';
 import 'app_theme_scope.dart';
 import 'auto_update_scheduler.dart';
@@ -81,11 +82,13 @@ class _SwiftShippingLabelAppState extends State<SwiftShippingLabelApp> {
           final dark = settings.themePreference == UiThemePreference.dark;
           _applySystemUiOverlay(dark);
           final scale = Platform.isWindows ? settings.uiFontScale : 1.0;
+          final font = settings.uiFontFamily;
           return MaterialApp(
             title: 'Swift Document Generator',
             debugShowCheckedModeBanner: false,
-            theme: SwiftTheme.light(fontScale: scale),
-            darkTheme: SwiftTheme.dark(fontScale: scale),
+            scrollBehavior: const AppScrollBehavior(),
+            theme: SwiftTheme.light(fontScale: scale, fontFamily: font),
+            darkTheme: SwiftTheme.dark(fontScale: scale, fontFamily: font),
             themeMode: dark ? ThemeMode.dark : ThemeMode.light,
             home: AutoUpdateHost(
               storage: widget.storage,

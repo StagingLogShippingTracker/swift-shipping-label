@@ -8,6 +8,7 @@ class PdfRenderOptions {
     this.showSwiftLogo = true,
     this.showCustomerLogos = true,
     this.pageOrientation = PdfPageOrientation.landscape,
+    this.isBoxSized = false,
   });
 
   final PdfLogoPlacement logoPlacement;
@@ -17,6 +18,10 @@ class PdfRenderOptions {
   final bool showSwiftLogo;
   final bool showCustomerLogos;
   final PdfPageOrientation pageOrientation;
+
+  /// When true (Shipping/Receiving only): draw the full label at 50% scale in
+  /// the top-left quadrant of landscape Letter (5.5" × 4.25").
+  final bool isBoxSized;
 
   static const defaults = PdfRenderOptions();
 
@@ -38,6 +43,8 @@ class PdfRenderOptions {
       pageOrientation:
           PdfPageOrientation.tryParse('${json['pageOrientation']}') ??
               PdfPageOrientation.landscape,
+      // Session-only by default; still parse if present in saved settings.
+      isBoxSized: json['isBoxSized'] is bool ? json['isBoxSized'] as bool : false,
     );
   }
 
@@ -49,6 +56,7 @@ class PdfRenderOptions {
         'showSwiftLogo': showSwiftLogo,
         'showCustomerLogos': showCustomerLogos,
         'pageOrientation': pageOrientation.name,
+        'isBoxSized': isBoxSized,
       };
 
   PdfRenderOptions copyWith({
@@ -59,6 +67,7 @@ class PdfRenderOptions {
     bool? showSwiftLogo,
     bool? showCustomerLogos,
     PdfPageOrientation? pageOrientation,
+    bool? isBoxSized,
   }) {
     return PdfRenderOptions(
       logoPlacement: logoPlacement ?? this.logoPlacement,
@@ -68,6 +77,7 @@ class PdfRenderOptions {
       showSwiftLogo: showSwiftLogo ?? this.showSwiftLogo,
       showCustomerLogos: showCustomerLogos ?? this.showCustomerLogos,
       pageOrientation: pageOrientation ?? this.pageOrientation,
+      isBoxSized: isBoxSized ?? this.isBoxSized,
     );
   }
 }

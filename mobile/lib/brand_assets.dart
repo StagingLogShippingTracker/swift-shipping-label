@@ -12,7 +12,6 @@ class SwiftBrandAssets {
   /// White wordmark for legacy orange headers (light-only accents).
   static const headerWhite = 'assets/images/swift_supply_header_white.png';
 
-  /// Chrome logo for the active theme.
-  static String chromeLogo({required bool dark}) =>
-      dark ? logoOrangeSolid : logoOrange;
+  /// Chrome logo — always the solid orange mark so light and dark match.
+  static String chromeLogo({required bool dark}) => logoOrangeSolid;
 }

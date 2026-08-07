@@ -64,17 +64,18 @@ FONT_BOLD = "Oswald-Bold"
 ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
 ENTRY_SIZE = 18
-PIECE_COUNT_SIZE = 36
-PIECE_OF_SIZE = 22
-PIECE_BAND_PAD_V = 8
-PIECE_BAND_BOX_PAD_H = 10
-PIECE_BAND_LABEL_STRIP = 14
-PIECE_BAND_VALUE_H = PIECE_COUNT_SIZE + 10
+PIECE_COUNT_SIZE = 26
+PIECE_OF_SIZE = 15
+PIECE_BAND_PAD_V = 3
+PIECE_BAND_BOX_PAD_H = 8
+PIECE_BAND_LABEL_STRIP = 11
+PIECE_BAND_VALUE_H = PIECE_COUNT_SIZE + 4
 PIECE_BAND_ROW_H = (
-    PIECE_BAND_LABEL_STRIP + PIECE_BAND_VALUE_H + PIECE_BAND_PAD_V * 2 + 4
+    PIECE_BAND_LABEL_STRIP + PIECE_BAND_VALUE_H + PIECE_BAND_PAD_V * 2 + 2
 )
 ENTRY_HERO = 22
-ENTRY_SO = 36
+# Sales Order matches PO / Project entry size.
+ENTRY_SO = 18
 ENTRY_NOTES = 18
 ENTRY_MIN = 9
 LINE_GAP = 3.0
@@ -379,11 +380,11 @@ def draw_image_in_box(
 
 
 # Customer logo layout — matches mobile/lib/pdf/shipping_label_pdf.dart.
-#   height = 55.00 pt (fixed; aspect-locked width)
+#   height = Swift rendered height (fallback 62.24 pt); aspect-locked width
 #   logo2_x = logo1_x + logo1_rendered_w + CUSTOMER_LOGO_GAP (10 pt)
 #   available = swift_left_x - MX - CUSTOMER_LOGO_TO_SWIFT_GAP
-#   if row exceeds available: scale down proportionally
-CUSTOMER_LOGO_TARGET_H = 55.0
+#   if row exceeds available: scale down proportionally (safe-zone)
+CUSTOMER_LOGO_TARGET_H = 62.24
 CUSTOMER_LOGO_GAP = 10.0
 CUSTOMER_LOGO_TO_SWIFT_GAP = 12.0
 
@@ -451,6 +452,7 @@ def draw_customer_logos_header(
     band_h: float,
     y_top: float,
     avail_w: float,
+    target_h: float | None = None,
 ) -> None:
     draw_customer_logo_row(
         c,
@@ -458,7 +460,7 @@ def draw_customer_logos_header(
         MX,
         logo_bottom,
         y_top,
-        CUSTOMER_LOGO_TARGET_H,
+        target_h if target_h and target_h > 0 else CUSTOMER_LOGO_TARGET_H,
         avail_w,
     )
 
@@ -500,9 +502,13 @@ def draw_header(c: canvas.Canvas, customer_logo: Path | None = None, customer_lo
     avail_for_customer = (
         swift_left_x - CUSTOMER_LOGO_TO_SWIFT_GAP - MX if swift_w > 0 else CONTENT_W
     )
+    # Exact height match to Swift when present; otherwise 62.24 pt target.
+    customer_target_h = swift_h if swift_h > 0 else CUSTOMER_LOGO_TARGET_H
 
     if logos:
-        draw_customer_logos_header(c, logos, logo_bottom, band_h, y_top, avail_for_customer)
+        draw_customer_logos_header(
+            c, logos, logo_bottom, band_h, y_top, avail_for_customer, customer_target_h
+        )
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)
@@ -580,7 +586,7 @@ def field_row(
 def draw_sales_order_row(
     c: canvas.Canvas, form, y: float, x: float, col_w: float, sample: dict
 ) -> float:
-    """Sales Order — Calibri Bold 36 in a faint orange rounded pill; shrink only if needed."""
+    """Sales Order — same entry size as PO / Project; shrink only if needed."""
     micro_label(c, x, y, "Swift Sales Order No.")
     y -= 4
     val = (sample.get("sales_order") or "").strip()
@@ -589,7 +595,7 @@ def draw_sales_order_row(
     text_w = stringWidth(val, ENTRY_BOLD, size) if val else size * 2
     pill_w = min(col_w, text_w + 2 * pad_x)
     pill_h = size + 2 * pad_y
-    row_h = max(pill_h, 44)
+    row_h = max(pill_h, 28)
 
     c.setFillColor(SO_BG)
     c.roundRect(x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
@@ -622,7 +628,7 @@ def draw_sales_order_row(
 
 def draw_hero(c: canvas.Canvas, form, y: float, sample: dict) -> float:
     rx = MX + COL_W + GUTTER
-    micro_label(c, rx, y, "Ship to")
+    micro_label(c, rx, y, "Ship To Name")
     y -= 5
     ship = sample.get("ship_to", "")
     ship_size = fit_single_line_size(ship, COL_W - 4, ENTRY_HERO, min_size=12)
@@ -646,9 +652,17 @@ def draw_hero(c: canvas.Canvas, form, y: float, sample: dict) -> float:
     y -= hero_h + 12
 
     loc = sample.get("location", "")
-    loc_size = fit_wrapped_size(loc, COL_W - 4, ENTRY_SIZE, max_lines=2)
-    loc_h = field_height_for(loc, COL_W, size=loc_size)
-    micro_label(c, rx, y, "Location")
+    # Fixed Delivery Address box (~3 lines). Shrink type to fit; do not grow.
+    loc_max_h = 3 * (ENTRY_SIZE + LINE_GAP) + 8
+    loc_size = ENTRY_SIZE
+    while loc_size > ENTRY_MIN and loc:
+        need = field_height_for(loc, COL_W, size=loc_size, max_lines=12)
+        if need <= loc_max_h:
+            break
+        loc_size -= 0.5
+    loc_size = fit_wrapped_size(loc, COL_W - 4, loc_size, max_lines=12, min_size=ENTRY_MIN)
+    loc_h = loc_max_h
+    micro_label(c, rx, y, "Delivery Address")
     y -= 3
     put_field(
         form, "location", rx, y - loc_h, COL_W, loc_h, "", loc_size, multiline=True,
@@ -709,8 +723,8 @@ def draw_notes_and_meta(
     lx = MX
     rx = MX + COL_W + GUTTER
 
-    # Reserve space for the large SO pill, then distribute the rest
-    so_reserve = 56
+    # Reserve space for the SO pill, then distribute the rest
+    so_reserve = 36
     usable = max(y_right - (band_bottom + 20), 100)
     other_slots = 3
     other_band = max(usable - so_reserve, 72)
@@ -882,7 +896,7 @@ def draw_label_page(
 
     # Footer anchored to bottom bumper; piece band sits above with a clear breath
     foot_y = MY + 6
-    piece_top = foot_y + PIECE_BAND_ROW_H + 28
+    piece_top = foot_y + PIECE_BAND_ROW_H + 14
 
     y = draw_header(c, customer_logo, customer_logo2)
     y_l, y_r = draw_identity_pair(c, form, y, sample)
@@ -906,6 +920,7 @@ def build_pdf(
     customer_logo: Path | None = None,
     customer_logo2: Path | None = None,
     fillable: bool = False,
+    is_box_sized: bool = False,
 ) -> Path:
     """
     Build a shipping-label PDF.
@@ -915,6 +930,9 @@ def build_pdf(
 
     fillable=True adds AcroForm widgets (not recommended for long PO/Project —
     PDF viewers scroll inside fixed boxes and hide text when printing).
+
+    is_box_sized=True draws the full label at 50% scale in the top-left
+    quadrant of landscape Letter (5.5" × 4.25").
     """
     out_path = out_path or OUT_PATH
     sample = sample or {}
@@ -923,7 +941,15 @@ def build_pdf(
     c.setTitle("Swift Oilfield Supply — Shipping Label")
     c.setAuthor("Swift Oilfield Supply")
     form = c.acroForm if fillable else None
-    draw_label_page(c, form, sample, customer_logo, customer_logo2)
+    if is_box_sized:
+        # PDF origin is bottom-left → translate up half height, then 50% scale.
+        c.saveState()
+        c.translate(0, PAGE_H / 2)
+        c.scale(0.5, 0.5)
+        draw_label_page(c, form, sample, customer_logo, customer_logo2)
+        c.restoreState()
+    else:
+        draw_label_page(c, form, sample, customer_logo, customer_logo2)
     c.save()
 
     if form is None:
@@ -996,18 +1022,24 @@ def main() -> None:
         action="store_true",
         help="(Not recommended) AcroForm widgets — long text scrolls and may not print",
     )
+    p.add_argument(
+        "--box-sized",
+        action="store_true",
+        help="Draw label at 50%% scale in the top-left quarter of landscape Letter",
+    )
     args = p.parse_args()
 
     _ensure_customer_sample()
 
     if args.logo:
         out = args.out or (ROOT / f"Swift Supply Shipping Label - {args.logo.stem}.pdf")
-        print(build_pdf(out_path=out, customer_logo=args.logo, customer_logo2=args.logo2, fillable=args.fillable))
+        print(build_pdf(out_path=out, customer_logo=args.logo, customer_logo2=args.logo2, fillable=args.fillable, is_box_sized=args.box_sized))
     else:
         print(
             build_pdf(
                 out_path=args.out or OUT_PATH,
                 fillable=args.fillable,
+                is_box_sized=args.box_sized,
             )
         )
 

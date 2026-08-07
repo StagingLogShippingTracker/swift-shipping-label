@@ -26,11 +26,22 @@ class _CustomizeDialog extends StatefulWidget {
 
 class _CustomizeDialogState extends State<_CustomizeDialog> {
   late AppUiSettings _draft;
+  final _appearanceScroll = ScrollController();
+  final _layoutScroll = ScrollController();
+  final _pdfScroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _draft = widget.initial;
+  }
+
+  @override
+  void dispose() {
+    _appearanceScroll.dispose();
+    _layoutScroll.dispose();
+    _pdfScroll.dispose();
+    super.dispose();
   }
 
   void _set(AppUiSettings next) => setState(() => _draft = next);
@@ -57,9 +68,15 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                      children: [
+                    Scrollbar(
+                      controller: _appearanceScroll,
+                      thumbVisibility: true,
+                      interactive: true,
+                      child: ListView(
+                        controller: _appearanceScroll,
+                        primary: false,
+                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                        children: [
                         const Text(
                           'THEME',
                           style: TextStyle(
@@ -101,6 +118,18 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
+                          value: _draft.useOswaldFont,
+                          onChanged: (v) => _set(
+                            _draft.copyWith(useOswaldFont: v ?? false),
+                          ),
+                          title: const Text('Use Oswald font'),
+                          subtitle: const Text(
+                            'Off = Helvetica (default). On = Oswald headings/UI.',
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
                           value: _draft.denseForms,
                           onChanged: (v) =>
                               _set(_draft.copyWith(denseForms: v ?? false)),
@@ -108,10 +137,17 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
+                      ),
                     ),
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                      children: [
+                    Scrollbar(
+                      controller: _layoutScroll,
+                      thumbVisibility: true,
+                      interactive: true,
+                      child: ListView(
+                        controller: _layoutScroll,
+                        primary: false,
+                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                        children: [
                         const Text(
                           'LAYOUT PRESET',
                           style: TextStyle(
@@ -177,10 +213,17 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
+                      ),
                     ),
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                      children: [
+                    Scrollbar(
+                      controller: _pdfScroll,
+                      thumbVisibility: true,
+                      interactive: true,
+                      child: ListView(
+                        controller: _pdfScroll,
+                        primary: false,
+                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                        children: [
                         const Text(
                           'Applies to Shipping, Receiving, and BOL PDFs.',
                           style: TextStyle(
@@ -328,6 +371,7 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
+                      ),
                     ),
                   ],
                 ),

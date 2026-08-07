@@ -706,6 +706,13 @@ class WindowsAppMenuBar extends StatelessWidget {
               onChanged: (_) => _toggleDark(context),
               child: const Text('Dark mode'),
             ),
+            CheckboxMenuButton(
+              value: s.useOswaldFont,
+              onChanged: (v) => _persist(
+                s.copyWith(useOswaldFont: v ?? false),
+              ),
+              child: const Text('Use Oswald font (default: Helvetica)'),
+            ),
             MenuItemButton(
               onPressed: () => _customize(context),
               child: const Text('Customize appearance & PDF…'),

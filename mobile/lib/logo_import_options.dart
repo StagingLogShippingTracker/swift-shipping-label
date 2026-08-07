@@ -100,8 +100,12 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
       title: Text(title),
       content: SizedBox(
         width: 480,
-        child: SingleChildScrollView(
-          child: Column(
+        child: Scrollbar(
+          thumbVisibility: true,
+          interactive: true,
+          child: SingleChildScrollView(
+            primary: true,
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -194,6 +198,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                 ),
               ],
             ],
+            ),
           ),
         ),
       ),

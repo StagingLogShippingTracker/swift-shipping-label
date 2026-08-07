@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 import 'gemini_client.dart';
+import 'logo_crawler_client.dart';
 
 /// Which web source(s) to query when finding a customer logo.
 enum LogoSearchEngine {
@@ -181,6 +182,8 @@ class LogoFinder {
   /// Whole-engine budget (multiple queries / fallbacks inside one source).
   /// Keep tight so a blocked Google HTML shell cannot burn ~45s before fallbacks.
   static const _engineTimeout = Duration(seconds: 18);
+  /// Headless Google Images (Playwright) needs a longer budget than HTTP scrapes.
+  static const _googleCrawlerTimeout = Duration(seconds: 42);
   /// Stop downloading once the picker can fill with strong candidates.
   static const _strongPickerScore = 36;
   static const _ua =
@@ -412,9 +415,13 @@ class LogoFinder {
       futures.add(_safeSource(() => _bingImageSearch(ctx)));
     }
     if (use(LogoSearchEngine.google)) {
-      futures.add(_safeSource(() => _googleImageSearch(ctx, gemini: gemini)));
-      // Independent of HTML/Gemini timeouts — keeps Google Images in the mix
-      // when Google serves JS-only shells.
+      futures.add(
+        _safeSource(
+          () => _googleImageSearch(ctx, gemini: gemini),
+          timeout: _googleCrawlerTimeout,
+        ),
+      );
+      // CDN / known-brand safety net — independent of crawler timeouts.
       futures.add(
         _safeSource(() async => _googleBlockedFallbackCandidates(ctx)),
       );
@@ -536,6 +543,7 @@ class LogoFinder {
                 forceExpanded: true,
                 gemini: gemini,
               ),
+              timeout: _googleCrawlerTimeout,
             ),
           );
         }
@@ -695,11 +703,12 @@ class LogoFinder {
 
   /// Isolate one engine/source so errors never propagate to All Sources.
   Future<List<LogoCandidate>> _safeSource(
-    Future<List<LogoCandidate>> Function() run,
-  ) async {
+    Future<List<LogoCandidate>> Function() run, {
+    Duration? timeout,
+  }) async {
     try {
       return await run().timeout(
-        _engineTimeout,
+        timeout ?? _engineTimeout,
         onTimeout: () => <LogoCandidate>[],
       );
     } catch (_) {
@@ -1206,67 +1215,40 @@ class LogoFinder {
           ? _queriesForSearch(ctx, expanded: true)
           : _queriesForSearch(ctx, expanded: false, includePrimary: true);
       final expanded = _queriesForSearch(ctx, expanded: true);
+      final queryPlan = <String>[
+        ...primary,
+        if (forceExpanded || primary.isEmpty) ...expanded,
+      ];
 
-      await _warmGoogleSession();
-
-      // Probe one query first — if Google returns a JS-only shell, skip the
-      // expensive multi-query HTML ladder and jump to CSE/Gemini/fallbacks.
-      var htmlBlocked = false;
-      if (primary.isNotEmpty) {
-        final probe = <String>{};
-        await _fetchGoogleImageUrls(primary.first, probe, basicHtml: false);
-        if (probe.isEmpty) {
-          htmlBlocked = true;
-        } else {
-          urls.addAll(probe);
+      // 1) Headless Playwright crawler — real Chrome, scrolls lazy-loaded tiles.
+      //    This replaces the legacy plain-HTTP Google Images HTML scrape that
+      //    mostly returned JS shells / placeholders.
+      try {
+        final crawler = LogoCrawlerClient();
+        final crawled = await crawler.crawl(
+          query: queryPlan.isNotEmpty
+              ? queryPlan.first
+              : '${ctx.companyName} logo'.trim(),
+          queries: queryPlan.skip(1).take(forceExpanded ? 4 : 2).toList(),
+          maxResults: 36,
+          timeout: _googleCrawlerTimeout,
+        );
+        for (final u in crawled) {
+          if (u.startsWith('http')) urls.add(u);
         }
-      }
+      } catch (_) {}
 
-      Future<void> runQueries(List<String> queries, {required bool basicHtml}) async {
-        await Future.wait(
-          queries.take(forceExpanded ? 6 : 4).map(
-                (q) => _fetchGoogleImageUrls(q, urls, basicHtml: basicHtml)
-                    .catchError((Object _, StackTrace __) {}),
-              ),
+      // 2) Optional Programmable Search Engine with proper pagination (10/page).
+      if (urls.length < 20) {
+        await _fetchGoogleCustomSearchUrls(
+          queryPlan.isNotEmpty ? queryPlan : primary,
+          urls,
+          minTarget: 20,
         );
       }
 
-      if (!htmlBlocked) {
-        if (urls.length < 4) {
-          await runQueries(primary.skip(1).toList(), basicHtml: false);
-        }
-        if (urls.isEmpty) {
-          await runQueries(expanded.take(4).toList(), basicHtml: false);
-        }
-
-        if (urls.length < 4) {
-          await runQueries(
-            urls.isEmpty ? [...primary, ...expanded.take(3)] : primary,
-            basicHtml: true,
-          );
-        }
-
-        // Newer Google Images UI (`udm=2`) as an extra fallback.
-        if (urls.length < 4) {
-          final fallbackQs =
-              urls.isEmpty ? [...primary, ...expanded.take(3)] : primary;
-          await Future.wait(
-            fallbackQs.take(4).map(
-                  (q) => _fetchGoogleUdmImageUrls(q, urls)
-                      .catchError((Object _, StackTrace __) {}),
-                ),
-          );
-        }
-      }
-
-      // Optional Programmable Search Engine (when configured).
-      if (urls.length < 4) {
-        await _fetchGoogleCustomSearchUrls(primary, urls);
-      }
-
-      // Google HTML is often a JS-only shell now. Use Gemini + Google Search
-      // grounding so "Google Images" still contributes real logo URLs.
-      if (urls.length < 4 && gemini != null && ctx.companyName.isNotEmpty) {
+      // 3) Gemini + Google Search grounding (when crawler/CSE are thin).
+      if (urls.length < 12 && gemini != null && ctx.companyName.isNotEmpty) {
         try {
           final grounded = await gemini
               .suggestGoogleLogoImageUrls(
@@ -1280,25 +1262,14 @@ class LogoFinder {
         } catch (_) {}
       }
 
-      // Last-resort: Google-indexed logo pages via site: / related public CDNs
-      // discovered from official domains (still attributed as Google Images when
-      // we resolve them through Google's image proxy redirector).
-      if (urls.length < 4) {
+      // 4) Site-scoped Google web search for image URLs (lightweight HTTP).
+      if (urls.length < 12) {
         await _fetchGoogleRelatedLogoUrls(ctx, urls);
       }
 
-      // When Google HTML is JS-blocked and Gemini/CSE are unavailable, still
-      // contribute real Google-indexed logo assets (distinct from Known brand).
-      // (Also registered as a separate All-sources future so engine timeouts
-      // cannot drop these.)
-      if (urls.length < 4) {
+      // 5) Hard-coded brand CDN last resort (still labeled Google Images).
+      if (urls.length < 8) {
         urls.addAll(_googleBlockedFallbackUrls(ctx));
-      }
-
-      // Still empty after primary — force full expansion cycle (cheap HTML tries).
-      if (urls.isEmpty) {
-        await runQueries(expanded.take(4).toList(), basicHtml: false);
-        await runQueries(expanded.take(4).toList(), basicHtml: true);
       }
 
       return _urlCandidatesFromSet(
@@ -1306,7 +1277,6 @@ class LogoFinder {
         source: 'Google Images',
         ctx: ctx,
         sourceBonus: 16,
-        // Match Bing's gate so Google hits aren't dropped when HTML/CSE is thin.
         minScore: 16,
       );
     } catch (_) {
@@ -1314,52 +1284,16 @@ class LogoFinder {
     }
   }
 
-  static String? _googleCookieHeader;
-  static DateTime? _googleWarmedAt;
-
-  Future<void> _warmGoogleSession() async {
-    final warmed = _googleWarmedAt;
-    if (warmed != null &&
-        DateTime.now().difference(warmed) < const Duration(minutes: 10) &&
-        (_googleCookieHeader ?? '').isNotEmpty) {
-      return;
-    }
-    try {
-      final uri = Uri.parse('https://www.google.com/');
-      final res = await _client
-          .get(uri, headers: _browserHeadersFor(uri))
-          .timeout(_requestTimeout);
-      final setCookie = res.headers['set-cookie'];
-      final parts = <String>[
-        'CONSENT=YES+cb.20210328-17-p0.en+FX+410',
-        'SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg',
-      ];
-      if (setCookie != null && setCookie.isNotEmpty) {
-        for (final chunk in setCookie.split(',')) {
-          final first = chunk.split(';').first.trim();
-          if (first.contains('=')) parts.add(first);
-        }
-      }
-      _googleCookieHeader = parts.join('; ');
-      _googleWarmedAt = DateTime.now();
-    } catch (_) {
-      _googleCookieHeader =
-          'CONSENT=YES+cb.20210328-17-p0.en+FX+410; SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg';
-      _googleWarmedAt = DateTime.now();
-    }
-  }
-
   Map<String, String> _googleHeaders(Uri uri) {
     final headers = _browserHeadersFor(uri);
-    final cookie = _googleCookieHeader;
-    if (cookie != null && cookie.isNotEmpty) {
-      headers['Cookie'] = cookie;
-    }
+    // Static consent cookies — enough for lightweight web-search fallbacks.
+    headers['Cookie'] =
+        'CONSENT=YES+cb.20210328-17-p0.en+FX+410; SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg';
     return headers;
   }
 
-  /// When HTML Google Images is blocked, still collect Google-reachable logo
-  /// assets via site-scoped Google web search snippets + known brand CDNs.
+  /// When headless crawler is thin, collect Google-reachable logo assets via
+  /// site-scoped Google web search snippets.
   Future<void> _fetchGoogleRelatedLogoUrls(
     _RelevanceContext ctx,
     Set<String> urls,
@@ -1504,63 +1438,7 @@ class LogoFinder {
     return out;
   }
 
-  Future<void> _fetchGoogleImageUrls(
-    String q,
-    Set<String> urls, {
-    required bool basicHtml,
-  }) async {
-    try {
-      final params = <String, String>{
-        'q': q,
-        'tbm': 'isch',
-        'hl': 'en',
-        'gl': 'us',
-        'ijn': '0',
-        'safe': 'off',
-      };
-      // Avoid restrictive tbs filters — they often empty the result set and
-      // Google already prefers relevant logo/PNG hits for "{name} logo" queries.
-      if (basicHtml) {
-        params['gbv'] = '1';
-      }
-
-      final uri = Uri.https('www.google.com', '/search', params);
-      final res = await _client
-          .get(uri, headers: _googleHeaders(uri))
-          .timeout(_requestTimeout);
-      if (res.statusCode != 200) return;
-      // JS-only shell — no image payloads to parse.
-      if (res.body.contains('enablejs') &&
-          !res.body.contains('"ou"') &&
-          !res.body.contains('AF_initDataCallback')) {
-        return;
-      }
-
-      _extractGoogleImageUrls(res.body, urls);
-    } catch (_) {}
-  }
-
-  Future<void> _fetchGoogleUdmImageUrls(String q, Set<String> urls) async {
-    try {
-      final uri = Uri.https('www.google.com', '/search', {
-        'q': q,
-        'udm': '2',
-        'hl': 'en',
-        'gl': 'us',
-        'safe': 'off',
-      });
-      final res = await _client
-          .get(uri, headers: _googleHeaders(uri))
-          .timeout(_requestTimeout);
-      if (res.statusCode != 200) return;
-      if (res.body.contains('enablejs') && !res.body.contains('"ou"')) {
-        return;
-      }
-      _extractGoogleImageUrls(res.body, urls);
-    } catch (_) {}
-  }
-
-  /// Extra Google Images URLs used only when HTML scraping is blocked.
+  /// Extra Google Images URLs used when crawler/CSE are thin.
   /// Keep these distinct from [ _knownLogoUrlCandidates ] so both sources can
   /// appear in the picker after URL dedupe.
   static List<String> _googleBlockedFallbackUrls(_RelevanceContext ctx) {
@@ -1597,38 +1475,48 @@ class LogoFinder {
   }
 
   /// Optional Google Programmable Search (Images) when CSE id is configured.
+  /// Paginates with `start=1,11,21…` so results go beyond the first 10.
   Future<void> _fetchGoogleCustomSearchUrls(
     List<String> queries,
-    Set<String> urls,
-  ) async {
+    Set<String> urls, {
+    int minTarget = 20,
+  }) async {
     final cseId = _googleCseId();
     final key = GeminiClient.resolveApiKey();
     if (cseId.isEmpty || key.isEmpty) return;
     for (final q in queries.take(3)) {
       if (urls.length >= 40) break;
-      try {
-        final uri = Uri.https('www.googleapis.com', '/customsearch/v1', {
-          'key': key,
-          'cx': cseId,
-          'q': q,
-          'searchType': 'image',
-          'num': '10',
-          'safe': 'off',
-        });
-        final res = await _client
-            .get(uri, headers: {'Accept': 'application/json'})
-            .timeout(_requestTimeout);
-        if (res.statusCode != 200) continue;
-        final body = jsonDecode(res.body);
-        final items = body is Map ? body['items'] : null;
-        if (items is! List) continue;
-        for (final item in items) {
-          if (item is! Map) continue;
-          final link = '${item['link'] ?? ''}';
-          if (link.startsWith('http')) urls.add(link);
+      // CSE returns max 10 per request; page with start offsets.
+      for (final start in [1, 11, 21, 31]) {
+        if (urls.length >= minTarget && urls.length >= 20) break;
+        if (urls.length >= 40) break;
+        try {
+          final uri = Uri.https('www.googleapis.com', '/customsearch/v1', {
+            'key': key,
+            'cx': cseId,
+            'q': q,
+            'searchType': 'image',
+            'num': '10',
+            'start': '$start',
+            'safe': 'off',
+          });
+          final res = await _client
+              .get(uri, headers: {'Accept': 'application/json'})
+              .timeout(_requestTimeout);
+          if (res.statusCode != 200) break;
+          final body = jsonDecode(res.body);
+          final items = body is Map ? body['items'] : null;
+          if (items is! List || items.isEmpty) break;
+          for (final item in items) {
+            if (item is! Map) continue;
+            final link = '${item['link'] ?? ''}';
+            if (link.startsWith('http')) urls.add(link);
+          }
+          // Soft pacing to avoid CSE rate limits.
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+        } catch (_) {
+          break;
         }
-      } catch (_) {
-        continue;
       }
     }
   }

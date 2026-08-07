@@ -409,6 +409,31 @@ def static_bold_lines(c: canvas.Canvas, x: float, y: float, lines: tuple[str, ..
     return y
 
 
+def shipper_block_height(lines: tuple[str, ...] = SHIPPER_LINES, size: float = 7.0) -> float:
+    """Height consumed by the static shipper address (no trailing dead space)."""
+    if not lines:
+        return 0.0
+    return len(lines) * size + (len(lines) - 1) * 4
+
+
+def draw_shipper_block_centered(
+    c: canvas.Canvas,
+    x: float,
+    top: float,
+    bot: float,
+    lines: tuple[str, ...] = SHIPPER_LINES,
+    size: float = 7.0,
+) -> None:
+    """Draw shipper lines vertically centered in [bot, top] — no open blank under address."""
+    block_h = shipper_block_height(lines, size)
+    panel_h = top - bot
+    # Optical pad inside the panel; keep content away from the stroke.
+    inset = 8.0
+    avail = max(panel_h - 2 * inset, block_h)
+    y0 = top - inset - (avail - block_h) / 2
+    static_bold_lines(c, x, y0, lines, size=size)
+
+
 def wrap_text_lines(c: canvas.Canvas, text: str, x: float, y: float, max_w: float,
                     font: str = "Helvetica", size: float = 3.8, leading: float = 4.2,
                     color=INK_MUTED, min_y: float | None = None) -> float:
@@ -436,12 +461,18 @@ def wrap_text_lines(c: canvas.Canvas, text: str, x: float, y: float, max_w: floa
 
 def put_textfield(form, name: str, x: float, y: float, w: float, h: float,
                   value: str = "", font_size: float = 7.5, fill=CLEAR,
-                  field_flags: str = "") -> None:
-    """Place an AcroForm field flush to the given rect — no extra underlines or borders."""
+                  field_flags: str = "", align: str = "left",
+                  enforce_min_h: bool = True) -> None:
+    """Place an AcroForm field flush to the given rect — no extra underlines or borders.
+
+    align: 'left' (default) or 'center' (sets PDF /Q=1 for horizontal centering).
+    Single-line fields are optically vertically centered by Acrobat within [h].
+    """
     if w <= 2 or h <= 2:
         return
     # Keep enough vertical room so glyphs are not clipped (esp. Adobe Android).
-    h = max(h, font_size + 5)
+    if enforce_min_h:
+        h = max(h, font_size + 5)
     kwargs = dict(
         name=name,
         tooltip=name.replace("_", " ").title(),
@@ -452,6 +483,16 @@ def put_textfield(form, name: str, x: float, y: float, w: float, h: float,
     if field_flags:
         kwargs["fieldFlags"] = field_flags
     form.textfield(**kwargs)
+    if align == "center":
+        try:
+            from reportlab.pdfbase.pdfdoc import PDFnumber
+
+            canv = form.canv
+            ref = canv._annotationrefs[-1]
+            obj = canv._doc.idToObject[ref.name]
+            obj["Q"] = PDFnumber(1)
+        except Exception:
+            pass
 
 
 def ruled_field(c: canvas.Canvas, form, name: str, x: float, y_bottom: float, w: float,
@@ -1062,13 +1103,17 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
         for i, label in enumerate(cats):
             row_top = body_top - top_inset - i * row_h
             micro_label(c, col_x, row_top - 6.5, label)
-            field_h = min(9.5, max(7.0, row_h - 10))
+            # Value fills the band under the micro-label; centered H+V in the widget.
+            label_reserve = 8.5
+            field_top = row_top - label_reserve
             field_bot = row_top - row_h + 2
+            field_h = max(field_top - field_bot, 9)
             put_textfield(
                 form, f"product_total_{label.lower()}",
                 col_x, field_bot,
                 col_w - 1, field_h,
-                font_size=7.5, fill=CLEAR, field_flags="readOnly",
+                font_size=8, fill=CLEAR, field_flags="readOnly",
+                align="center",
             )
             hline(c, col_x, field_bot, col_w - 1)
 
@@ -1103,31 +1148,33 @@ def draw_aligned_bottom_row(c: canvas.Canvas, form, y: float, block_h: float, hd
 
     micro_label(c, tx + PAD, body_top - 6, "Total Piece Count")
     pieces_bot = mid_tot + 3
-    pieces_top = body_top - 14
+    pieces_top = body_top - 12
     put_textfield(
         form, "total_pieces",
         tx + PAD, pieces_bot,
-        tw - 2 * PAD, max(pieces_top - pieces_bot, 9),
-        font_size=7.5, fill=CLEAR, field_flags="readOnly",
+        tw - 2 * PAD, max(pieces_top - pieces_bot, 12),
+        font_size=9, fill=CLEAR, field_flags="readOnly",
+        align="center",
     )
 
     micro_label(c, tx + PAD, mid_tot - 6, "Total Weight")
     weight_bot = block_bot + 11
-    weight_top = mid_tot - 14
+    weight_top = mid_tot - 12
     put_textfield(
         form, "total_weight",
         tx + PAD, weight_bot,
-        tw - 2 * PAD, max(weight_top - weight_bot, 9),
-        font_size=7.5, fill=CLEAR, field_flags="readOnly",
+        tw - 2 * PAD, max(weight_top - weight_bot, 12),
+        font_size=9, fill=CLEAR, field_flags="readOnly",
+        align="center",
     )
     c.setFillColor(INK_HINT)
     c.setFont("Helvetica", 5)
-    c.drawString(tx + PAD, block_bot + 3, "LBS")
+    c.drawCentredString(tx + tw / 2, block_bot + 3, "LBS")
 
 
 def draw_meta_strip(c: canvas.Canvas, form, y: float) -> float:
-    """Three equal meta cells in one bordered strip — labels and fields stay inside."""
-    strip_h = 36
+    """Three equal meta cells — compact strip so Delivery Address can reclaim height."""
+    strip_h = 28
     bot = y - strip_h
     c.setFillColor(FIELD_BG)
     c.rect(MARGIN, bot, CONTENT_W, strip_h, stroke=0, fill=1)
@@ -1144,14 +1191,14 @@ def draw_meta_strip(c: canvas.Canvas, form, y: float) -> float:
             c.setStrokeColor(RULE)
             c.setLineWidth(0.5)
             c.line(cx, bot, cx, y)
-        micro_label(c, cx + PAD, y - 10, label)
+        micro_label(c, cx + PAD, y - 8, label)
         # Document Number is auto-assigned on print (SW-####) — not editable.
         flags = "readOnly" if name == "document_number" else ""
         put_textfield(
-            form, name, cx + 4, bot + 5, col_w - 8, 14,
+            form, name, cx + 4, bot + 3, col_w - 8, 12,
             font_size=8, fill=CLEAR, field_flags=flags,
         )
-        hline(c, cx + 4, bot + 5, col_w - 8)
+        hline(c, cx + 4, bot + 3, col_w - 8)
     return bot - GAP
 
 
@@ -1375,33 +1422,45 @@ def draw_bol_page(
     col_w = (CONTENT_W - GAP) / 2
     lx, rx = MARGIN, MARGIN + col_w + GAP
     hdr_h = 15
-    # Equal-height panels — no staggered bottoms / floating gaps.
-    panel_h = 1.12 * inch
+    # Equal-height panels sized for a 3-line Delivery Address + compact contacts.
+    # Name / Address / Contact share fixed band heights (not percent of a tall empty panel).
+    name_h = 20.0
+    addr_h = 46.0  # ~3 lines at 7.5pt + micro-label
+    contact_h = 20.0  # Contact Name / Number — tightened vs prior ~34pt band
+    panel_h = name_h + addr_h + contact_h
 
     section_title(c, lx, y, col_w, "SHIPPER (CONSIGNOR)", hdr_h)
     section_title(c, rx, y, col_w, "SHIP TO (CONSIGNEE)", hdr_h)
     top = y - hdr_h
     bot = top - panel_h
     rect_stroke(c, lx, bot, col_w, panel_h, 0.75)
-    static_bold_lines(c, lx + PAD, top - 12, SHIPPER_LINES, size=7.0)
+    # Vertically center shipper lines so there is no open blank strip under the address.
+    draw_shipper_block_centered(c, lx + PAD, top, bot, SHIPPER_LINES, size=7.0)
 
     # Consignee body = four abutting cells (no outer wrapper, so rules meet cleanly).
-    row1 = top - panel_h * 0.30
-    row2 = top - panel_h * 0.58
+    row1 = top - name_h
+    row2 = top - name_h - addr_h
     mid_x = rx + col_w / 2
     cells = (
-        ("consignee_name", rx, row1, col_w, top - row1, "Ship To Name"),
-        ("consignee_address", rx, row2, col_w, row1 - row2, "Delivery Address"),
-        ("consignee_contact_name", rx, bot, mid_x - rx, row2 - bot, "Contact Name"),
-        ("consignee_contact_number", mid_x, bot, rx + col_w - mid_x, row2 - bot, "Contact Number"),
+        ("consignee_name", rx, row1, col_w, top - row1, "Ship To Name", False),
+        ("consignee_address", rx, row2, col_w, row1 - row2, "Delivery Address", True),
+        ("consignee_contact_name", rx, bot, mid_x - rx, row2 - bot, "Contact Name", False),
+        ("consignee_contact_number", mid_x, bot, rx + col_w - mid_x, row2 - bot, "Contact Number", False),
     )
-    for name, cx, cy, cw, ch, label in cells:
+    for name, cx, cy, cw, ch, label, multiline in cells:
         rect_stroke(c, cx, cy, cw, ch, 0.6)
-        micro_label(c, cx + PAD, cy + ch - 10, label)
+        micro_label(c, cx + PAD, cy + ch - 9, label)
+        # Compact contacts: smaller field inset. Address: tall multiline area.
+        top_reserve = 12 if multiline else 10
+        bot_pad = 2
+        field_h = max(ch - top_reserve - bot_pad, 7)
+        flags = "multiline" if multiline else ""
         put_textfield(
-            form, name, cx + PAD, cy + 4,
-            cw - 2 * PAD, max(ch - 16, 8),
-            font_size=7.5, fill=CLEAR,
+            form, name, cx + PAD, cy + bot_pad,
+            cw - 2 * PAD, field_h,
+            font_size=7.0 if not multiline and ch < 24 else 7.5,
+            fill=CLEAR, field_flags=flags,
+            enforce_min_h=multiline or ch >= 24,
         )
 
     y = bot - GAP

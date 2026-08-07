@@ -53,15 +53,30 @@ class SwiftRadius {
 }
 
 class SwiftTheme {
-  static ThemeData light({double fontScale = 1.0}) =>
-      _build(brightness: Brightness.light, fontScale: fontScale);
+  static ThemeData light({
+    double fontScale = 1.0,
+    String fontFamily = 'Helvetica',
+  }) =>
+      _build(
+        brightness: Brightness.light,
+        fontScale: fontScale,
+        fontFamily: fontFamily,
+      );
 
-  static ThemeData dark({double fontScale = 1.0}) =>
-      _build(brightness: Brightness.dark, fontScale: fontScale);
+  static ThemeData dark({
+    double fontScale = 1.0,
+    String fontFamily = 'Helvetica',
+  }) =>
+      _build(
+        brightness: Brightness.dark,
+        fontScale: fontScale,
+        fontFamily: fontFamily,
+      );
 
   static ThemeData _build({
     required Brightness brightness,
     required double fontScale,
+    required String fontFamily,
   }) {
     final desktop = Platform.isWindows;
     final dark = brightness == Brightness.dark;
@@ -95,7 +110,8 @@ class SwiftTheme {
     );
 
     final labelStyle = TextStyle(
-      fontFamily: 'Oswald',
+      fontFamily: fontFamily,
+      fontFamilyFallback: const ['Helvetica Neue', 'Arial', 'sans-serif'],
       fontSize: 12 * scale,
       fontWeight: FontWeight.w500,
       color: muted,
@@ -105,6 +121,8 @@ class SwiftTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
+      fontFamily: fontFamily,
+      fontFamilyFallback: const ['Helvetica Neue', 'Arial', 'sans-serif'],
       visualDensity:
           desktop ? VisualDensity.compact : VisualDensity.standard,
       colorScheme: base.copyWith(
@@ -127,43 +145,42 @@ class SwiftTheme {
       ),
       scaffoldBackgroundColor: bg,
       canvasColor: surface,
-      fontFamily: 'Calibri',
       textTheme: ThemeData(brightness: brightness).textTheme.apply(
-            fontFamily: 'Calibri',
+            fontFamily: fontFamily,
             bodyColor: ink,
             displayColor: ink,
             fontSizeFactor: scale,
           ).copyWith(
             titleLarge: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: fontFamily,
               fontWeight: FontWeight.w600,
               fontSize: (desktop ? 20 : 22) * scale,
               letterSpacing: 0.3,
               color: ink,
             ),
             titleMedium: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: fontFamily,
               fontWeight: FontWeight.w600,
               fontSize: (desktop ? 15 : 16) * scale,
               letterSpacing: 0.3,
               color: ink,
             ),
             titleSmall: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: fontFamily,
               fontWeight: FontWeight.w600,
               fontSize: 13 * scale,
               letterSpacing: 0.4,
               color: ink,
             ),
             labelLarge: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: fontFamily,
               fontWeight: FontWeight.w600,
               fontSize: 13 * scale,
               letterSpacing: 0.4,
               color: ink,
             ),
             bodySmall: TextStyle(
-              fontFamily: 'Calibri',
+              fontFamily: fontFamily,
               fontSize: 12 * scale,
               color: muted,
               height: 1.35,
@@ -177,7 +194,7 @@ class SwiftTheme {
         scrolledUnderElevation: desktop ? 0.5 : 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
           fontSize: (desktop ? 16 : 18) * scale,
           color: ink,
@@ -199,14 +216,14 @@ class SwiftTheme {
           size: 22,
         ),
         selectedLabelTextStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
           fontSize: 12 * scale,
           color: SwiftColors.accent,
           letterSpacing: 0.3,
         ),
         unselectedLabelTextStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
           fontSize: 12 * scale,
           color: muted,
@@ -232,12 +249,12 @@ class SwiftTheme {
         ),
         labelStyle: labelStyle,
         hintStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           fontSize: 13 * scale,
           color: muted.withValues(alpha: 0.85),
         ),
         floatingLabelStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontSize: 12 * scale,
           fontWeight: FontWeight.w600,
           color: SwiftColors.accent,
@@ -275,7 +292,7 @@ class SwiftTheme {
             vertical: desktop ? 12 : 14,
           ),
           textStyle: TextStyle(
-            fontFamily: 'Oswald',
+            fontFamily: fontFamily,
             fontWeight: FontWeight.w600,
             fontSize: (desktop ? 14 : 15) * scale,
             letterSpacing: 0.4,
@@ -304,7 +321,7 @@ class SwiftTheme {
             vertical: desktop ? 10 : 12,
           ),
           textStyle: TextStyle(
-            fontFamily: 'Calibri',
+            fontFamily: fontFamily,
             fontWeight: FontWeight.w600,
             fontSize: 13 * scale,
           ),
@@ -321,7 +338,7 @@ class SwiftTheme {
         style: TextButton.styleFrom(
           foregroundColor: muted,
           textStyle: TextStyle(
-            fontFamily: 'Calibri',
+            fontFamily: fontFamily,
             fontWeight: FontWeight.w600,
             fontSize: 13 * scale,
           ),
@@ -367,8 +384,8 @@ class SwiftTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: elevated,
-        contentTextStyle: const TextStyle(
-          fontFamily: 'Calibri',
+        contentTextStyle: TextStyle(
+          fontFamily: fontFamily,
           color: Colors.white,
           fontSize: 13,
         ),
@@ -387,14 +404,14 @@ class SwiftTheme {
           side: BorderSide(color: border.withValues(alpha: 0.6)),
         ),
         titleTextStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
           fontSize: 18 * scale,
           letterSpacing: 0.3,
           color: ink,
         ),
         contentTextStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           fontSize: 14 * scale,
           color: ink,
           height: 1.4,
@@ -431,17 +448,17 @@ class SwiftTheme {
           return null;
         }),
         weekdayStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           color: muted,
           fontSize: 12 * scale,
         ),
         dayStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           color: ink,
           fontSize: 13 * scale,
         ),
         yearStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           color: ink,
           fontSize: 13 * scale,
         ),
@@ -470,13 +487,13 @@ class SwiftTheme {
         unselectedLabelColor: muted,
         indicatorColor: SwiftColors.accent,
         labelStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
           fontSize: 13 * scale,
           letterSpacing: 0.3,
         ),
         unselectedLabelStyle: TextStyle(
-          fontFamily: 'Oswald',
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w500,
           fontSize: 13 * scale,
         ),
@@ -495,13 +512,29 @@ class SwiftTheme {
           if (states.contains(WidgetState.selected)) {
             return SwiftColors.accent;
           }
-          return null;
+          return Colors.transparent;
         }),
-        checkColor: const WidgetStatePropertyAll(Colors.white),
-        side: BorderSide(color: border, width: 1.4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(3),
+        checkColor: const WidgetStatePropertyAll(Colors.transparent),
+        overlayColor: WidgetStatePropertyAll(
+          SwiftColors.accent.withValues(alpha: 0.12),
         ),
+        side: const BorderSide(color: SwiftColors.accent, width: 2),
+        shape: const CircleBorder(),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      radioTheme: RadioThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return SwiftColors.accent;
+          }
+          return SwiftColors.accent;
+        }),
+        overlayColor: WidgetStatePropertyAll(
+          SwiftColors.accent.withValues(alpha: 0.12),
+        ),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
@@ -584,7 +617,7 @@ class SwiftTheme {
           }),
           textStyle: WidgetStatePropertyAll(
             TextStyle(
-              fontFamily: 'Calibri',
+              fontFamily: fontFamily,
               fontSize: 13 * scale,
               fontWeight: FontWeight.w600,
               color: ink,
@@ -601,7 +634,7 @@ class SwiftTheme {
           side: BorderSide(color: border),
         ),
         textStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           fontSize: 13 * scale,
           color: ink,
         ),
@@ -618,7 +651,7 @@ class SwiftTheme {
           ),
         ),
         textStyle: TextStyle(
-          fontFamily: 'Calibri',
+          fontFamily: fontFamily,
           fontSize: 13 * scale,
           color: ink,
         ),
@@ -634,8 +667,8 @@ class SwiftTheme {
           color: elevated,
           borderRadius: BorderRadius.circular(6),
         ),
-        textStyle: const TextStyle(
-          fontFamily: 'Calibri',
+        textStyle: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 12,
           color: Colors.white,
         ),

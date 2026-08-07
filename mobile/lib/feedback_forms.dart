@@ -181,8 +181,12 @@ class _MailFormDialogState extends State<_MailFormDialog> {
       title: Text(widget.title),
       content: SizedBox(
         width: 520,
-        child: SingleChildScrollView(
-          child: Column(
+        child: Scrollbar(
+          thumbVisibility: true,
+          interactive: true,
+          child: SingleChildScrollView(
+            primary: true,
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -231,6 +235,7 @@ class _MailFormDialogState extends State<_MailFormDialog> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),

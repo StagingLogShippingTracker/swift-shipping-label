@@ -9,6 +9,8 @@ import 'app_storage.dart';
 import 'bol_document_number.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
+import 'circle_selector.dart';
+import 'employee_directory.dart';
 import 'preset_sync.dart';
 import 'signature_pad.dart';
 import 'signature_sync.dart';
@@ -26,6 +28,15 @@ import 'feedback_forms.dart';
 import 'app_theme_scope.dart';
 import 'pdf_render_options.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
+String swiftUiFont(BuildContext context) {
+  try {
+    return AppThemeScope.of(context).value.uiFontFamily;
+  } catch (_) {
+    return Theme.of(context).textTheme.bodyMedium?.fontFamily ?? 'Helvetica';
+  }
+}
+
 
 const _shippingGroups = <(String title, String hint, List<String> keys)>[
   (
@@ -184,6 +195,15 @@ class _HomeScreenState extends State<HomeScreen> {
   AppUiSettings _uiSettings = AppUiSettings.defaults;
   /// Portrait Android: full header + kind selector collapse while scrolling.
   bool _mobileChromeExpanded = true;
+  /// Box-sized (1/4 page) shipping/receiving labels. Disabled for BOL.
+  bool _boxSizedLabel = false;
+  final EmployeeDirectory _employeeDirectory = EmployeeDirectory();
+  List<String> _swiftContactNames = const [];
+  final FocusNode _swiftContactFocus = FocusNode();
+  /// Desktop form column — shared with [Scrollbar] so wheel works over fields.
+  final ScrollController _desktopFormScroll = ScrollController();
+  /// Desktop workspace pane list.
+  final ScrollController _desktopWorkspaceScroll = ScrollController();
 
   @override
   void initState() {
@@ -199,6 +219,17 @@ class _HomeScreenState extends State<HomeScreen> {
     };
     _loadUiSettings();
     _syncPresetsOnLaunch();
+    _loadSwiftContacts();
+  }
+
+  Future<void> _loadSwiftContacts() async {
+    try {
+      final names = await _employeeDirectory.fetchNames();
+      if (!mounted) return;
+      setState(() => _swiftContactNames = names);
+    } catch (_) {
+      // Autocomplete stays empty; free typing still works.
+    }
   }
 
   Future<void> _loadUiSettings() async {
@@ -325,6 +356,10 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    _swiftContactFocus.dispose();
+    _desktopFormScroll.dispose();
+    _desktopWorkspaceScroll.dispose();
+    _employeeDirectory.dispose();
     super.dispose();
   }
 
@@ -644,9 +679,13 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           Flexible(
-                            child: ListView(
-                              shrinkWrap: true,
-                              children: [
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              interactive: true,
+                              child: ListView(
+                                shrinkWrap: true,
+                                primary: true,
+                                children: [
                                 for (final f in logos)
                                   ListTile(
                                     leading: Image.file(
@@ -725,6 +764,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                               ],
+                              ),
                             ),
                           ),
                         ],
@@ -989,49 +1029,54 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final c in candidates)
-                            InkWell(
-                              onTap: () => Navigator.pop(ctx, c),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                width: 96,
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  border:
-                                      Border.all(color: SwiftColors.muted),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.memory(
-                                      c.bytes,
-                                      height: 56,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) =>
-                                          const Icon(
-                                        Icons.broken_image_outlined,
-                                        size: 40,
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      interactive: true,
+                      child: SingleChildScrollView(
+                        primary: true,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final c in candidates)
+                              InkWell(
+                                onTap: () => Navigator.pop(ctx, c),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  width: 96,
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: SwiftColors.muted),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Image.memory(
+                                        c.bytes,
+                                        height: 56,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(
+                                          Icons.broken_image_outlined,
+                                          size: 40,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      c.source,
-                                      style: const TextStyle(fontSize: 10),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        c.source,
+                                        style: const TextStyle(fontSize: 10),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1247,6 +1292,10 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final c in _controllers.values) {
       c.clear();
     }
+    _logoPaths.clear();
+    _presetName = null;
+    _shipperSignatureBytes = null;
+    _selectedSavedSignature = null;
     _bolLineCount = 1;
     _setField(BolFields.freightCharges, BolFields.freightPrepaid);
     setState(() {});
@@ -1324,7 +1373,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes = await widget.pdf.buildReceiving(
             data: data,
             customerLogoBytes: logoBytes,
-            options: _uiSettings.pdfOptions,
+            options: _pdfOptionsForGenerate,
           );
         case LabelKind.bol:
           bytes = await BolLabelPdf(widget.pdf).build(
@@ -1332,14 +1381,14 @@ class _HomeScreenState extends State<HomeScreen> {
             customerLogoBytes: logoBytes,
             shipperSignatureBytes: _shipperSignatureBytes,
             copies: bolCopies,
-            options: _uiSettings.pdfOptions,
+            options: _pdfOptionsForGenerate,
           );
         case LabelKind.shipping:
           bytes = await widget.pdf.build(
             data: data,
             customerLogoBytes: logoBytes,
             piecePlan: piecePlan!,
-            options: _uiSettings.pdfOptions,
+            options: _pdfOptionsForGenerate,
           );
       }
 
@@ -1630,7 +1679,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'SHIPPER SIGNATURE (OPTIONAL)',
             style: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: swiftUiFont(context),
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: SwiftColors.muted,
@@ -1694,14 +1743,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (appDateFieldKeys.contains(key)) {
       return _buildDateField(key);
     }
+    if (key == LabelFields.swiftContact) {
+      return _buildSwiftContactField();
+    }
     final m = _meta(key);
+    final isDeliveryAddress = key == LabelFields.location ||
+        key == BolFields.consigneeAddress;
     final lines = !m.$3
         ? 1
-        : key == LabelFields.location && _kind == LabelKind.shipping
-            ? 6 // Matches doubled Location band on the shipping PDF.
+        : isDeliveryAddress
+            ? 3 // Shipping + BOL delivery address entry height.
             : key == LabelFields.specialInstructions
                 ? 2 // Shorter SI entry; PDF band absorbs PO/Project growth.
                 : 3;
+    final minLines = isDeliveryAddress ? 3 : (lines <= 1 ? 1 : 1);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: lines <= 1
@@ -1714,12 +1769,83 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : FormScrollTextField(
               controller: _controllers[key]!,
-              minLines: 1,
+              minLines: minLines,
               maxLines: lines,
               decoration: InputDecoration(
                 labelText: m.$2.toUpperCase(),
               ),
             ),
+    );
+  }
+
+  Widget _buildSwiftContactField() {
+    final ctrl = _controllers[LabelFields.swiftContact]!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: RawAutocomplete<String>(
+        textEditingController: ctrl,
+        focusNode: _swiftContactFocus,
+        optionsBuilder: (textEditingValue) {
+          final q = textEditingValue.text.trim().toLowerCase();
+          if (_swiftContactNames.isEmpty) {
+            return const Iterable<String>.empty();
+          }
+          if (q.isEmpty) {
+            return _swiftContactNames.take(12);
+          }
+          return _swiftContactNames
+              .where((n) => n.toLowerCase().contains(q))
+              .take(12);
+        },
+        displayStringForOption: (n) => n,
+        onSelected: (n) {
+          ctrl.value = TextEditingValue(
+            text: n,
+            selection: TextSelection.collapsed(offset: n.length),
+          );
+        },
+        fieldViewBuilder: (context, textController, focusNode, onSubmit) {
+          return TextField(
+            controller: textController,
+            focusNode: focusNode,
+            maxLines: 1,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSubmit(),
+            decoration: const InputDecoration(
+              labelText: 'SWIFT CONTACT',
+              hintText: 'Type a name or pick from directory',
+            ),
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) {
+          final opts = options.toList(growable: false);
+          if (opts.isEmpty) return const SizedBox.shrink();
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(8),
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxHeight: 240, maxWidth: 420),
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: opts.length,
+                  itemBuilder: (context, i) {
+                    final name = opts[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(name),
+                      onTap: () => onSelected(name),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1768,15 +1894,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFreightChargesSelector() {
+    final selected = _selectedFreightCharges().isEmpty
+        ? BolFields.freightPrepaid
+        : _selectedFreightCharges().first;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'FREIGHT CHARGES',
             style: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: swiftUiFont(context),
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: SwiftColors.muted,
@@ -1784,38 +1913,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          SegmentedButton<String>(
-            emptySelectionAllowed: false,
-            showSelectedIcon: false,
-            segments: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
               for (final o in BolFields.freightChargeOptions)
-                ButtonSegment<String>(
+                SwiftCircleRadio<String>(
                   value: o.$1,
-                  label: Text(o.$2, textAlign: TextAlign.center),
+                  groupValue: selected,
+                  label: o.$2,
+                  dense: true,
+                  onChanged: (v) {
+                    if (v == null) return;
+                    _setField(BolFields.freightCharges, v);
+                    setState(() {});
+                  },
                 ),
             ],
-            selected: _selectedFreightCharges().isEmpty
-                ? {BolFields.freightPrepaid}
-                : _selectedFreightCharges(),
-            onSelectionChanged: (selection) {
-              _setField(
-                BolFields.freightCharges,
-                selection.isEmpty
-                    ? BolFields.freightPrepaid
-                    : selection.first,
-              );
-              setState(() {});
-            },
-            style: const ButtonStyle(
-              textStyle: WidgetStatePropertyAll(
-                TextStyle(
-                  fontFamily: 'Oswald',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -1829,10 +1943,78 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_kind == LabelKind.bol) {
         _bolLineCount = _detectBolLineCount();
         _syncSignaturesQuietly();
+        // Box-sized quarter-page labels are Shipping/Receiving only.
+        _boxSizedLabel = false;
       } else {
         _bolLineCount = 1;
       }
     });
+  }
+
+  bool get _boxSizedAllowed =>
+      _kind == LabelKind.shipping || _kind == LabelKind.receiving;
+
+  PdfRenderOptions get _pdfOptionsForGenerate => _uiSettings.pdfOptions.copyWith(
+        isBoxSized: _boxSizedAllowed && _boxSizedLabel,
+      );
+
+  /// Generate button + Box Label checkbox (desktop workspace / form / mobile).
+  Widget _buildGenerateControls({
+    required bool dense,
+    bool stackVertically = false,
+    double buttonHeight = 40,
+  }) {
+    final boxToggle = Tooltip(
+      message: _boxSizedAllowed
+          ? 'Print the label at 50% scale in the top-left quarter of a '
+              'landscape Letter page (5.5″ × 4.25″).'
+          : 'Box-sized labels are only available for Shipping and Receiving labels.',
+      child: SwiftCircleCheckbox(
+        value: _boxSizedAllowed && _boxSizedLabel,
+        enabled: _boxSizedAllowed && !_busy,
+        dense: true,
+        label: 'Box Label (1/4 Page)',
+        onChanged: !_boxSizedAllowed || _busy
+            ? null
+            : (v) => setState(() => _boxSizedLabel = v ?? false),
+      ),
+    );
+    final button = SizedBox(
+      width: stackVertically ? double.infinity : null,
+      height: buttonHeight,
+      child: FilledButton.icon(
+        onPressed: _busy ? null : _generateAndShare,
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+        label: Text(_busy ? 'Generating…' : 'Generate PDF'),
+      ),
+    );
+    if (stackVertically) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          boxToggle,
+          SizedBox(height: dense ? 8 : 10),
+          button,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: boxToggle),
+        const SizedBox(width: 12),
+        button,
+      ],
+    );
   }
 
   void _newDocument(LabelKind kind) {
@@ -1896,10 +2078,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
       selected: {_kind},
       onSelectionChanged: (s) => _selectKind(s.first),
-      style: const ButtonStyle(
+      style: ButtonStyle(
         textStyle: WidgetStatePropertyAll(
           TextStyle(
-            fontFamily: 'Oswald',
+            fontFamily: swiftUiFont(context),
             fontWeight: FontWeight.w600,
             fontSize: 12,
             letterSpacing: 0.2,
@@ -1910,29 +2092,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBolCopiesCard({bool compact = false}) {
-    Widget copyTile(String title, bool value, ValueChanged<bool?> onChanged) {
-      return CheckboxListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(title, style: TextStyle(fontSize: compact ? 13 : 14)),
-        value: value,
-        onChanged: onChanged,
-      );
-    }
-
     return _Card(
       title: 'Copies to generate',
       hint: 'Only selected pages are included in the PDF',
       dense: compact,
       child: Column(
         children: [
-          copyTile('Store Copy', _bolStoreCopy,
-              (v) => setState(() => _bolStoreCopy = v ?? false)),
-          copyTile('Driver Copy', _bolDriverCopy,
-              (v) => setState(() => _bolDriverCopy = v ?? false)),
-          copyTile('Customer Copy', _bolCustomerCopy,
-              (v) => setState(() => _bolCustomerCopy = v ?? false)),
+          SwiftCircleCheckbox(
+            dense: compact,
+            label: 'Store Copy',
+            value: _bolStoreCopy,
+            onChanged: (v) => setState(() => _bolStoreCopy = v ?? false),
+          ),
+          SwiftCircleCheckbox(
+            dense: compact,
+            label: 'Driver Copy',
+            value: _bolDriverCopy,
+            onChanged: (v) => setState(() => _bolDriverCopy = v ?? false),
+          ),
+          SwiftCircleCheckbox(
+            dense: compact,
+            label: 'Customer Copy',
+            value: _bolCustomerCopy,
+            onChanged: (v) => setState(() => _bolCustomerCopy = v ?? false),
+          ),
         ],
       ),
     );
@@ -2091,8 +2274,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           i == 0 ? 'CUSTOMER' : 'C/O',
-                          style: const TextStyle(
-                            fontFamily: 'Oswald',
+                          style: TextStyle(
+                            fontFamily: swiftUiFont(context),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: SwiftColors.muted,
@@ -2308,7 +2491,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final formList = ListView(
-      primary: true,
+      controller: _desktopFormScroll,
+      primary: false,
       padding: EdgeInsets.fromLTRB(dense ? 16 : 24, 8, dense ? 16 : 24, 28),
       children: [
         if (!sideWorkspace) ...[
@@ -2326,20 +2510,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // keep Generate visible in the form column — menu/Ctrl+Enter still work.
         if (!showWorkspace) ...[
           const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _busy ? null : _generateAndShare,
-            icon: _busy
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-            label: Text(_busy ? 'Generating…' : 'Generate PDF'),
-          ),
+          _buildGenerateControls(dense: dense, stackVertically: true),
         ],
       ],
     );
@@ -2354,7 +2525,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'Workspace',
               style: TextStyle(
-                fontFamily: 'Oswald',
+                fontFamily: swiftUiFont(context),
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
                 letterSpacing: 0.4,
@@ -2363,32 +2534,25 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Expanded(
-            child: ListView(
-              primary: false,
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              children: [
-                _buildPresetCard(dense: true),
-                _buildLogosCard(dense: true, stackActions: true),
-                if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
-              ],
+            child: Scrollbar(
+              controller: _desktopWorkspaceScroll,
+              thumbVisibility: true,
+              interactive: true,
+              child: ListView(
+                controller: _desktopWorkspaceScroll,
+                primary: false,
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                children: [
+                  _buildPresetCard(dense: true),
+                  _buildLogosCard(dense: true, stackActions: true),
+                  if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
+                ],
+              ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _generateAndShare,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: Text(_busy ? 'Generating…' : 'Generate PDF'),
-            ),
+            child: _buildGenerateControls(dense: true),
           ),
         ],
       ),
@@ -2513,7 +2677,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Text(
                                   _kindTitle,
                                   style: TextStyle(
-                                    fontFamily: 'Oswald',
+                                    fontFamily: swiftUiFont(context),
                                     fontWeight: FontWeight.w600,
                                     fontSize: dense ? 20 : 22,
                                     color: chrome.ink,
@@ -2538,18 +2702,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                     children: [
                                       Expanded(
                                         flex: 3,
-                                        child: Scrollbar(
-                                          thumbVisibility: true,
-                                          child: formList,
+                                        child: PrimaryScrollController(
+                                          controller: _desktopFormScroll,
+                                          child: Scrollbar(
+                                            controller: _desktopFormScroll,
+                                            thumbVisibility: true,
+                                            interactive: true,
+                                            child: formList,
+                                          ),
                                         ),
                                       ),
                                       const Divider(height: 1),
                                       SizedBox(height: 280, child: workspacePane),
                                     ],
                                   )
-                                : Scrollbar(
-                                    thumbVisibility: true,
-                                    child: formList,
+                                : PrimaryScrollController(
+                                    controller: _desktopFormScroll,
+                                    child: Scrollbar(
+                                      controller: _desktopFormScroll,
+                                      thumbVisibility: true,
+                                      interactive: true,
+                                      child: formList,
+                                    ),
                                   ),
                           ),
                         ],
@@ -2651,6 +2825,10 @@ class _HomeScreenState extends State<HomeScreen> {
             RepaintBoundary(
               child: _BottomBar(
                 busy: _busy,
+                boxSizedLabel: _boxSizedAllowed && _boxSizedLabel,
+                boxSizedEnabled: _boxSizedAllowed && !_busy,
+                onBoxSizedChanged: (v) =>
+                    setState(() => _boxSizedLabel = v ?? false),
                 onGenerate: _generateAndShare,
               ),
             ),
@@ -2749,7 +2927,7 @@ class _DesktopToolbar extends StatelessWidget {
           Text(
             'Swift Document Generator',
             style: TextStyle(
-              fontFamily: 'Oswald',
+              fontFamily: swiftUiFont(context),
               fontWeight: FontWeight.w600,
               fontSize: 15,
               letterSpacing: 0.3,
@@ -2774,8 +2952,8 @@ class _DesktopToolbar extends StatelessWidget {
             ),
             child: Text(
               kindTitle,
-              style: const TextStyle(
-                fontFamily: 'Oswald',
+              style: TextStyle(
+                fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
                 letterSpacing: 0.3,
@@ -2867,7 +3045,7 @@ class _MobileChromeCollapsed extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontFamily: 'Oswald',
+                        fontFamily: swiftUiFont(context),
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                         letterSpacing: 0.3,
@@ -2946,7 +3124,7 @@ class _Header extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontFamily: 'Oswald',
+                          fontFamily: swiftUiFont(context),
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                           letterSpacing: 0.3,
@@ -2968,8 +3146,9 @@ class _Header extends StatelessWidget {
                         ),
                         child: Text(
                           kindTitle,
-                          style: const TextStyle(
-                            fontFamily: 'Oswald',
+                          style: TextStyle(
+                            fontFamily:
+                                Theme.of(context).textTheme.bodyMedium?.fontFamily,
                             fontWeight: FontWeight.w600,
                             fontSize: 11,
                             letterSpacing: 0.3,
@@ -3024,9 +3203,18 @@ class _Header extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.busy, required this.onGenerate});
+  const _BottomBar({
+    required this.busy,
+    required this.boxSizedLabel,
+    required this.boxSizedEnabled,
+    required this.onBoxSizedChanged,
+    required this.onGenerate,
+  });
 
   final bool busy;
+  final bool boxSizedLabel;
+  final bool boxSizedEnabled;
+  final ValueChanged<bool?> onBoxSizedChanged;
   final VoidCallback onGenerate;
 
   @override
@@ -3050,23 +3238,43 @@ class _BottomBar extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: busy ? null : onGenerate,
-              icon: busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.picture_as_pdf_outlined, size: 20),
-              label: Text(busy ? 'Generating…' : 'Generate PDF'),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Tooltip(
+                message: boxSizedEnabled
+                    ? 'Print the label at 50% scale in the top-left quarter of a '
+                        'landscape Letter page (5.5″ × 4.25″).'
+                    : 'Box-sized labels are only available for Shipping and Receiving labels.',
+                child: SwiftCircleCheckbox(
+                  value: boxSizedLabel,
+                  enabled: boxSizedEnabled,
+                  dense: true,
+                  label: 'Box Label (1/4 Page)',
+                  onChanged: boxSizedEnabled ? onBoxSizedChanged : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: busy ? null : onGenerate,
+                  icon: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                  label: Text(busy ? 'Generating…' : 'Generate PDF'),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -3118,7 +3326,7 @@ class _Card extends StatelessWidget {
                         Text(
                           title,
                           style: TextStyle(
-                            fontFamily: 'Oswald',
+                            fontFamily: swiftUiFont(context),
                             fontWeight: FontWeight.w600,
                             fontSize: dense ? 14 : 15,
                             color: chrome.ink,
@@ -3184,58 +3392,37 @@ class _RecreateCheckbox extends StatelessWidget {
         : 'Online: Fly.io Python cloud tracer. Offline: on-device Rust. '
             'Strips background, rebuilds clean vectors, stores SVG + '
             'crisp PNG. Slower — usually ~5–30 s (cold start may add a bit).';
-    final chrome = SwiftChromeColors.of(context);
     return Tooltip(
       message: 'Vectorize and clean the next logo before saving.',
-      child: InkWell(
-        onTap: disabled ? null : () => onChanged(!value),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: 20,
-                width: 20,
-                child: busy
-                    ? const CircularProgressIndicator(strokeWidth: 2)
-                    : Checkbox(
-                        value: value,
-                        onChanged: onChanged,
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                      ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Recreate (vectorize & clean background)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: chrome.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: chrome.muted,
-                      ),
-                    ),
-                  ],
+      child: busy
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Recreate (vectorize & clean background)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: SwiftChromeColors.of(context).ink,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : SwiftCircleCheckbox(
+              value: value,
+              onChanged: disabled ? null : onChanged,
+              enabled: !disabled,
+              label: 'Recreate (vectorize & clean background)',
+              subtitle: subtitle,
+            ),
     );
   }
 }

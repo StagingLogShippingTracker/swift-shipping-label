@@ -265,7 +265,7 @@ def draw_image_in_box(
     return w, h
 
 
-CUSTOMER_LOGO_TARGET_H = 55.0
+CUSTOMER_LOGO_TARGET_H = 62.24
 CUSTOMER_LOGO_GAP = 10.0
 CUSTOMER_LOGO_TO_SWIFT_GAP = 12.0
 
@@ -333,6 +333,7 @@ def draw_customer_logos_header(
     band_h: float,
     y_top: float,
     avail_w: float,
+    target_h: float | None = None,
 ) -> None:
     draw_customer_logo_row(
         c,
@@ -340,7 +341,7 @@ def draw_customer_logos_header(
         MX,
         logo_bottom,
         y_top,
-        CUSTOMER_LOGO_TARGET_H,
+        target_h if target_h and target_h > 0 else CUSTOMER_LOGO_TARGET_H,
         avail_w,
     )
 
@@ -383,9 +384,12 @@ def draw_header(
     avail_for_customer = (
         swift_left_x - CUSTOMER_LOGO_TO_SWIFT_GAP - MX if swift_w > 0 else CONTENT_W
     )
+    customer_target_h = swift_h if swift_h > 0 else CUSTOMER_LOGO_TARGET_H
 
     if logos:
-        draw_customer_logos_header(c, logos, logo_bottom, band_h, y_top, avail_for_customer)
+        draw_customer_logos_header(
+            c, logos, logo_bottom, band_h, y_top, avail_for_customer, customer_target_h
+        )
     else:
         c.setStrokeColor(RULE_SOFT)
         c.setDash(2, 2)
@@ -603,13 +607,22 @@ def build_pdf(
     out_path: Path | None = None,
     customer_logo: Path | None = None,
     customer_logo2: Path | None = None,
+    is_box_sized: bool = False,
 ) -> Path:
     out_path = out_path or OUT_PATH
     sample = sample or {}
     c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
     c.setTitle("Swift Oilfield Supply — Receiving Label")
     c.setAuthor("Swift Oilfield Supply")
-    draw_label_page(c, sample, customer_logo, customer_logo2)
+    if is_box_sized:
+        # PDF origin is bottom-left → translate up half height, then 50% scale.
+        c.saveState()
+        c.translate(0, PAGE_H / 2)
+        c.scale(0.5, 0.5)
+        draw_label_page(c, sample, customer_logo, customer_logo2)
+        c.restoreState()
+    else:
+        draw_label_page(c, sample, customer_logo, customer_logo2)
     c.save()
     return out_path
 
@@ -637,18 +650,23 @@ def main() -> None:
         action="store_true",
         help="Write a blank template (labels + lines only, no sample values)",
     )
+    p.add_argument(
+        "--box-sized",
+        action="store_true",
+        help="Draw label at 50%% scale in the top-left quarter of landscape Letter",
+    )
     args = p.parse_args()
 
     if args.blank:
         out = args.out or (ROOT / "Swift Supply Receiving Label.pdf")
-        print(build_pdf({}, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2))
+        print(build_pdf({}, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2, is_box_sized=args.box_sized))
     else:
         out = args.out or (
             ROOT / "Swift Supply Receiving Label - Sample (ConocoPhillips).pdf"
         )
-        print(build_pdf(SAMPLE, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2))
+        print(build_pdf(SAMPLE, out_path=out, customer_logo=args.logo, customer_logo2=args.logo2, is_box_sized=args.box_sized))
         # Also write empty template beside it
-        print(build_pdf({}, out_path=ROOT / "Swift Supply Receiving Label.pdf", customer_logo=args.logo, customer_logo2=args.logo2))
+        print(build_pdf({}, out_path=ROOT / "Swift Supply Receiving Label.pdf", customer_logo=args.logo, customer_logo2=args.logo2, is_box_sized=args.box_sized))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:vector_math/vector_math_64.dart';
 
 import '../label_data.dart';
 import '../pdf_render_options.dart';
@@ -49,7 +50,8 @@ class ShippingLabelPdf {
 
   static const entrySize = 18.0;
   static const entryHero = 22.0;
-  static const entrySo = 36.0;
+  /// Sales Order matches PO / Project entry size (no oversized SO digit).
+  static const entrySo = 18.0;
   static const entryRecvSo = 48.0;
   static const entryNotes = 18.0;
   static const entryMin = 9.0;
@@ -288,7 +290,19 @@ class ShippingLabelPdf {
             return pw.CustomPaint(
               size: PdfPoint(format.width, format.height),
               painter: (PdfGraphics canvas, PdfPoint size) {
-                painter(canvas, fonts, pageData, logos, swiftLogo, options);
+                if (options.isBoxSized) {
+                  // 50% scale, anchored in the top-left quadrant of landscape Letter.
+                  // PDF origin is bottom-left → translate up by half page height, then scale.
+                  canvas.saveContext();
+                  final box = Matrix4.identity()
+                    ..translateByDouble(0, format.height / 2, 0, 1)
+                    ..scaleByDouble(0.5, 0.5, 1, 1);
+                  canvas.setTransform(box);
+                  painter(canvas, fonts, pageData, logos, swiftLogo, options);
+                  canvas.restoreContext();
+                } else {
+                  painter(canvas, fonts, pageData, logos, swiftLogo, options);
+                }
               },
             );
           },
@@ -341,8 +355,8 @@ class ShippingLabelPdf {
     _bumper(c, pageH - my + 4);
 
     final footY = my + 6;
-    // Clearance above footer for the piece-count band.
-    final pieceTop = footY + pieceBandRowH + 28;
+    // Clearance above footer for the piece-count band (tight — contact sits above).
+    final pieceTop = footY + pieceBandRowH + 14;
 
     var y = _drawHeader(c, fonts, customerLogos, swiftLogo, options: options);
     final pair = _drawIdentityPair(c, fonts, y, sample);
@@ -488,18 +502,10 @@ class ShippingLabelPdf {
   /// Breathing gap between the customer-logo row and Swift (never overlap).
   static const customerLogoToSwiftGap = 12.0;
 
-  double _swiftRenderedWidth(PdfImage? logo, double maxW, double maxH) {
-    if (logo == null) return 0;
-    final iw = logo.width.toDouble();
-    final ih = logo.height.toDouble();
-    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) return 0;
-    final scale = (maxW / iw < maxH / ih) ? maxW / iw : maxH / ih;
-    return iw * scale;
-  }
-
-  /// Uniform height for 1–2 customer logos: start at [targetH], then downscale
-  /// together if the row is wider than [availW] or taller than the orange-bar
-  /// band. Never changes Swift's reserved position/size.
+  /// Uniform height for 1–2 customer logos: start at [targetH] (exact Swift
+  /// height when available), then downscale together if the row is wider than
+  /// the safe-zone [availW] or taller than the orange-bar band. Never changes
+  /// Swift's reserved position/size.
   void _drawCustomerLogoRow(
     PdfGraphics c,
     List<PdfImage> logos,
@@ -579,15 +585,29 @@ class ShippingLabelPdf {
     final logos = customerLogos.take(maxCustomerLogos).toList();
 
     final bandInnerH = bandH - 2 * customerLogoBandInset;
-    var logoH = customerLogoTargetH * options.logoScale;
-    if (logoH > bandInnerH) logoH = bandInnerH;
 
-    // Swift size/position is computed first and never moved for customer logos.
+    // Swift size/position is computed first; customer logos match its height.
     final swiftMaxW = colW * 0.95;
     final swiftMaxH = bandH - 4;
-    final swiftW = options.showSwiftLogo
-        ? _swiftRenderedWidth(swiftLogo, swiftMaxW, swiftMaxH)
-        : 0.0;
+    double swiftW = 0;
+    double swiftH = 0;
+    if (options.showSwiftLogo && swiftLogo != null) {
+      final iw = swiftLogo.width.toDouble();
+      final ih = swiftLogo.height.toDouble();
+      if (iw > 0 && ih > 0) {
+        final scale = (swiftMaxW / iw < swiftMaxH / ih)
+            ? swiftMaxW / iw
+            : swiftMaxH / ih;
+        swiftW = iw * scale;
+        swiftH = ih * scale;
+      }
+    }
+
+    // Exact height match to Swift when present; otherwise the 62.24 pt target.
+    var logoH = swiftH > 0
+        ? swiftH
+        : (customerLogoTargetH * options.logoScale);
+    if (logoH > bandInnerH) logoH = bandInnerH;
 
     final place = options.showCustomerLogos
         ? options.logoPlacement
@@ -633,13 +653,8 @@ class ShippingLabelPdf {
     }
 
     if (options.showSwiftLogo && swiftLogo != null && swiftW > 0) {
-      final ih = swiftLogo.height.toDouble();
-      final iw = swiftLogo.width.toDouble();
-      final scale = (swiftMaxW / iw < swiftMaxH / ih)
-          ? swiftMaxW / iw
-          : swiftMaxH / ih;
-      final w = iw * scale;
-      final h = ih * scale;
+      final w = swiftW;
+      final h = swiftH;
       final drawX = place == PdfLogoPlacement.right
           ? mx
           : (mx + contentW - w);
@@ -939,7 +954,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample, {
     PdfColor? pillBg,
     double? preferredSize,
-    double minRowH = 44,
+    double minRowH = 28,
   }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
     y -= 4;
@@ -990,7 +1005,7 @@ class ShippingLabelPdf {
     ShippingLabelData sample,
   ) {
     final rx = mx + colW + gutter;
-    _microLabel(c, fonts, rx, y, 'Ship to');
+    _microLabel(c, fonts, rx, y, 'Ship To Name');
     y -= 5;
     final ship = sample.get(LabelFields.shipTo);
     final shipSize = fitSingleLineSize(
@@ -1022,18 +1037,33 @@ class ShippingLabelPdf {
     y -= heroH + 12;
 
     final loc = sample.get(LabelFields.location);
-    // Fixed font size — multi-line addresses grow the box instead of shrinking text.
-    const locSize = entrySize;
-    final baseLocH = fieldHeightFor(
+    // Fixed Delivery Address box (~3 lines at preferred size). Shrink type to
+    // fit width/height instead of growing into sections below.
+    final locMaxH = 3 * (entrySize + lineGap) + 8;
+    var locSize = entrySize;
+    while (locSize > entryMin && loc.isNotEmpty) {
+      final need = fieldHeightFor(
+        loc,
+        fonts.calibriBold,
+        size: locSize,
+        maxLines: 12,
+        minH: 22,
+      );
+      if (need <= locMaxH) break;
+      locSize -= 0.5;
+    }
+    // Also shrink if any wrapped line still exceeds column width at this size
+    // (fitWrappedSize covers width; height loop above covers overflow).
+    locSize = fitWrappedSize(
       loc,
+      colW - 4,
       fonts.calibriBold,
-      size: locSize,
-      maxLines: 8,
-      minH: 22,
+      preferred: locSize,
+      maxLines: 12,
+      minSize: entryMin,
     );
-    // Former Attn band space is given to Location (~2× height).
-    final locH = baseLocH * 2;
-    _microLabel(c, fonts, rx, y, 'Location');
+    final locH = locMaxH;
+    _microLabel(c, fonts, rx, y, 'Delivery Address');
     y -= 3;
     if (loc.isNotEmpty) {
       _drawValue(
@@ -1207,16 +1237,17 @@ class ShippingLabelPdf {
     }
   }
 
-  /// Piece-count / page-number digits (e.g. "2 of 28").
-  static const pieceCountSize = 36.0;
-  static const pieceOfSize = 22.0;
-  static const pieceBandPadV = 8.0;
-  static const pieceBandBoxPadH = 10.0;
+  /// Piece-count / page-number digits (e.g. "2 of 28") — kept compact so the
+  /// band does not collide with Swift Contact above.
+  static const pieceCountSize = 26.0;
+  static const pieceOfSize = 15.0;
+  static const pieceBandPadV = 3.0;
+  static const pieceBandBoxPadH = 8.0;
   /// Label strip above the digits + digit line-box + pads.
-  static const pieceBandLabelStrip = 14.0;
-  static const pieceBandValueH = pieceCountSize + 10.0;
+  static const pieceBandLabelStrip = 11.0;
+  static const pieceBandValueH = pieceCountSize + 4.0;
   static const pieceBandRowH =
-      pieceBandLabelStrip + pieceBandValueH + pieceBandPadV * 2 + 4.0;
+      pieceBandLabelStrip + pieceBandValueH + pieceBandPadV * 2 + 2.0;
 
   void _drawPieceBand(
     PdfGraphics c,

@@ -514,6 +514,7 @@ class AppUiSettings {
     this.layoutPreset = UiLayoutPreset.classic,
     this.formColumns = 2,
     this.uiFontScale = 1.0,
+    this.useOswaldFont = false,
     this.pdfOptions = PdfRenderOptions.defaults,
   });
 
@@ -530,7 +531,12 @@ class AppUiSettings {
   final UiLayoutPreset layoutPreset;
   final int formColumns;
   final double uiFontScale;
+  /// When false (default), UI uses Helvetica; when true, Oswald.
+  final bool useOswaldFont;
   final PdfRenderOptions pdfOptions;
+
+  /// Active UI typeface for ThemeData / chrome widgets.
+  String get uiFontFamily => useOswaldFont ? 'Oswald' : 'Helvetica';
 
   static const defaults = AppUiSettings();
 
@@ -586,6 +592,9 @@ class AppUiSettings {
           UiLayoutPreset.classic,
       formColumns: formColumns,
       uiFontScale: uiFontScale,
+      useOswaldFont: json['useOswaldFont'] is bool
+          ? json['useOswaldFont'] as bool
+          : false,
       pdfOptions: PdfRenderOptions.fromJson(
         json['pdfOptions'] is Map<String, dynamic>
             ? json['pdfOptions'] as Map<String, dynamic>
@@ -613,6 +622,7 @@ class AppUiSettings {
         'layoutPreset': layoutPreset.name,
         'formColumns': formColumns,
         'uiFontScale': uiFontScale,
+        'useOswaldFont': useOswaldFont,
         'pdfOptions': pdfOptions.toJson(),
       };
 
@@ -631,6 +641,7 @@ class AppUiSettings {
     UiLayoutPreset? layoutPreset,
     int? formColumns,
     double? uiFontScale,
+    bool? useOswaldFont,
     PdfRenderOptions? pdfOptions,
   }) {
     return AppUiSettings(
@@ -648,6 +659,7 @@ class AppUiSettings {
       layoutPreset: layoutPreset ?? this.layoutPreset,
       formColumns: formColumns ?? this.formColumns,
       uiFontScale: uiFontScale ?? this.uiFontScale,
+      useOswaldFont: useOswaldFont ?? this.useOswaldFont,
       pdfOptions: pdfOptions ?? this.pdfOptions,
     );
   }

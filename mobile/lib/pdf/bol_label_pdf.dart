@@ -260,24 +260,22 @@ class BolLabelPdf {
     final lx = margin;
     final rx = margin + colW + gap;
     const hdrH = 15.0;
-    final panelH = 1.12 * inch;
+    // Equal-height panels sized for a 3-line Delivery Address + compact contacts.
+    const nameH = 20.0;
+    const addrH = 46.0;
+    const contactH = 20.0;
+    const panelH = nameH + addrH + contactH;
 
     _sectionTitle(c, fonts, lx, y, colW, 'SHIPPER (CONSIGNOR)', hdrH);
     _sectionTitle(c, fonts, rx, y, colW, 'SHIP TO (CONSIGNEE)', hdrH);
     final top = y - hdrH;
     final bot = top - panelH;
     _rect(c, lx, bot, colW, panelH, lw: 0.75);
-    var sy = top - 12;
-    for (final line in shipperLines) {
-      c
-        ..setFillColor(black)
-        ..setFont(fonts.bold, 7)
-        ..drawString(fonts.bold, 7, line, lx + pad, sy);
-      sy -= 11; // size 7 + 4
-    }
+    // Vertically center shipper lines — no open blank strip under the address.
+    _drawShipperBlockCentered(c, fonts, lx + pad, top, bot);
 
-    final row1 = top - panelH * 0.30;
-    final row2 = top - panelH * 0.58;
+    final row1 = top - nameH;
+    final row2 = top - nameH - addrH;
     final midX = rx + colW / 2;
     _cellValue(
       c,
@@ -298,6 +296,8 @@ class BolLabelPdf {
       row1 - row2,
       'Delivery Address',
       d.get(BolFields.consigneeAddress),
+      maxLines: 3,
+      alignTop: true,
     );
     _cellValue(
       c,
@@ -308,6 +308,7 @@ class BolLabelPdf {
       row2 - bot,
       'Contact Name',
       d.get(BolFields.consigneeContactName),
+      compact: true,
     );
     _cellValue(
       c,
@@ -318,6 +319,7 @@ class BolLabelPdf {
       row2 - bot,
       'Contact Number',
       d.get(BolFields.consigneeContactNumber),
+      compact: true,
     );
     y = bot - gap;
 
@@ -678,13 +680,25 @@ class BolLabelPdf {
         final label = cats[i];
         final rowTop = bodyTop - topInset - i * rowH;
         _micro(c, fonts, colX, rowTop - 6.5, label);
-        final fieldH = (rowH - 10).clamp(7.0, 9.5);
+        const labelReserve = 8.5;
+        final fieldTop = rowTop - labelReserve;
         final fieldBot = rowTop - rowH + 2;
+        final fieldH = (fieldTop - fieldBot).clamp(9.0, rowH);
         final v = typeTotals[label] ?? 0;
         final text = v > 0
             ? v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)
             : '';
-        _drawValue(c, fonts, text, colX, fieldBot, colW - 1, fieldH, 7.5);
+        _drawValue(
+          c,
+          fonts,
+          text,
+          colX,
+          fieldBot,
+          colW - 1,
+          fieldH,
+          8,
+          alignCenter: true,
+        );
         _hline(c, colX, fieldBot, colW - 1);
       }
     }
@@ -716,7 +730,7 @@ class BolLabelPdf {
 
     _micro(c, fonts, tx + pad, bodyTop - 6, 'Total Piece Count');
     final piecesBot = midTot + 3;
-    final piecesTop = bodyTop - 14;
+    final piecesTop = bodyTop - 12;
     final piecesText = totalPieces > 0
         ? totalPieces.toStringAsFixed(0)
         : d.get(BolFields.totalPieces);
@@ -727,13 +741,14 @@ class BolLabelPdf {
       tx + pad,
       piecesBot,
       tw - 2 * pad,
-      (piecesTop - piecesBot).clamp(9.0, 28.0),
-      7.5,
+      (piecesTop - piecesBot).clamp(12.0, 28.0),
+      9,
+      alignCenter: true,
     );
 
     _micro(c, fonts, tx + pad, midTot - 6, 'Total Weight');
     final weightBot = blockBot + 11;
-    final weightTop = midTot - 14;
+    final weightTop = midTot - 12;
     final weightText = totalWeight > 0
         ? totalWeight.toStringAsFixed(0)
         : d.get(BolFields.totalWeight);
@@ -744,13 +759,21 @@ class BolLabelPdf {
       tx + pad,
       weightBot,
       tw - 2 * pad,
-      (weightTop - weightBot).clamp(9.0, 28.0),
-      7.5,
+      (weightTop - weightBot).clamp(12.0, 28.0),
+      9,
+      alignCenter: true,
     );
     c
       ..setFillColor(hint)
-      ..setFont(fonts.regular, 5)
-      ..drawString(fonts.regular, 5, 'LBS', tx + pad, blockBot + 3);
+      ..setFont(fonts.regular, 5);
+    final lbs = 'LBS';
+    c.drawString(
+      fonts.regular,
+      5,
+      lbs,
+      tx + (tw - _sw(fonts.regular, 5, lbs)) / 2,
+      blockBot + 3,
+    );
   }
 
   void _sigFields(
@@ -904,7 +927,7 @@ class BolLabelPdf {
     ShippingLabelData d,
     double y,
   ) {
-    const stripH = 36.0;
+    const stripH = 28.0;
     final bot = y - stripH;
     c
       ..setFillColor(fieldBg)
@@ -926,9 +949,9 @@ class BolLabelPdf {
           ..drawLine(cx, bot, cx, y)
           ..strokePath();
       }
-      _micro(c, fonts, cx + pad, y - 10, specs[i].$2);
-      _drawValue(c, fonts, d.get(specs[i].$1), cx + 4, bot + 5, colW - 8, 14, 8);
-      _hline(c, cx + 4, bot + 5, colW - 8);
+      _micro(c, fonts, cx + pad, y - 8, specs[i].$2);
+      _drawValue(c, fonts, d.get(specs[i].$1), cx + 4, bot + 3, colW - 8, 12, 8);
+      _hline(c, cx + 4, bot + 3, colW - 8);
     }
     return bot - gap;
   }
@@ -1233,21 +1256,54 @@ class BolLabelPdf {
     double w,
     double h,
     String label,
-    String value,
-  ) {
+    String value, {
+    int? maxLines,
+    bool alignTop = false,
+    bool compact = false,
+  }) {
     _rect(c, x, y, w, h, lw: 0.6);
-    _micro(c, fonts, x + pad, y + h - 10, label);
+    final labelY = y + h - (compact ? 8.5 : 10);
+    _micro(c, fonts, x + pad, labelY, label);
+    final topReserve = compact ? 11.0 : (alignTop ? 12.0 : 16.0);
+    final botPad = compact ? 2.0 : 4.0;
+    final lines = maxLines ?? (h > 36 ? 3 : (h > 28 ? 2 : 1));
     _drawValue(
       c,
       fonts,
       value,
       x + pad,
-      y + 4,
+      y + botPad,
       w - 2 * pad,
-      (h - 16).clamp(8.0, h),
+      (h - topReserve - botPad).clamp(8.0, h),
       7.5,
-      maxLines: h > 28 ? 2 : 1,
+      maxLines: lines,
+      alignTop: alignTop,
     );
+  }
+
+  void _drawShipperBlockCentered(
+    PdfGraphics c,
+    _Fonts fonts,
+    double x,
+    double top,
+    double bot, {
+    double size = 7.0,
+  }) {
+    const leadingExtra = 4.0;
+    final blockH = shipperLines.isEmpty
+        ? 0.0
+        : shipperLines.length * size + (shipperLines.length - 1) * leadingExtra;
+    final panelH = top - bot;
+    const inset = 8.0;
+    final avail = math.max(panelH - 2 * inset, blockH);
+    var sy = top - inset - (avail - blockH) / 2;
+    for (final line in shipperLines) {
+      c
+        ..setFillColor(black)
+        ..setFont(fonts.bold, size)
+        ..drawString(fonts.bold, size, line, x, sy);
+      sy -= size + leadingExtra;
+    }
   }
 
   String _latin1(String text) => text
@@ -1291,6 +1347,7 @@ class BolLabelPdf {
     double size, {
     int maxLines = 1,
     bool alignTop = false,
+    bool alignCenter = false,
   }) {
     text = _latin1(text).trim();
     if (text.isEmpty || w <= 2 || h <= 2) return;
@@ -1313,6 +1370,20 @@ class BolLabelPdf {
     c
       ..setFillColor(black)
       ..setFont(fonts.bold, size);
+
+    if (alignCenter) {
+      final blockH = lines.length * leading - (leading - size);
+      var yy = y + (h - blockH) / 2 + (lines.length - 1) * leading;
+      if (yy > y + h - size) yy = y + h - size;
+      if (yy < y) yy = y;
+      for (final l in lines) {
+        final tw = _sw(fonts.bold, size, l);
+        c.drawString(fonts.bold, size, l, x + (w - tw) / 2, yy);
+        yy -= leading;
+      }
+      return;
+    }
+
     if (alignTop) {
       var yy = y + h - size;
       for (final l in lines) {
