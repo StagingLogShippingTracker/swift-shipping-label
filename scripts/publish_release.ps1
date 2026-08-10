@@ -120,7 +120,7 @@ if (-not $SkipWindows) {
 Swift Document Generator (portable Flutter)
 
 - Run: swift_shipping_label.exe
-- Generators: Shipping Label, Receiving Label, Bill of Lading
+- Generators: Shipping Label, Receiving Label, Bill of Lading, Bulk Labels (Propak)
 - No install, no admin rights required
 - Do not put this folder in C:\Program Files
 - Data (presets, logos, PDFs): app documents\swift_document_generator\
@@ -200,10 +200,9 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- In-app Update on Windows downloads and launches SwiftDocumentGenerator-Setup.exe (installer)
-- Windows MenuBar with File / Edit / View / Document / Tools / Options / Help
-- Top toolbar Generate removed on Windows (Generate stays in Workspace / File menu)
-- Desktop settings persist in settings.json (PDF output folder, view prefs, hotkeys)
+- **Bulk Labels (Propak / Avery 5163)** on Windows and Android: upload a Swift Order Acknowledgement PDF, expand quantities into stickers, generate editable Word (.docx) + PDF
+- TAG# vs PART# follows the OA line notes; missing identity prompts Proceed / Skip / Cancel (check with PM)
+- Android PDF picker uses the system document picker (same reliable path as logo import)
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

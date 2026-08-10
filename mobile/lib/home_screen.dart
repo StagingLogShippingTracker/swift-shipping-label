@@ -3,32 +3,36 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
 import 'app_storage.dart';
+import 'app_theme_scope.dart';
 import 'bol_document_number.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
+import 'bulk/bulk_label_models.dart';
+import 'bulk/order_ack_pdf_text.dart';
 import 'circle_selector.dart';
 import 'employee_autocomplete_field.dart';
 import 'employee_directory.dart';
-import 'preset_sync.dart';
-import 'signature_pad.dart';
-import 'signature_sync.dart';
+import 'feedback_forms.dart';
+import 'form_scroll_text_field.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'logo_import_options.dart';
-import 'form_scroll_text_field.dart';
 import 'pdf/bol_label_pdf.dart';
+import 'pdf/bulk_label_docx.dart';
+import 'pdf/bulk_label_pdf.dart';
 import 'pdf/shipping_label_pdf.dart';
+import 'pdf_render_options.dart';
 import 'platform_io.dart';
+import 'preset_sync.dart';
+import 'signature_pad.dart';
+import 'signature_sync.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
 import 'windows_menu_bar.dart';
-import 'feedback_forms.dart';
-import 'app_theme_scope.dart';
-import 'pdf_render_options.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 String swiftUiFont(BuildContext context) {
   try {
@@ -199,6 +203,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _mobileChromeExpanded = true;
   /// Box-sized (1/4 page) shipping/receiving labels. Disabled for BOL.
   bool _boxSizedLabel = false;
+  /// Parsed Order Acknowledgement for Bulk Labels mode.
+  OrderAckParseResult? _bulkParse;
+  String? _bulkSourcePath;
+  bool _bulkParsing = false;
   final EmployeeDirectory _employeeDirectory = EmployeeDirectory();
   List<String> _rosterNames = const [];
   List<String> _swiftContactNames = const [];
@@ -1270,10 +1278,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadSample() {
+    if (_kind == LabelKind.bulk) {
+      _loadBulkSample();
+      return;
+    }
     final s = switch (_kind) {
       LabelKind.receiving => ShippingLabelData.receivingSample,
       LabelKind.bol => ShippingLabelData.bolSample,
       LabelKind.shipping => ShippingLabelData.sample,
+      LabelKind.bulk => ShippingLabelData.sample,
     };
     for (final e in s.values.entries) {
       _setField(e.key, e.value);
@@ -1285,6 +1298,193 @@ class _HomeScreenState extends State<HomeScreen> {
       _bolLineCount = _detectBolLineCount();
     }
     setState(() {});
+  }
+
+  Future<void> _loadBulkSample() async {
+    setState(() => _bulkParsing = true);
+    try {
+      final fixture = File(
+        p.join(
+          Directory.current.path,
+          'test',
+          'fixtures',
+          'propak_order_ack_sample.pdf',
+        ),
+      );
+      if (await fixture.exists()) {
+        await _parseBulkPdf(fixture.path);
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _bulkParsing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sample OA not found — upload an Order Acknowledgement PDF.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _bulkParsing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sample load failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickBulkPdf() async {
+    final path = await pickPdfPath();
+    if (path == null) return;
+    await _parseBulkPdf(path);
+  }
+
+  Future<void> _parseBulkPdf(String path) async {
+    setState(() => _bulkParsing = true);
+    try {
+      final bytes = await File(path).readAsBytes();
+      var parsed = await parseOrderAckPdf(
+        Uint8List.fromList(bytes),
+        sourceFileName: p.basename(path),
+      );
+      if (!mounted) return;
+
+      if (parsed.hasIncompleteLines) {
+        setState(() => _bulkParsing = false);
+        final action = await _promptBulkMissingIdentity(parsed);
+        if (!mounted) return;
+        if (action == null || action == BulkMissingIdAction.cancel) {
+          setState(() {
+            _bulkParse = null;
+            _bulkSourcePath = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bulk label upload cancelled.')),
+          );
+          return;
+        }
+        parsed = parsed.applyingMissingIdAction(action);
+      }
+
+      setState(() {
+        _bulkParse = parsed;
+        _bulkSourcePath = path;
+        _bulkParsing = false;
+      });
+      if (parsed.lines.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              parsed.warnings.isEmpty
+                  ? 'No label lines found in that PDF.'
+                  : parsed.warnings.first,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _bulkParsing = false;
+        _bulkParse = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not read Order Acknowledgement: $e')),
+      );
+    }
+  }
+
+  /// Ask what to do with OA lines that have CPO but no TAG# / PART#.
+  Future<BulkMissingIdAction?> _promptBulkMissingIdentity(
+    OrderAckParseResult parsed,
+  ) async {
+    final incomplete = parsed.incompleteLines;
+    final cpoList = incomplete.map((l) => '#${l.cpo}').join(', ');
+    final lineSummary = incomplete.length == 1
+        ? 'Line CPO $cpoList is missing a TAG# or PART# on the Order '
+            'Acknowledgement.'
+        : '${incomplete.length} lines are missing a TAG# or PART# on the '
+            'Order Acknowledgement (CPO $cpoList).';
+
+    return showDialog<BulkMissingIdAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final chrome = SwiftChromeColors.of(ctx);
+        return AlertDialog(
+          title: const Text('Missing TAG# / PART#'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  lineSummary,
+                  style: TextStyle(
+                    fontFamily: swiftUiFont(ctx),
+                    fontSize: 14,
+                    height: 1.35,
+                    color: chrome.ink,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Please check with the PM before deciding. You can still '
+                  'proceed with blank identity fields (edit them in Word), '
+                  'skip these lines, or cancel the upload.',
+                  style: TextStyle(
+                    fontFamily: swiftUiFont(ctx),
+                    fontSize: 13,
+                    height: 1.35,
+                    color: chrome.muted,
+                  ),
+                ),
+                if (incomplete.length <= 8) ...[
+                  const SizedBox(height: 12),
+                  for (final inc in incomplete)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '• CPO #${inc.cpo}  ·  qty ${inc.quantity}  ·  '
+                        '${inc.reason}',
+                        style: TextStyle(
+                          fontFamily: swiftUiFont(ctx),
+                          fontSize: 12,
+                          color: SwiftColors.accent,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(BulkMissingIdAction.cancel),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(BulkMissingIdAction.skip),
+              child: const Text('Skip'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(BulkMissingIdAction.proceed),
+              child: const Text('Proceed'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _clearBulkParse() {
+    setState(() {
+      _bulkParse = null;
+      _bulkSourcePath = null;
+    });
   }
 
   void _clearShipment() {
@@ -1317,6 +1517,7 @@ class _HomeScreenState extends State<HomeScreen> {
           LabelFields.boxOf,
           LabelFields.specialInstructions,
         },
+      LabelKind.bulk => <String>{},
     };
     for (final key in clear) {
       _controllers[key]?.clear();
@@ -1324,6 +1525,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_kind == LabelKind.bol) {
       _bolLineCount = 1;
       _setField(BolFields.freightCharges, BolFields.freightPrepaid);
+    }
+    if (_kind == LabelKind.bulk) {
+      _bulkParse = null;
+      _bulkSourcePath = null;
     }
     setState(() {});
   }
@@ -1338,11 +1543,18 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedSavedSignature = null;
     _bolLineCount = 1;
     _setField(BolFields.freightCharges, BolFields.freightPrepaid);
+    _bulkParse = null;
+    _bulkSourcePath = null;
     setState(() {});
   }
 
   Future<void> _generateAndShare() async {
     if (_busy) return;
+
+    if (_kind == LabelKind.bulk) {
+      await _generateBulkLabels();
+      return;
+    }
 
     PieceCountPlan? piecePlan;
     if (_kind == LabelKind.shipping) {
@@ -1430,6 +1642,8 @@ class _HomeScreenState extends State<HomeScreen> {
             piecePlan: piecePlan!,
             options: _pdfOptionsForGenerate,
           );
+        case LabelKind.bulk:
+          throw StateError('Bulk labels use _generateBulkLabels');
       }
 
       final so = data.get(LabelFields.salesOrder).isNotEmpty
@@ -1466,6 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> {
           LabelKind.bol =>
             ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
+          LabelKind.bulk => '',
         };
         final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1476,6 +1691,85 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('PDF failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateBulkLabels() async {
+    final parsed = _bulkParse;
+    if (parsed == null || parsed.totalLabels < 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Upload an Order Acknowledgement PDF first.'),
+        ),
+      );
+      return;
+    }
+    if (parsed.poNumber.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PO Number missing — check the uploaded OA PDF.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final labels = parsed.expand();
+      final outDir = widget.storage.pdfOutputDir(_uiSettings);
+      final name = widget.storage.labelPdfBaseName(
+        kind: LabelKind.bulk,
+        customer: 'Propak',
+        salesOrder: parsed.poNumber,
+      );
+
+      final pdf = await BulkLabelPdf.load();
+      final pdfBytes = await pdf.build(labels);
+      final pdfFile = await widget.storage.writePdf(
+        name,
+        pdfBytes,
+        outputDir: outDir,
+      );
+
+      final docxBytes = await BulkLabelDocx.build(labels);
+      final docxFile = await widget.storage.writeDocx(
+        name,
+        docxBytes,
+        outputDir: outDir,
+      );
+
+      // Same as other docs: Generate saves, then opens the primary file when
+      // auto-open is on. For Bulk Labels the editable Word doc is primary.
+      if (_uiSettings.autoOpenPdf) {
+        await shareOrOpenFile(
+          file: docxFile,
+          mime:
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          subject: 'Propak Bulk Labels',
+        );
+      }
+      if (mounted) {
+        final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Saved ${labels.length} Propak labels on ${parsed.sheetCount} '
+              'sheet${parsed.sheetCount == 1 ? '' : 's'}$openHint:\n'
+              '${docxFile.path}\n(PDF also saved: ${p.basename(pdfFile.path)})',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bulk label generate failed: $e')),
         );
       }
     } finally {
@@ -1949,6 +2243,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _syncSignaturesQuietly();
         // Box-sized quarter-page labels are Shipping/Receiving only.
         _boxSizedLabel = false;
+      } else if (_kind == LabelKind.bulk) {
+        _boxSizedLabel = false;
+        _bolLineCount = 1;
       } else {
         _bolLineCount = 1;
       }
@@ -1983,6 +2280,10 @@ class _HomeScreenState extends State<HomeScreen> {
             : (v) => setState(() => _boxSizedLabel = v ?? false),
       ),
     );
+    final generateLabel = _kind == LabelKind.bulk ? 'Generate' : 'Generate PDF';
+    final generateIcon = _kind == LabelKind.bulk
+        ? Icons.description_outlined
+        : Icons.picture_as_pdf_outlined;
     final button = SizedBox(
       width: stackVertically ? double.infinity : null,
       height: buttonHeight,
@@ -1997,8 +2298,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                 ),
               )
-            : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-        label: Text(_busy ? 'Generating…' : 'Generate PDF'),
+            : Icon(generateIcon, size: 18),
+        label: Text(_busy ? 'Generating…' : generateLabel),
       ),
     );
     if (stackVertically) {
@@ -2038,6 +2339,7 @@ class _HomeScreenState extends State<HomeScreen> {
         LabelKind.shipping => 'Shipping Label',
         LabelKind.receiving => 'Receiving Label',
         LabelKind.bol => 'Bill of Lading',
+        LabelKind.bulk => 'Bulk Labels',
       };
 
   String get _kindHint => switch (_kind) {
@@ -2047,18 +2349,22 @@ class _HomeScreenState extends State<HomeScreen> {
           'Straight Bill of Lading. Choose which copies to print. Document number SW-#### is assigned from the shared company counter on Generate (needs network).',
         LabelKind.shipping =>
           'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
+        LabelKind.bulk =>
+          'Upload a Swift Order Acknowledgement PDF. Avery 5163 Propak stickers are built from PO#, CPO LINE #, and TAG# or PART# (whichever the OA line notes use). Quantity = label count. Outputs Word + PDF.',
       };
 
   List<(String, String, List<String>)> get _activeGroups => switch (_kind) {
         LabelKind.receiving => _receivingGroups,
         LabelKind.bol => _bolGroupsBeforeLines,
         LabelKind.shipping => _shippingGroups,
+        LabelKind.bulk => const [],
       };
 
   int get _kindRailIndex => switch (_kind) {
         LabelKind.shipping => 0,
         LabelKind.receiving => 1,
         LabelKind.bol => 2,
+        LabelKind.bulk => 3,
       };
 
   Widget _buildMobileKindSelector() {
@@ -2066,18 +2372,23 @@ class _HomeScreenState extends State<HomeScreen> {
       segments: const [
         ButtonSegment(
           value: LabelKind.shipping,
-          label: Text('Shipping'),
+          label: Text('Ship'),
           icon: Icon(Icons.local_shipping_outlined, size: 18),
         ),
         ButtonSegment(
           value: LabelKind.receiving,
-          label: Text('Receiving'),
+          label: Text('Recv'),
           icon: Icon(Icons.inventory_2_outlined, size: 18),
         ),
         ButtonSegment(
           value: LabelKind.bol,
-          label: Text('Bill of Lading'),
+          label: Text('BOL'),
           icon: Icon(Icons.description_outlined, size: 18),
+        ),
+        ButtonSegment(
+          value: LabelKind.bulk,
+          label: Text('Bulk'),
+          icon: Icon(Icons.grid_view_outlined, size: 18),
         ),
       ],
       selected: {_kind},
@@ -2331,7 +2642,165 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildBulkLabelsPanel({bool dense = false}) {
+    final parsed = _bulkParse;
+    final chrome = SwiftChromeColors.of(context);
+    return _Card(
+      title: 'Order Acknowledgement',
+      hint:
+          'Upload a Swift OA PDF (Propak / Avery 5163). No manual fields — lines come from the document.',
+      dense: dense,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _busy || _bulkParsing ? null : _pickBulkPdf,
+                icon: _bulkParsing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.upload_file_outlined, size: 18),
+                label: Text(_bulkParsing ? 'Reading…' : 'Upload OA PDF'),
+              ),
+              if (parsed != null)
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _clearBulkParse,
+                  icon: const Icon(Icons.clear, size: 18),
+                  label: const Text('Clear'),
+                ),
+            ],
+          ),
+          if (_bulkSourcePath != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _bulkSourcePath == 'sample'
+                  ? 'Source: sample fixture'
+                  : 'Source: ${p.basename(_bulkSourcePath!)}',
+              style: TextStyle(
+                fontFamily: swiftUiFont(context),
+                fontSize: 12,
+                color: chrome.muted,
+              ),
+            ),
+          ],
+          if (parsed != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'PO# ${parsed.poNumber.isEmpty ? '—' : parsed.poNumber}'
+              '${parsed.orderNumber.isEmpty ? '' : '  ·  Order ${parsed.orderNumber}'}'
+              '\n${parsed.lines.length} lines → ${parsed.totalLabels} labels'
+              ' on ${parsed.sheetCount} Avery 5163 sheet'
+              '${parsed.sheetCount == 1 ? '' : 's'}',
+              style: TextStyle(
+                fontFamily: swiftUiFont(context),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: chrome.ink,
+              ),
+            ),
+            if (parsed.warnings.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...parsed.warnings.take(5).map(
+                    (w) => Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '• $w',
+                        style: TextStyle(
+                          fontFamily: swiftUiFont(context),
+                          fontSize: 12,
+                          color: SwiftColors.accent,
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+            const SizedBox(height: 10),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: chrome.border),
+                borderRadius: BorderRadius.circular(8),
+                color: chrome.surface,
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowHeight: 36,
+                  dataRowMinHeight: 32,
+                  dataRowMaxHeight: 40,
+                  columns: const [
+                    DataColumn(label: Text('Line')),
+                    DataColumn(label: Text('CPO')),
+                    DataColumn(label: Text('Kind')),
+                    DataColumn(label: Text('Identity')),
+                    DataColumn(label: Text('Qty'), numeric: true),
+                    DataColumn(label: Text('Labels'), numeric: true),
+                  ],
+                  rows: [
+                    for (final line in parsed.lines)
+                      DataRow(
+                        cells: [
+                          DataCell(Text('${line.lineNo}')),
+                          DataCell(Text(line.cpo)),
+                          DataCell(Text(
+                            line.missingIdentity ? 'TAG#*' : line.idKind.fieldLabel,
+                          )),
+                          DataCell(
+                            SizedBox(
+                              width: 160,
+                              child: Text(
+                                line.missingIdentity
+                                    ? '(blank — check PM)'
+                                    : line.tagOrPart,
+                                overflow: TextOverflow.ellipsis,
+                                style: line.missingIdentity
+                                    ? TextStyle(
+                                        fontStyle: FontStyle.italic,
+                                        color: SwiftColors.accent,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          DataCell(Text('${line.quantity}')),
+                          DataCell(Text('${line.labelCount}')),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              'Each sticker prints the Propak logo with PO#, CPO LINE #, and '
+              'TAG# (valves) or PART# (when the OA has no tag). '
+              'Quantity on each OA line controls how many identical stickers '
+              'are made. Press Generate to save Word (.docx) + PDF and open '
+              'the editable Word labels (same as other documents).',
+              style: TextStyle(
+                fontFamily: swiftUiFont(context),
+                fontSize: 13,
+                color: chrome.muted,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildDocumentFormCards({required bool dualColumn}) {
+    if (_kind == LabelKind.bulk) {
+      return [_buildBulkLabelsPanel(dense: dualColumn)];
+    }
+
     final cards = <Widget>[
       for (final group in _activeGroups)
         _Card(
@@ -2504,8 +2973,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildBolCopiesCard(compact: true),
             const SizedBox(height: 4),
           ],
-          _buildPresetCard(dense: true),
-          _buildLogosCard(dense: true, stackActions: true),
+          if (_kind != LabelKind.bulk) ...[
+            _buildPresetCard(dense: true),
+            _buildLogosCard(dense: true, stackActions: true),
+          ],
         ],
         ..._buildDocumentFormCards(dualColumn: dualColumn),
         const SizedBox(height: 4),
@@ -2547,9 +3018,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 primary: false,
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 children: [
-                  _buildPresetCard(dense: true),
-                  _buildLogosCard(dense: true, stackActions: true),
+                  if (_kind != LabelKind.bulk) ...[
+                    _buildPresetCard(dense: true),
+                    _buildLogosCard(dense: true, stackActions: true),
+                  ],
                   if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
+                  if (_kind == LabelKind.bulk)
+                    Text(
+                      'Avery 5163 · Propak template',
+                      style: TextStyle(
+                        fontFamily: swiftUiFont(context),
+                        fontSize: 12,
+                        color: chrome.muted,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -2568,6 +3050,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onShipping: () => _selectKind(LabelKind.shipping),
         onReceiving: () => _selectKind(LabelKind.receiving),
         onBol: () => _selectKind(LabelKind.bol),
+        onBulk: () => _selectKind(LabelKind.bulk),
         onSavePreset: _savePreset,
         onClearShipment: _clearShipment,
         onNewShipping: () => _newDocument(LabelKind.shipping),
@@ -2620,6 +3103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         _selectKind(switch (i) {
                           1 => LabelKind.receiving,
                           2 => LabelKind.bol,
+                          3 => LabelKind.bulk,
                           _ => LabelKind.shipping,
                         });
                       },
@@ -2660,6 +3144,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icon(Icons.receipt_long_outlined),
                           selectedIcon: Icon(Icons.receipt_long),
                           label: Text('BOL'),
+                        ),
+                        NavigationRailDestination(
+                          icon: Icon(Icons.grid_view_outlined),
+                          selectedIcon: Icon(Icons.grid_view),
+                          label: Text('Bulk'),
                         ),
                       ],
                     ),
@@ -2818,8 +3307,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildBolCopiesCard(),
                       const SizedBox(height: 10),
                     ],
-                    _buildPresetCard(),
-                    _buildLogosCard(stackActions: true),
+                    if (_kind != LabelKind.bulk) ...[
+                      _buildPresetCard(),
+                      _buildLogosCard(stackActions: true),
+                    ],
                     ..._buildDocumentFormCards(dualColumn: false),
                     _buildUtilityActions(),
                   ],
@@ -2834,6 +3325,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onBoxSizedChanged: (v) =>
                     setState(() => _boxSizedLabel = v ?? false),
                 onGenerate: _generateAndShare,
+                generateLabel:
+                    _kind == LabelKind.bulk ? 'Generate' : 'Generate PDF',
+                generateIcon: _kind == LabelKind.bulk
+                    ? Icons.description_outlined
+                    : Icons.picture_as_pdf_outlined,
               ),
             ),
           ],
@@ -3213,6 +3709,8 @@ class _BottomBar extends StatelessWidget {
     required this.boxSizedEnabled,
     required this.onBoxSizedChanged,
     required this.onGenerate,
+    this.generateLabel = 'Generate PDF',
+    this.generateIcon = Icons.picture_as_pdf_outlined,
   });
 
   final bool busy;
@@ -3220,6 +3718,8 @@ class _BottomBar extends StatelessWidget {
   final bool boxSizedEnabled;
   final ValueChanged<bool?> onBoxSizedChanged;
   final VoidCallback onGenerate;
+  final String generateLabel;
+  final IconData generateIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -3274,8 +3774,8 @@ class _BottomBar extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                  label: Text(busy ? 'Generating…' : 'Generate PDF'),
+                      : Icon(generateIcon, size: 20),
+                  label: Text(busy ? 'Generating…' : generateLabel),
                 ),
               ),
             ],

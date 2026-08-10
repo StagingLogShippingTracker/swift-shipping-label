@@ -610,12 +610,18 @@ class WindowsAppMenuBar extends StatelessWidget {
               onPressed: () => actions.onNewDocument(LabelKind.bol),
               child: const Text('New Bill of Lading'),
             ),
+            MenuItemButton(
+              onPressed: () => actions.onNewDocument(LabelKind.bulk),
+              child: const Text('New Bulk Labels'),
+            ),
             const Divider(),
             MenuItemButton(
               onPressed: actions.busy ? null : actions.onGenerate,
               shortcut:
                   const SingleActivator(LogicalKeyboardKey.enter, control: true),
-              child: const Text('Generate PDF'),
+              child: Text(
+                actions.kind == LabelKind.bulk ? 'Generate' : 'Generate PDF',
+              ),
             ),
             const Divider(),
             MenuItemButton(
@@ -824,6 +830,16 @@ class WindowsAppMenuBar extends StatelessWidget {
                     : 'Bill of Lading',
               ),
             ),
+            MenuItemButton(
+              onPressed: () => actions.onSelectKind(LabelKind.bulk),
+              shortcut:
+                  const SingleActivator(LogicalKeyboardKey.digit4, control: true),
+              child: Text(
+                actions.kind == LabelKind.bulk
+                    ? '● Bulk Labels'
+                    : 'Bulk Labels',
+              ),
+            ),
             const Divider(),
             CheckboxMenuButton(
               value: actions.bolStoreCopy,
@@ -1026,6 +1042,7 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
   required VoidCallback onShipping,
   required VoidCallback onReceiving,
   required VoidCallback onBol,
+  VoidCallback? onBulk,
   required VoidCallback onSavePreset,
   required VoidCallback onClearShipment,
   required VoidCallback onNewShipping,
@@ -1039,6 +1056,8 @@ Map<ShortcutActivator, VoidCallback> windowsShortcutMap({
     const SingleActivator(LogicalKeyboardKey.digit1, control: true): onShipping,
     const SingleActivator(LogicalKeyboardKey.digit2, control: true): onReceiving,
     const SingleActivator(LogicalKeyboardKey.digit3, control: true): onBol,
+    if (onBulk != null)
+      const SingleActivator(LogicalKeyboardKey.digit4, control: true): onBulk,
     const SingleActivator(LogicalKeyboardKey.keyS, control: true): onSavePreset,
     const SingleActivator(
       LogicalKeyboardKey.keyK,

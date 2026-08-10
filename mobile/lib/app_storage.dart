@@ -496,16 +496,49 @@ class AppStorage {
     List<int> bytes, {
     Directory? outputDir,
   }) async {
+    return writeOutputFile(
+      fileName,
+      bytes,
+      extension: '.pdf',
+      outputDir: outputDir,
+    );
+  }
+
+  /// Write a Word `.docx` (Bulk Labels) beside PDFs in the output folder.
+  Future<File> writeDocx(
+    String fileName,
+    List<int> bytes, {
+    Directory? outputDir,
+  }) async {
+    return writeOutputFile(
+      fileName,
+      bytes,
+      extension: '.docx',
+      outputDir: outputDir,
+    );
+  }
+
+  /// Write bytes with [extension], uniquifying with `(1)`, `(2)`, … if needed.
+  Future<File> writeOutputFile(
+    String fileName,
+    List<int> bytes, {
+    required String extension,
+    Directory? outputDir,
+  }) async {
+    final ext = extension.startsWith('.') ? extension : '.$extension';
     final dir = outputDir ?? filledDir;
     await dir.create(recursive: true);
     var base = p.basename(fileName.trim());
-    if (!base.toLowerCase().endsWith('.pdf')) base = '$base.pdf';
+    if (!base.toLowerCase().endsWith(ext.toLowerCase())) {
+      base = '${p.basenameWithoutExtension(base)}$ext';
+    }
     // Allow letters, digits, dash, underscore, parentheses; strip other junk.
     base = base.replaceAll(RegExp(r'[^\w.\-()]+'), '');
-    if (base.isEmpty || base == '.pdf') base = 'label.pdf';
+    if (base.isEmpty || base == ext) {
+      base = 'label$ext';
+    }
 
     final stem = p.basenameWithoutExtension(base);
-    const ext = '.pdf';
     var out = File(p.join(dir.path, '$stem$ext'));
     var n = 1;
     while (await out.exists()) {
@@ -653,6 +686,7 @@ class AppStorage {
     final prefix = switch (kind) {
       LabelKind.receiving => 'RL-',
       LabelKind.bol => 'BOL-',
+      LabelKind.bulk => 'BL-',
       LabelKind.shipping => 'SL-',
     };
     final cust = compactFileToken(customer);

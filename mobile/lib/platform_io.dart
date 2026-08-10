@@ -11,6 +11,12 @@ const _imageGroup = XTypeGroup(
   extensions: <String>['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
 );
 
+const _pdfGroup = XTypeGroup(
+  label: 'PDF',
+  extensions: <String>['pdf'],
+  mimeTypes: <String>['application/pdf'],
+);
+
 /// Platform image picker (Android MethodChannel / desktop file_selector).
 Future<List<String>> pickImagePaths({required bool multiple}) async {
   if (Platform.isAndroid) {
@@ -30,6 +36,22 @@ Future<List<String>> pickImagePaths({required bool multiple}) async {
   final file = await openFile(acceptedTypeGroups: [_imageGroup]);
   if (file == null || file.path.isEmpty) return const [];
   return [file.path];
+}
+
+/// Pick a single PDF document (Order Acknowledgement for Bulk Labels).
+///
+/// Android uses the same SAF → cache copy path as logo picking so Dart can
+/// read a real filesystem path. Desktop uses file_selector.
+Future<String?> pickPdfPath() async {
+  if (Platform.isAndroid) {
+    final path = await _native.invokeMethod<String?>('pickPdf');
+    if (path == null || path.isEmpty) return null;
+    return path;
+  }
+
+  final file = await openFile(acceptedTypeGroups: [_pdfGroup]);
+  if (file == null || file.path.isEmpty) return null;
+  return file.path;
 }
 
 /// Share sheet on Android; open with the default viewer on desktop.

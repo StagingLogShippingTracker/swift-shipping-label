@@ -16,6 +16,7 @@ class MainActivity : FlutterActivity() {
     private val channelName = "com.swiftoilfield.swift_shipping_label/native"
     private var pendingResult: MethodChannel.Result? = null
     private val pickImages = 1001
+    private val pickPdf = 1002
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -60,6 +61,21 @@ class MainActivity : FlutterActivity() {
                             pickImages,
                         )
                     }
+                    "pickPdf" -> {
+                        if (pendingResult != null) {
+                            result.error("busy", "Picker already open", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingResult = result
+                        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                            type = "application/pdf"
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                        }
+                        startActivityForResult(
+                            Intent.createChooser(intent, "Select Order Acknowledgement PDF"),
+                            pickPdf,
+                        )
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -68,7 +84,7 @@ class MainActivity : FlutterActivity() {
     private fun shareFile(path: String, mime: String, subject: String) {
         val file = File(path)
         if (!file.exists() || file.length() == 0L) {
-            throw IllegalArgumentException("PDF file missing or empty")
+            throw IllegalArgumentException("File missing or empty")
         }
         val shareTarget = fileForProvider(file)
         val uri = FileProvider.getUriForFile(
@@ -117,15 +133,24 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != pickImages) return
+        if (requestCode != pickImages && requestCode != pickPdf) return
         val result = pendingResult
         pendingResult = null
         if (result == null) return
         if (resultCode != Activity.RESULT_OK || data == null) {
-            result.success(emptyList<String>())
+            if (requestCode == pickPdf) {
+                result.success(null)
+            } else {
+                result.success(emptyList<String>())
+            }
             return
         }
         try {
+            if (requestCode == pickPdf) {
+                val path = data.data?.let { uri -> copyUriToCache(uri, "picked_docs") }
+                result.success(path)
+                return
+            }
             val paths = mutableListOf<String>()
             val clip = data.clipData
             if (clip != null) {
@@ -145,17 +170,26 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun copyUriToCache(uri: Uri): String? {
+    private fun copyUriToCache(
+        uri: Uri,
+        subdir: String = "picked_logos",
+    ): String? {
         val name = contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
-        } ?: "logo_${System.currentTimeMillis()}.png"
+        } ?: if (subdir == "picked_docs") {
+            "order_ack_${System.currentTimeMillis()}.pdf"
+        } else {
+            "logo_${System.currentTimeMillis()}.png"
+        }
 
-        val destDir = File(cacheDir, "picked_logos").apply { mkdirs() }
+        val destDir = File(cacheDir, subdir).apply { mkdirs() }
         var dest = File(destDir, name)
         if (dest.exists()) {
             val stem = dest.nameWithoutExtension
-            val ext = dest.extension.ifEmpty { "png" }
+            val ext = dest.extension.ifEmpty {
+                if (subdir == "picked_docs") "pdf" else "png"
+            }
             var n = 2
             while (dest.exists()) {
                 dest = File(destDir, "$stem ($n).$ext")

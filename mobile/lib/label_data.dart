@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 /// Which print template the generator is targeting.
-enum LabelKind { shipping, receiving, bol }
+enum LabelKind { shipping, receiving, bol, bulk }
 
 /// Max customer logos per label (primary + care-of / C/O).
 const int maxCustomerLogos = 2;
@@ -225,6 +225,8 @@ List<String> presetKeysFor(LabelKind kind) {
         BolFields.driverCompany,
         BolFields.shipperCertName,
       ];
+    case LabelKind.bulk:
+      return const [];
   }
 }
 
