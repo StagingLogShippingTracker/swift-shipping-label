@@ -3,7 +3,8 @@ Swift Oilfield Supply — Receiving Label (print PDF prototype)
 
 Same Swiss visual language as the Shipping Label (Oswald labels, Calibri Bold
 values, brand orange bumpers, solid yellow SO pill). Fields match the warehouse receiving
-skid label: Customer, Project, PO, Sales Order, PM, Date Received, Received By.
+skid label: Customer, Project, PO, Special Instructions, Sales Order, PM,
+Date Received, Received By (full-width vertical stack).
 
 Not wired into the Flutter app yet — regenerate samples until the layout is
 approved, then we can add a generator flow.
@@ -550,43 +551,47 @@ def draw_label_page(
 
     y = draw_header(c, customer_logo, customer_logo2)
 
-    lx = MX
-    rx = MX + COL_W + GUTTER
-
-    # Left: identity (matches skid label order)
-    y_l = draw_labeled_value(
-        c, y, "Customer", sample.get("customer", ""), lx, COL_W, hero=True
+    # Full-width vertical stack. Body entries prefer 22 pt; Sales Order stays 48 pt.
+    y = draw_labeled_value(
+        c, y, "Customer", sample.get("customer", ""), MX, CONTENT_W, hero=True
     )
-    y_l = draw_labeled_value(
+    y = draw_labeled_value(
         c,
-        y_l,
+        y,
         "Project",
         sample.get("project", ""),
-        lx,
-        COL_W,
+        MX,
+        CONTENT_W,
         multiline=True,
         max_lines=3,
+        preferred=ENTRY_HERO,
     )
-    y_l = draw_labeled_value(
-        c, y_l, "PO Number", sample.get("po_num", ""), lx, COL_W, multiline=True, max_lines=2
-    )
-
-    # Right: warehouse keys — Sales Order is the visual hero (like shipping)
-    y_r = draw_sales_order_pill(c, y, rx, COL_W, sample.get("sales_order", ""))
-    y_r = draw_labeled_value(c, y_r, "PM", sample.get("pm", ""), rx, COL_W, hero=False)
-
-    # Full-width Special Instructions after PO — 2 lines, same style as other fields
-    y_mid = min(y_l, y_r)
-    y_mid = draw_labeled_value(
+    y = draw_labeled_value(
         c,
-        y_mid,
+        y,
+        "PO Number",
+        sample.get("po_num", ""),
+        MX,
+        CONTENT_W,
+        multiline=True,
+        max_lines=2,
+        preferred=ENTRY_HERO,
+    )
+    y = draw_labeled_value(
+        c,
+        y,
         "Special Instructions",
         sample.get("special_instructions", ""),
         MX,
         CONTENT_W,
         multiline=True,
         max_lines=2,
+        preferred=ENTRY_HERO,
         alert_when_nonempty=True,
+    )
+    y = draw_sales_order_pill(c, y, MX, CONTENT_W, sample.get("sales_order", ""))
+    draw_labeled_value(
+        c, y, "PM", sample.get("pm", ""), MX, CONTENT_W, preferred=ENTRY_HERO
     )
 
     hairline(c, MX, recv_top + 10, CONTENT_W, RULE_SOFT)

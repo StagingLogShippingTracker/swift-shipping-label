@@ -816,63 +816,50 @@ class ShippingLabelPdf {
       options: options,
     );
 
-    final lx = mx;
-    final rx = mx + colW + gutter;
-
-    var yL = _fieldRow(
+    // Full-width vertical stack (Customer → Project → PO → Special Instructions
+    // → Sales Order → PM). Body entries prefer 22 pt; Sales Order stays 48 pt.
+    y = _fieldRow(
       c,
       fonts,
       y,
       'Customer',
       LabelFields.customer,
-      lx,
-      colW,
+      mx,
+      contentW,
       sample,
       hero: true,
+      preferredSize: entryHero,
     );
-    yL = _fieldRow(
-      c,
-      fonts,
-      yL,
-      'Project',
-      LabelFields.project,
-      lx,
-      colW,
-      sample,
-      multiline: true,
-      maxLines: 3,
-    );
-    yL = _fieldRow(
-      c,
-      fonts,
-      yL,
-      'PO Number',
-      LabelFields.poNum,
-      lx,
-      colW,
-      sample,
-      multiline: true,
-      maxLines: 2,
-    );
-
-    var yR = _drawSalesOrderRow(
+    y = _fieldRow(
       c,
       fonts,
       y,
-      rx,
-      colW,
+      'Project',
+      LabelFields.project,
+      mx,
+      contentW,
       sample,
-      pillBg: recvSoBg,
-      preferredSize: entryRecvSo,
-      minRowH: 48,
+      multiline: true,
+      maxLines: 3,
+      preferredSize: entryHero,
     );
-    yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.swiftContact, rx, colW, sample);
-
-    final yMid = yL < yR ? yL : yR;
-    _fieldRow(
+    y = _fieldRow(
       c,
       fonts,
-      yMid,
+      y,
+      'PO Number',
+      LabelFields.poNum,
+      mx,
+      contentW,
+      sample,
+      multiline: true,
+      maxLines: 2,
+      preferredSize: entryHero,
+    );
+    y = _fieldRow(
+      c,
+      fonts,
+      y,
       'Special Instructions',
       LabelFields.specialInstructions,
       mx,
@@ -880,7 +867,30 @@ class ShippingLabelPdf {
       sample,
       multiline: true,
       maxLines: 2,
+      preferredSize: entryHero,
       valueBgWhenNonEmpty: recvInstructionsAlert,
+    );
+    y = _drawSalesOrderRow(
+      c,
+      fonts,
+      y,
+      mx,
+      contentW,
+      sample,
+      pillBg: recvSoBg,
+      preferredSize: entryRecvSo,
+      minRowH: 48,
+    );
+    _fieldRow(
+      c,
+      fonts,
+      y,
+      'PM',
+      LabelFields.swiftContact,
+      mx,
+      contentW,
+      sample,
+      preferredSize: entryHero,
     );
 
     _hairline(c, mx, recvTop + 10, contentW, ruleSoft);

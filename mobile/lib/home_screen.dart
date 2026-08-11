@@ -82,12 +82,9 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
       LabelFields.project,
       LabelFields.poNum,
       LabelFields.specialInstructions,
+      LabelFields.salesOrder,
+      LabelFields.swiftContact,
     ],
-  ),
-  (
-    'Order & PM',
-    'Swift sales order and PM (project manager)',
-    [LabelFields.salesOrder, LabelFields.swiftContact],
   ),
   (
     'Received',
@@ -125,12 +122,11 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Tracking & references',
-    'PO, packing list, sales order, project, Swift contact',
+    'PO, packing list, sales order, project',
     [
       LabelFields.poNum,
       BolFields.packingList,
       LabelFields.salesOrder,
-      LabelFields.swiftContact,
       LabelFields.project,
       LabelFields.specialInstructions,
     ],

@@ -1464,7 +1464,7 @@ def draw_bol_page(
     bot = top - panel_h
     rect_stroke(c, lx, bot, col_w, panel_h, 0.75)
     # Vertically center shipper lines so there is no open blank strip under the address.
-    draw_shipper_block_centered(c, lx + PAD, top, bot, SHIPPER_LINES, size=7.0)
+    draw_shipper_block_centered(c, lx + PAD, top, bot, SHIPPER_LINES, size=8.0)
 
     # Consignee body = four abutting cells (no outer wrapper, so rules meet cleanly).
     row1 = top - name_h

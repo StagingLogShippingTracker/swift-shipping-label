@@ -154,9 +154,12 @@ class BolLabelPdf {
                 PdfImage? shipperSig;
                 if (shipperSignatureBytes != null &&
                     shipperSignatureBytes.isNotEmpty) {
+                  final ink = LogoImageProcessor.prepareSignatureInk(
+                    shipperSignatureBytes,
+                  );
                   shipperSig = PdfImage.file(
                     context.document,
-                    bytes: shipperSignatureBytes,
+                    bytes: ink.isNotEmpty ? ink : shipperSignatureBytes,
                   );
                 }
                 return _paint(
@@ -306,7 +309,6 @@ class BolLabelPdf {
       'Delivery Address',
       d.get(BolFields.consigneeAddress),
       maxLines: 3,
-      alignTop: true,
     );
     _cellValue(
       c,
@@ -701,7 +703,8 @@ class BolLabelPdf {
         final label = cats[i];
         final rowTop = bodyTop - topInset - i * rowH;
         _micro(c, fonts, colX, rowTop - 6.5, label);
-        // Value band sits under the micro-label and rests on the underline.
+        // Value band under the micro-label, resting on the underline — center
+        // both horizontally and vertically in that cell.
         const labelReserve = 8.5;
         final fieldTop = rowTop - labelReserve;
         final fieldBot = rowTop - rowH + 2;
@@ -740,7 +743,6 @@ class BolLabelPdf {
       siH < 18 ? 18 : siH,
       7,
       maxLines: 5,
-      alignTop: true,
     );
 
     final midTot = blockBot + bodyH / 2;
@@ -751,8 +753,12 @@ class BolLabelPdf {
       ..strokePath();
 
     // Totals: reserve label / LBS strips, center numerals in the remaining box.
+    // Keep equal numeral size for Piece Count and Weight. Lift values slightly
+    // so Weight clears the LBS caption under it (without moving the frame).
     const totLabelReserve = 11.0;
-    const lbsReserve = 9.0;
+    const lbsReserve = 10.0;
+    const totNumSize = 10.0;
+    const totValueNudgeUp = 2.0;
     _micro(c, fonts, tx + pad, bodyTop - 6, 'Total Piece Count');
     final piecesText = totalPieces > 0
         ? totalPieces.toStringAsFixed(0)
@@ -765,7 +771,9 @@ class BolLabelPdf {
       midTot + 2,
       tw - 2 * pad,
       (bodyTop - totLabelReserve) - (midTot + 2),
-      size: 10,
+      size: totNumSize,
+      shrinkToFit: false,
+      nudgeUp: totValueNudgeUp,
     );
 
     _micro(c, fonts, tx + pad, midTot - 6, 'Total Weight');
@@ -780,7 +788,9 @@ class BolLabelPdf {
       blockBot + lbsReserve,
       tw - 2 * pad,
       (midTot - totLabelReserve) - (blockBot + lbsReserve),
-      size: 10,
+      size: totNumSize,
+      shrinkToFit: false,
+      nudgeUp: totValueNudgeUp,
     );
     c
       ..setFillColor(hint)
@@ -821,9 +831,8 @@ class BolLabelPdf {
     final availH = contentTop - contentBot;
     if (availH < 20 || rows.isEmpty) return;
 
-    // Pin labels to band top and values to band bottom to maximize the gap.
+    // Vertically center values in the band between the category label and rule.
     final valueSize = dense ? 7.0 : 8.0;
-    final valueAboveRule = dense ? 1.4 : 2.5;
     final ruleAboveBandBot = dense ? 2.0 : 3.5;
     final labelFromBandTop = dense ? 2.5 : 5.0;
     const colGap = 10.0;
@@ -833,8 +842,11 @@ class BolLabelPdf {
       final bandTop = contentTop - i * rowH;
       final bandBot = bandTop - rowH;
       final yRule = bandBot + ruleAboveBandBot;
-      final valueBaseline = yRule + valueAboveRule;
       final labelY = bandTop - labelFromBandTop;
+      // Value sits in the clear band under the micro-label, above the rule.
+      final valueTop = labelY - (dense ? 1.5 : 2.5);
+      final valueBot = yRule + 1.0;
+      final valueBandH = (valueTop - valueBot).clamp(valueSize, rowH);
 
       final row = rows[i];
       final total = row.fold<double>(0, (a, e) => a + e.$3);
@@ -846,18 +858,27 @@ class BolLabelPdf {
         final sigImg = signatureImages?[cell.$1];
         if (sigImg != null) {
           final maxW = fw - 2;
-          final maxH = (labelY - yRule - 2.0).clamp(8.0, rowH - 8.0);
+          // Previous fit used a short band under the label; allow ~3× that
+          // height (capped by the full row) so saved signatures read clearly.
+          final legacyMaxH = (labelY - yRule - 2.0).clamp(8.0, rowH - 8.0);
+          final maxH = math
+              .min(bandTop - yRule - 1.0, legacyMaxH * 3.0)
+              .clamp(12.0, rowH - 2.0);
           final iw = sigImg.width.toDouble();
           final ih = sigImg.height.toDouble();
-          if (iw > 0 && ih > 0 && maxH > 4) {
+          if (iw > 0 && ih > 0 && maxH > 4 && maxW > 4) {
             final fitScale = math.min(maxW / iw, maxH / ih);
             final imgW = iw * fitScale;
             final imgH = ih * fitScale;
-            c.drawImage(sigImg, cx + 1, yRule + 1, imgW, imgH);
+            final imgX = cx + 1 + (maxW - imgW) / 2;
+            final imgY = yRule + 1 + ((bandTop - yRule - 1) - imgH) / 2;
+            c.drawImage(sigImg, imgX, imgY, imgW, imgH);
           }
         } else {
           final value = _latin1(d.get(cell.$1)).trim();
           if (value.isNotEmpty) {
+            final valueBaseline =
+                valueBot + (valueBandH - valueSize) / 2;
             c
               ..setFillColor(black)
               ..setFont(fonts.bold, valueSize)
@@ -1291,14 +1312,13 @@ class BolLabelPdf {
     String label,
     String value, {
     int? maxLines,
-    bool alignTop = false,
     bool compact = false,
   }) {
     _rect(c, x, y, w, h, lw: 0.6);
     final labelY = y + h - (compact ? 8.5 : 10);
     _micro(c, fonts, x + pad, labelY, label);
-    final topReserve = compact ? 11.0 : (alignTop ? 12.0 : 16.0);
-    final botPad = compact ? 2.0 : 4.0;
+    final topReserve = compact ? 11.0 : 14.0;
+    final botPad = compact ? 2.5 : 3.5;
     final lines = maxLines ?? (h > 36 ? 3 : (h > 28 ? 2 : 1));
     _drawValue(
       c,
@@ -1310,7 +1330,6 @@ class BolLabelPdf {
       (h - topReserve - botPad).clamp(8.0, h),
       7.5,
       maxLines: lines,
-      alignTop: alignTop,
     );
   }
 
@@ -1320,7 +1339,7 @@ class BolLabelPdf {
     double x,
     double top,
     double bot, {
-    double size = 7.0,
+    double size = 8.0,
   }) {
     const leadingExtra = 4.0;
     final blockH = shipperLines.isEmpty
@@ -1379,14 +1398,21 @@ class BolLabelPdf {
     double w,
     double h, {
     double size = 9,
+    bool shrinkToFit = true,
+    double nudgeUp = 0,
   }) {
     text = _latin1(text).trim();
     if (text.isEmpty || w <= 2 || h <= 2) return;
-    final useSize = math.min(size, h);
+    final useSize = shrinkToFit ? math.min(size, h) : size;
     final tw = _sw(fonts.bold, useSize, text);
     final tx = x + (w - tw) / 2;
-    // Optical vertical center: baseline so glyph box sits mid-rect.
-    final ty = y + (h - useSize) / 2;
+    // Optical vertical center (baseline sits slightly below mid-glyph).
+    var ty = y + (h - useSize) / 2 + useSize * 0.08 + nudgeUp;
+    if (!shrinkToFit && useSize > h) {
+      // Keep oversized numerals inside the band, biased toward the top so they
+      // do not collide with captions under the cell (e.g. LBS).
+      ty = y + h - useSize * 0.88 + nudgeUp;
+    }
     c
       ..setFillColor(black)
       ..setFont(fonts.bold, useSize)
@@ -1423,42 +1449,34 @@ class BolLabelPdf {
       }
     }
     if (line.isNotEmpty && lines.length < maxLines) lines.add(line);
+    if (lines.isEmpty) return;
 
     c
       ..setFillColor(black)
       ..setFont(fonts.bold, size);
 
-    if (alignCenter) {
-      final blockH = lines.length * leading - (leading - size);
-      var yy = y + (h - blockH) / 2 + (lines.length - 1) * leading;
-      if (yy > y + h - size) yy = y + h - size;
-      if (yy < y) yy = y;
-      for (final l in lines) {
-        final tw = _sw(fonts.bold, size, l);
-        c.drawString(fonts.bold, size, l, x + (w - tw) / 2, yy);
-        yy -= leading;
-      }
-      return;
-    }
+    final blockH = lines.length * leading - (leading - size);
 
     if (alignTop) {
       var yy = y + h - size;
       for (final l in lines) {
         if (yy < y) break;
-        c.drawString(fonts.bold, size, l, x, yy);
+        final tx = alignCenter ? x + (w - _sw(fonts.bold, size, l)) / 2 : x;
+        c.drawString(fonts.bold, size, l, tx, yy);
         yy -= leading;
       }
-    } else {
-      // Baseline near bottom of the field rect (AcroForm-like).
-      var yy = y + (h - size).clamp(0.0, h) * 0.15;
-      if (lines.length > 1) {
-        yy = y + (lines.length - 1) * leading;
-        if (yy + size > y + h) yy = y + h - size;
-      }
-      for (final l in lines) {
-        c.drawString(fonts.bold, size, l, x, yy);
-        yy -= leading;
-      }
+      return;
+    }
+
+    // Default: vertically middle-align the text block in the cell with a little
+    // breathing room from the top/bottom borders.
+    var yy = y + (h - blockH) / 2 + (lines.length - 1) * leading;
+    if (yy > y + h - size) yy = y + h - size;
+    if (yy < y) yy = y;
+    for (final l in lines) {
+      final tx = alignCenter ? x + (w - _sw(fonts.bold, size, l)) / 2 : x;
+      c.drawString(fonts.bold, size, l, tx, yy);
+      yy -= leading;
     }
   }
 

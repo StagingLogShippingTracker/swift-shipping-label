@@ -200,11 +200,9 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- **Customer logos:** crop to visible content; Swift logo height locked; customers match Swift height and pack left-to-right (shrink only if needed)
-- **Shipping Label:** Sales Order preferred font size 48 pt
-- **Receiving:** duplicate PM field removed; Swift Contact labeled as PM (legacy PM presets migrate correctly)
-- **BOL:** denser carrier/driver acceptance layout; classic thin freight charge radios; disclaimer footer spans full page frame; signature boxes tightened
-- **UI:** top floating snack notifications; remove remembered contact names with ×; Swift logo always shown
+- **Receiving Label:** full-width stacked fields (Customer → Project → PO → Special Instructions → Sales Order → PM); body entries prefer 22 pt (Sales Order 48 pt) with shrink-to-fit
+- **BOL:** middle-aligned cell entries; Total Weight matches Total Piece Count size and clears LBS; shipper address 8 pt; Product Total values centered; signatures ~3× larger with white background removed; Swift Contact form field removed
+- **App icon:** restored rounded-square silhouette (transparent corners) on Windows and Android launchers
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

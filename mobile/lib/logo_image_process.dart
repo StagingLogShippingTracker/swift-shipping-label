@@ -102,6 +102,50 @@ class LogoImageProcessor {
     return Uint8List.fromList(img.encodePng(image));
   }
 
+  /// Prepare a saved/drawn signature for BOL embed: knock out white/light
+  /// paper background to transparent ink, then crop to the stroke bounds.
+  ///
+  /// Without this, a large white PNG canvas is fit into a tiny signature cell
+  /// and the ink looks microscopic while the white plate covers other fields.
+  static Uint8List prepareSignatureInk(Uint8List input) {
+    if (input.isEmpty) return input;
+    final decoded = img.decodeImage(input);
+    if (decoded == null) return input;
+
+    var image = decoded.numChannels == 4
+        ? decoded.clone()
+        : decoded.convert(numChannels: 4);
+
+    final w = image.width;
+    final h = image.height;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        final r = p.r.toInt();
+        final g = p.g.toInt();
+        final b = p.b.toInt();
+        final a = p.a.toInt();
+        if (a < alphaThreshold) {
+          image.setPixelRgba(x, y, 0, 0, 0, 0);
+          continue;
+        }
+        // Darkness of the stroke (white paper → 0, black ink → 255).
+        final ink = (255 - ((r + g + b) / 3.0)).round().clamp(0, 255);
+        if (ink < 18) {
+          image.setPixelRgba(x, y, 0, 0, 0, 0);
+        } else {
+          // Solid black ink with alpha from darkness (anti-aliased edges).
+          final outA = (ink * a / 255.0).round().clamp(0, 255);
+          image.setPixelRgba(x, y, 0, 0, 0, outA);
+        }
+      }
+    }
+
+    image = _cropToContentBBox(image, null, minAlpha: 24);
+    image = _addPadding(image, fraction: 0.04, minPad: 2, maxPad: 8);
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
   static img.Image _applyManualCrop(img.Image image, Rect normalized) {
     final left = (normalized.left * image.width).round().clamp(0, image.width - 1);
     final top = (normalized.top * image.height).round().clamp(0, image.height - 1);

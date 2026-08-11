@@ -6,12 +6,13 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 MOBILE = ROOT / "mobile"
-# Canonical sharp master lives in-repo. Never fall back to a downsampled /
-# single-size ICO or the old low-res branding/app_icon.png.
+# Canonical sharp master lives in-repo as a full-bleed square. Rounded corners
+# with transparent outside are applied when exporting Windows ICO / launcher
+# bitmaps so the desktop icon is a rounded square again (not a hard square).
 MASTER_CANDIDATES = [
     MOBILE / "assets" / "images" / "app_icon_1024.png",
 ]
@@ -37,6 +38,11 @@ ADAPTIVE_FG = {
 ACCENT = (0xCE, 0x4E, 0x30, 255)
 CHARCOAL = (0x14, 0x16, 0x18, 255)
 
+# Match the pre-regression Windows icon silhouette (git 44f8b99):
+# ~4.3% transparent margin + ~28.6% corner radius of the plate (~22% of canvas).
+ICON_INSET_RATIO = 0.043
+ICON_RADIUS_OF_PLATE = 0.286
+
 
 def find_master() -> Path:
     for p in MASTER_CANDIDATES:
@@ -59,8 +65,46 @@ def square_contain(img: Image.Image, size: int, bg=(0, 0, 0, 0)) -> Image.Image:
     return canvas
 
 
+def rounded_square_icon(
+    img: Image.Image,
+    size: int | None = None,
+    *,
+    inset_ratio: float = ICON_INSET_RATIO,
+    radius_of_plate: float = ICON_RADIUS_OF_PLATE,
+) -> Image.Image:
+    """Bake a rounded-square silhouette with transparent corners.
+
+    Windows does not round arbitrary .ico files the way Android adaptive icons
+    do — the previous sharp icon used transparent rounded corners. Filling the
+    master onto an opaque charcoal square removed that silhouette.
+    """
+    img = img.convert("RGBA")
+    if size is not None and img.size != (size, size):
+        img = img.resize((size, size), Image.Resampling.LANCZOS)
+    w, h = img.size
+
+    # Solid charcoal plate under any existing transparency (tiny-size clarity).
+    plate = Image.new("RGBA", (w, h), CHARCOAL)
+    plate.paste(img, (0, 0), img)
+
+    inset = max(0, int(round(min(w, h) * inset_ratio)))
+    plate_w = w - 2 * inset
+    plate_h = h - 2 * inset
+    radius = max(1, int(round(min(plate_w, plate_h) * radius_of_plate)))
+
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (inset, inset, w - 1 - inset, h - 1 - inset),
+        radius=radius,
+        fill=255,
+    )
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(plate, (0, 0), mask)
+    return out
+
+
 def write_ico(src: Image.Image, dest: Path) -> None:
-    """Write a multi-resolution ICO (16..256).
+    """Write a multi-resolution rounded ICO (16..256) with transparent corners.
 
     Pillow's ``append_images`` ICO path often emits only a single 16x16 frame
     (the blurry Windows window/taskbar icon). Passing one large image with an
@@ -68,11 +112,8 @@ def write_ico(src: Image.Image, dest: Path) -> None:
     """
     sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Charcoal letterbox so transparent masters still read at tiny sizes.
-    canvas = Image.new("RGBA", src.size, CHARCOAL)
-    rgba = src.convert("RGBA")
-    canvas.paste(rgba, (0, 0), rgba)
-    canvas.save(dest, format="ICO", sizes=sizes)
+    icon = rounded_square_icon(src, 256)
+    icon.save(dest, format="ICO", sizes=sizes)
 
 
 def main() -> None:
@@ -82,26 +123,28 @@ def main() -> None:
 
     assets = MOBILE / "assets" / "images"
     assets.mkdir(parents=True, exist_ok=True)
+    # Keep the 1024 master full-bleed (source of truth for adaptive FG).
     master_out = assets / "app_icon_1024.png"
     master_1024 = master.resize((1024, 1024), Image.Resampling.LANCZOS)
-    master_512 = master.resize((512, 512), Image.Resampling.LANCZOS)
     master_1024.save(master_out, "PNG")
-    master_512.save(assets / "app_icon.png", "PNG")
+    # Desktop / in-app preview asset uses the rounded silhouette.
+    rounded_512 = rounded_square_icon(master, 512)
+    rounded_512.save(assets / "app_icon.png", "PNG")
     print(f"Wrote {master_out}")
+    print(f"Wrote {assets / 'app_icon.png'} (rounded)")
 
-    # Keep branding/ in sync with the sharp master (overwrite any old blurry copy).
     branding = ROOT / "branding"
     branding.mkdir(parents=True, exist_ok=True)
-    master_512.save(branding / "app_icon.png", "PNG")
-    print(f"Wrote {branding / 'app_icon.png'}")
+    rounded_512.save(branding / "app_icon.png", "PNG")
+    print(f"Wrote {branding / 'app_icon.png'} (rounded)")
 
     res = MOBILE / "android" / "app" / "src" / "main" / "res"
 
-    # Legacy launcher icons (full bleed)
+    # Legacy launcher icons — rounded so older launchers match Windows.
     for folder, px in MIPMAPS.items():
         out = res / folder / "ic_launcher.png"
         out.parent.mkdir(parents=True, exist_ok=True)
-        master.resize((px, px), Image.Resampling.LANCZOS).save(out, "PNG")
+        rounded_square_icon(master, px).save(out, "PNG")
         print(f"Wrote {out}")
 
     # Adaptive background color resource
@@ -116,7 +159,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    # Adaptive foreground drawables (padded safe zone)
+    # Adaptive foreground drawables (padded safe zone; OS applies the mask)
     last_fg: Path | None = None
     for folder, px in ADAPTIVE_FG.items():
         out = res / folder / "ic_launcher_foreground.png"
