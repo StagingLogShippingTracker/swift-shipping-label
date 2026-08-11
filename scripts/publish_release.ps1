@@ -200,9 +200,8 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- **Receiving Label:** full-width stacked fields (Customer → Project → PO → Special Instructions → Sales Order → PM); body entries prefer 22 pt (Sales Order 48 pt) with shrink-to-fit
-- **BOL:** middle-aligned cell entries; Total Weight matches Total Piece Count size and clears LBS; shipper address 8 pt; Product Total values centered; signatures ~3× larger with white background removed; Swift Contact form field removed
-- **App icon:** restored rounded-square silhouette (transparent corners) on Windows and Android launchers
+- **Android portrait UI:** kind selector no longer wraps mid-word (labels stay on one line); header document badge and Update control stay readable on narrow screens
+- Landscape layout unchanged
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

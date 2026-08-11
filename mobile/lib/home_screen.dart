@@ -2291,38 +2291,67 @@ class _HomeScreenState extends State<HomeScreen> {
       };
 
   Widget _buildMobileKindSelector() {
+    final portrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    // Portrait phones are too narrow for icon + check + label in each segment
+    // (labels wrap mid-word). Use single-line labels only; landscape keeps icons.
+    Text label(String text) => Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+        );
     return SegmentedButton<LabelKind>(
-      segments: const [
+      showSelectedIcon: false,
+      segments: [
         ButtonSegment(
           value: LabelKind.shipping,
-          label: Text('Ship'),
-          icon: Icon(Icons.local_shipping_outlined, size: 18),
+          label: label('Ship'),
+          icon: portrait
+              ? null
+              : const Icon(Icons.local_shipping_outlined, size: 18),
         ),
         ButtonSegment(
           value: LabelKind.receiving,
-          label: Text('Recv'),
-          icon: Icon(Icons.inventory_2_outlined, size: 18),
+          label: label('Recv'),
+          icon: portrait
+              ? null
+              : const Icon(Icons.inventory_2_outlined, size: 18),
         ),
         ButtonSegment(
           value: LabelKind.bol,
-          label: Text('BOL'),
-          icon: Icon(Icons.description_outlined, size: 18),
+          label: label('BOL'),
+          icon: portrait
+              ? null
+              : const Icon(Icons.description_outlined, size: 18),
         ),
         ButtonSegment(
           value: LabelKind.bulk,
-          label: Text('Bulk'),
-          icon: Icon(Icons.grid_view_outlined, size: 18),
+          label: label('Bulk'),
+          icon: portrait
+              ? null
+              : const Icon(Icons.grid_view_outlined, size: 18),
         ),
       ],
       selected: {_kind},
       onSelectionChanged: (s) => _selectKind(s.first),
       style: ButtonStyle(
+        visualDensity:
+            portrait ? VisualDensity.compact : VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: WidgetStatePropertyAll(
+          EdgeInsets.symmetric(
+            horizontal: portrait ? 6 : 12,
+            vertical: portrait ? 8 : 10,
+          ),
+        ),
         textStyle: WidgetStatePropertyAll(
           TextStyle(
             fontFamily: swiftUiFont(context),
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: portrait ? 13 : 12,
             letterSpacing: 0.2,
+            height: 1.0,
           ),
         ),
       ),
@@ -3198,6 +3227,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   _kindHint,
+                                  maxLines: portrait ? 4 : 3,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: chrome.muted,
                                     fontSize: 13,
@@ -3512,6 +3543,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chrome = SwiftChromeColors.of(context);
+    final narrow = MediaQuery.sizeOf(context).width < 420;
     return Material(
       color: chrome.surface,
       elevation: 0,
@@ -3519,7 +3551,7 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            padding: EdgeInsets.fromLTRB(14, 10, narrow ? 6 : 10, 10),
             child: Row(
               children: [
                 Container(
@@ -3543,8 +3575,11 @@ class _Header extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Swift Document Generator',
+                        narrow
+                            ? 'Swift Document Gen'
+                            : 'Swift Document Generator',
                         maxLines: 1,
+                        softWrap: false,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: swiftUiFont(context),
@@ -3569,12 +3604,16 @@ class _Header extends StatelessWidget {
                         ),
                         child: Text(
                           kindTitle,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontFamily:
                                 Theme.of(context).textTheme.bodyMedium?.fontFamily,
                             fontWeight: FontWeight.w600,
                             fontSize: 11,
                             letterSpacing: 0.3,
+                            height: 1.1,
                             color: SwiftColors.accent,
                           ),
                         ),
@@ -3595,6 +3634,7 @@ class _Header extends StatelessWidget {
                   IconButton(
                     tooltip: isDark ? 'Light mode' : 'Dark mode',
                     onPressed: onToggleDark,
+                    visualDensity: VisualDensity.compact,
                     icon: Icon(
                       isDark
                           ? Icons.light_mode_outlined
@@ -3602,18 +3642,30 @@ class _Header extends StatelessWidget {
                       color: chrome.ink,
                     ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => showUpdateFlow(context),
-                    icon: const Icon(Icons.system_update_alt, size: 16),
-                    label: const Text('Update'),
-                    style: OutlinedButton.styleFrom(
+                  if (narrow)
+                    IconButton(
+                      tooltip: 'Update',
+                      onPressed: () => showUpdateFlow(context),
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
+                      icon: Icon(
+                        Icons.system_update_alt,
+                        color: chrome.ink,
+                        size: 20,
+                      ),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () => showUpdateFlow(context),
+                      icon: const Icon(Icons.system_update_alt, size: 16),
+                      label: const Text('Update'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ],
             ),
