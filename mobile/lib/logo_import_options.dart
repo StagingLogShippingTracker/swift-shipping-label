@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
+import 'app_snack.dart';
 import 'logo_crop_geometry.dart';
 import 'theme.dart';
 
@@ -211,11 +212,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
           onPressed: () {
             if (_cropMode == LogoCropMode.manual &&
                 (_manualCrop == null || _manualCrop!.width < 0.05)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Drag the crop box or choose Auto-crop.'),
-                ),
-              );
+              showAppSnack(context, 'Drag the crop box or choose Auto-crop.');
               return;
             }
             Navigator.pop(

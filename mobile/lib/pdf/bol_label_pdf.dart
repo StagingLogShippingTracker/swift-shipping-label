@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../bol_item_type.dart';
 import '../label_data.dart';
+import '../logo_image_process.dart';
 import '../pdf_render_options.dart';
 import 'shipping_label_pdf.dart';
 
@@ -36,6 +37,10 @@ class BolLabelPdf {
   static final footerBase = margin + 2;
   static final footerBoxH = footerH - 2;
   static final contentBottom = footerBase + footerBoxH + 8;
+  /// Outer page/frame left edge (page frame + disclaimer footer).
+  static final frameX = margin - 3;
+  /// Outer page/frame width (page frame + disclaimer footer).
+  static final frameW = contentW + 6;
   static const gap = 7.0;
   static const pad = 6.0;
   static const bodyInset = 8.0;
@@ -124,7 +129,7 @@ class BolLabelPdf {
               bold: pw.Font.helveticaBold().getFont(context),
             );
             PdfImage? swiftLogo;
-            if (options.showSwiftLogo && shipping.swiftLogoBytes != null) {
+            if (shipping.swiftLogoBytes != null) {
               swiftLogo = PdfImage.file(
                 context.document,
                 bytes: shipping.swiftLogoBytes!,
@@ -135,7 +140,11 @@ class BolLabelPdf {
                 options.logoPlacement != PdfLogoPlacement.hidden) {
               for (final b in customerLogoBytes.take(maxCustomerLogos)) {
                 if (b.isNotEmpty) {
-                  customerLogos.add(PdfImage.file(context.document, bytes: b));
+                  final normalized =
+                      LogoImageProcessor.normalizeToVisibleContent(b);
+                  customerLogos.add(
+                    PdfImage.file(context.document, bytes: normalized),
+                  );
                 }
               }
             }
@@ -343,6 +352,7 @@ class BolLabelPdf {
     _rect(c, rx, y - freightH, colW, freightH, lw: 0.75);
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
     final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
+    // Classic thin-ring radios (match standard PDF/browser controls).
     const radioSize = 9.0;
     const labelSize = 7.0;
     const radioLabelGap = 4.0;
@@ -350,8 +360,8 @@ class BolLabelPdf {
     final freightBodyTop = y - hdrH;
     final rowCenter = (freightBodyBot + freightBodyTop) / 2;
     final ry = rowCenter - radioSize / 2;
-    // Baseline so label cap-height aligns with the radio circle center.
-    final labelY = rowCenter - labelSize * 0.35;
+    // Vertically center label with the radio circle.
+    final labelY = rowCenter - labelSize * 0.32;
     final options = [
       ('prepaid', 'Prepaid'),
       ('collect', 'Collect'),
@@ -529,12 +539,16 @@ class BolLabelPdf {
     );
     y -= blockH + gap;
 
-    // Signature columns
+    // Signature columns — content-sized height; never hang into the disclaimer.
     final sw = (contentW - 2 * gap) / 3;
-    final sh = 1.28 * inch;
     const shdr = 14.0;
     var sx = margin;
     final bodyTop = y - shdr;
+    const aboveDisclaimerGap = 8.0;
+    final minBodyBot = footerBase + footerBoxH + aboveDisclaimerGap;
+    final maxSh = bodyTop - minBodyBot;
+    // Prefer compact frames; only shrink further if the page is tight.
+    final sh = math.min(1.28 * inch, maxSh);
     final bodyBot = bodyTop - sh;
 
     // Shipper's Certification
@@ -601,7 +615,9 @@ class BolLabelPdf {
           (BolFields.driverDate, 'Date', 0.38),
         ],
       ],
-      topInset: bodyInset,
+      // Tight outer insets → taller row bands → more header/entry air.
+      topInset: 2.5,
+      bottomInset: 2.5,
     );
     sx += sw + gap;
 
@@ -624,7 +640,12 @@ class BolLabelPdf {
       topInset: bodyInset,
     );
 
-    _drawPageFrame(c, pageH, contentBot: bodyBot - 4);
+    _drawPageFrame(
+      c,
+      pageH,
+      // Frame ends with the signature boxes — disclaimer sits cleanly below.
+      contentBot: bodyBot - 4,
+    );
     _drawFooter(c, fonts);
   }
 
@@ -784,24 +805,28 @@ class BolLabelPdf {
     double w,
     List<List<(String, String, double)>> rows, {
     double? topInset,
+    double? bottomInset,
     Map<String, PdfImage>? signatureImages,
   }) {
     final innerX = x + pad;
     final innerW = w - 2 * pad;
-    final insetTop = topInset ?? bodyInset;
-    const insetBot = 5.0;
+    final n = rows.length;
+    // Dense grids (Carrier's 5 rows): reclaim padding so each band can keep
+    // category headers clear of entry text without growing the outer box.
+    final dense = n >= 5;
+    final insetTop = topInset ?? (dense ? 2.5 : bodyInset);
+    final insetBot = bottomInset ?? (dense ? 2.5 : 5.0);
     final contentTop = yTop - insetTop;
     final contentBot = yBottom + insetBot;
     final availH = contentTop - contentBot;
     if (availH < 20 || rows.isEmpty) return;
 
-    // Deterministic stack per band (avoids clamp-induced line drift):
-    // label near band top → value baseline locked just above a pinned rule.
-    const valueSize = 8.0;
-    const valueAboveRule = 2.5;
-    const ruleAboveBandBot = 3.5;
+    // Pin labels to band top and values to band bottom to maximize the gap.
+    final valueSize = dense ? 7.0 : 8.0;
+    final valueAboveRule = dense ? 1.4 : 2.5;
+    final ruleAboveBandBot = dense ? 2.0 : 3.5;
+    final labelFromBandTop = dense ? 2.5 : 5.0;
     const colGap = 10.0;
-    final n = rows.length;
     final rowH = availH / n;
 
     for (var i = 0; i < n; i++) {
@@ -809,7 +834,7 @@ class BolLabelPdf {
       final bandBot = bandTop - rowH;
       final yRule = bandBot + ruleAboveBandBot;
       final valueBaseline = yRule + valueAboveRule;
-      final labelY = math.min(bandTop - 5.0, yRule + 11.5);
+      final labelY = bandTop - labelFromBandTop;
 
       final row = rows[i];
       final total = row.fold<double>(0, (a, e) => a + e.$3);
@@ -821,10 +846,10 @@ class BolLabelPdf {
         final sigImg = signatureImages?[cell.$1];
         if (sigImg != null) {
           final maxW = fw - 2;
-          final maxH = (labelY - yRule - 0.5).clamp(11.0, 18.0);
+          final maxH = (labelY - yRule - 2.0).clamp(8.0, rowH - 8.0);
           final iw = sigImg.width.toDouble();
           final ih = sigImg.height.toDouble();
-          if (iw > 0 && ih > 0) {
+          if (iw > 0 && ih > 0 && maxH > 4) {
             final fitScale = math.min(maxW / iw, maxH / ih);
             final imgW = iw * fitScale;
             final imgH = ih * fitScale;
@@ -833,7 +858,6 @@ class BolLabelPdf {
         } else {
           final value = _latin1(d.get(cell.$1)).trim();
           if (value.isNotEmpty) {
-            // Single-line value locked to the rule (no vertical box drift).
             c
               ..setFillColor(black)
               ..setFont(fonts.bold, valueSize)
@@ -966,10 +990,10 @@ class BolLabelPdf {
     c
       ..setStrokeColor(rule)
       ..setLineWidth(0.75)
-      ..drawRect(margin - 3, bot, contentW + 6, top - bot)
+      ..drawRect(frameX, bot, frameW, top - bot)
       ..strokePath()
       ..setFillColor(swift)
-      ..drawRect(margin - 3, pageH - margin + 2, contentW + 6, 3)
+      ..drawRect(frameX, pageH - margin + 2, frameW, 3)
       ..fillPath();
   }
 
@@ -977,18 +1001,19 @@ class BolLabelPdf {
     final boxY = footerBase;
     final boxH = footerBoxH;
     final boxTop = boxY + boxH;
+    // Full frame width — not inset — so the disclaimer does not look floating.
     c
       ..setStrokeColor(rule)
       ..setLineWidth(0.5)
-      ..drawRect(margin, boxY, contentW, boxH)
+      ..drawRect(frameX, boxY, frameW, boxH)
       ..strokePath()
       ..setFillColor(swift)
-      ..drawRect(margin, boxTop - 2, contentW, 2)
+      ..drawRect(frameX, boxTop - 2, frameW, 2)
       ..fillPath();
 
     const size = 5.2;
     const leading = 6.2;
-    final textW = contentW - 2 * pad;
+    final textW = frameW - 2 * pad;
     final textH = _measureWrapped(fonts, legal, textW, size: size, leading: leading);
     final bodyTop = boxTop - 3;
     final bodyBot = boxY + 2;
@@ -999,7 +1024,7 @@ class BolLabelPdf {
       c,
       fonts,
       legal,
-      margin + pad,
+      frameX + pad,
       legalTop,
       textW,
       size: size,
@@ -1231,28 +1256,28 @@ class BolLabelPdf {
     c.restoreContext();
   }
 
-  /// Donut radio matching [SwiftCircleSelector]: outer stroke + inset fill with
-  /// a clear white gap (not a solid filled disc).
+  /// Classic radio: thin dark-gray ring; selected = centered dark-gray dot.
+  /// [PdfGraphics.drawEllipse] takes center + radii (not a bounding box).
   void _radio(PdfGraphics c, double x, double y, double size, bool on) {
     final cx = x + size / 2;
     final cy = y + size / 2;
-    final stroke = (size * 0.125).clamp(1.0, 1.35);
-    final gap = size * 0.20;
-    final outerR = size / 2 - stroke / 2;
-    c
-      ..setFillColor(white)
-      ..drawEllipse(x, y, size, size)
-      ..fillPath()
-      ..setStrokeColor(black)
-      ..setLineWidth(stroke)
-      ..drawEllipse(cx - outerR, cy - outerR, outerR * 2, outerR * 2)
-      ..strokePath();
-    if (on) {
-      final innerR = (size / 2 - stroke - gap).clamp(1.0, outerR);
+    const ringColor = secondary;
+    final stroke = (size * 0.09).clamp(0.75, 1.05);
+    final outerR = size / 2;
+    final holeR = (outerR - stroke).clamp(1.0, outerR);
+    final dotR = (size * 0.20).clamp(1.6, holeR - 0.6);
+
+    void fillCircle(double r, PdfColor color) {
       c
-        ..setFillColor(swift)
-        ..drawEllipse(cx - innerR, cy - innerR, innerR * 2, innerR * 2)
+        ..setFillColor(color)
+        ..drawEllipse(cx, cy, r, r)
         ..fillPath();
+    }
+
+    fillCircle(outerR, ringColor);
+    fillCircle(holeR, white);
+    if (on) {
+      fillCircle(dotR, ringColor);
     }
   }
 

@@ -1,11 +1,13 @@
 /// PDF generation preferences (Windows-customizable; defaults match current layout).
+///
+/// The Swift Supply logo is always drawn when asset bytes are available — there
+/// is no toggle to hide it.
 class PdfRenderOptions {
   const PdfRenderOptions({
     this.logoPlacement = PdfLogoPlacement.left,
     this.logoScale = 1.0,
     this.bodyFont = PdfBodyFont.brand,
     this.fontScale = 1.0,
-    this.showSwiftLogo = true,
     this.showCustomerLogos = true,
     this.pageOrientation = PdfPageOrientation.landscape,
     this.isBoxSized = false,
@@ -15,7 +17,6 @@ class PdfRenderOptions {
   final double logoScale;
   final PdfBodyFont bodyFont;
   final double fontScale;
-  final bool showSwiftLogo;
   final bool showCustomerLogos;
   final PdfPageOrientation pageOrientation;
 
@@ -34,9 +35,7 @@ class PdfRenderOptions {
       bodyFont:
           PdfBodyFont.tryParse('${json['bodyFont']}') ?? PdfBodyFont.brand,
       fontScale: _clampDouble(json['fontScale'], 0.8, 1.35, 1.0),
-      showSwiftLogo: json['showSwiftLogo'] is bool
-          ? json['showSwiftLogo'] as bool
-          : true,
+      // Legacy `showSwiftLogo` in saved settings is ignored — Swift is always on.
       showCustomerLogos: json['showCustomerLogos'] is bool
           ? json['showCustomerLogos'] as bool
           : true,
@@ -53,7 +52,6 @@ class PdfRenderOptions {
         'logoScale': logoScale,
         'bodyFont': bodyFont.name,
         'fontScale': fontScale,
-        'showSwiftLogo': showSwiftLogo,
         'showCustomerLogos': showCustomerLogos,
         'pageOrientation': pageOrientation.name,
         'isBoxSized': isBoxSized,
@@ -64,7 +62,6 @@ class PdfRenderOptions {
     double? logoScale,
     PdfBodyFont? bodyFont,
     double? fontScale,
-    bool? showSwiftLogo,
     bool? showCustomerLogos,
     PdfPageOrientation? pageOrientation,
     bool? isBoxSized,
@@ -74,7 +71,6 @@ class PdfRenderOptions {
       logoScale: logoScale ?? this.logoScale,
       bodyFont: bodyFont ?? this.bodyFont,
       fontScale: fontScale ?? this.fontScale,
-      showSwiftLogo: showSwiftLogo ?? this.showSwiftLogo,
       showCustomerLogos: showCustomerLogos ?? this.showCustomerLogos,
       pageOrientation: pageOrientation ?? this.pageOrientation,
       isBoxSized: isBoxSized ?? this.isBoxSized,

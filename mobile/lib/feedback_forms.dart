@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_snack.dart';
 import 'theme.dart';
 
 /// Warehouse feedback inbox for Windows Help / F2 capture forms.
@@ -132,9 +133,7 @@ class _MailFormDialogState extends State<_MailFormDialog> {
   Future<void> _submit() async {
     final summary = _summary.text.trim();
     if (summary.isEmpty && _details.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a summary or details before sending.')),
-      );
+      showAppSnack(context, 'Add a summary or details before sending.');
       return;
     }
     setState(() => _sending = true);
@@ -149,29 +148,19 @@ class _MailFormDialogState extends State<_MailFormDialog> {
       final ok = await launchUrl(uri);
       if (!mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
+        showAppSnack(context, 
               'Could not open the mail app. Copy the address: '
               '$kWarehouseFeedbackEmail',
-            ),
-          ),
-        );
+            );
         setState(() => _sending = false);
         return;
       }
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mail draft opened — send when ready.'),
-        ),
-      );
+      showAppSnack(context, 'Mail draft opened — send when ready.');
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open mail: $e')),
-      );
+      showAppSnack(context, 'Could not open mail: $e');
     }
   }
 

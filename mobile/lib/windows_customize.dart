@@ -352,16 +352,6 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          value: pdf.showSwiftLogo,
-                          onChanged: (v) => _set(_draft.copyWith(
-                            pdfOptions:
-                                pdf.copyWith(showSwiftLogo: v ?? true),
-                          )),
-                          title: const Text('Show Swift logo'),
-                          controlAffinity: ListTileControlAffinity.leading,
-                        ),
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
                           value: pdf.showCustomerLogos,
                           onChanged: (v) => _set(_draft.copyWith(
                             pdfOptions:

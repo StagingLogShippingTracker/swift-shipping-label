@@ -5,32 +5,43 @@ import 'employee_directory.dart';
 
 /// Free-text employee name field with roster autocomplete.
 ///
-/// Suggestions come from [names] (Supabase `dropdown_roster` / person_by).
-/// The user may always type and keep a custom name that is not in the list —
-/// there is no forced selection / validation against the roster.
+/// Suggestions come from [names] (Supabase `dropdown_roster` / person_by +
+/// local remembered contacts). The user may always type a custom name.
+///
+/// Remembered names (in [rememberedNames]) show a delete control so the user
+/// can remove them from local memory without touching the shared directory.
 class EmployeeAutocompleteField extends StatefulWidget {
   const EmployeeAutocompleteField({
     super.key,
     required this.controller,
     required this.focusNode,
     required this.names,
+    this.rememberedNames = const {},
     this.labelText = 'SWIFT CONTACT',
     this.hintText = 'Type a name or pick from directory',
     this.loading = false,
     this.onRequestRefresh,
     this.onNameCommitted,
+    this.onForgetRemembered,
     this.dense = false,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final List<String> names;
+
+  /// Lowercased set of locally remembered names (for delete affordance).
+  final Set<String> rememberedNames;
   final String labelText;
   final String hintText;
   final bool loading;
   final VoidCallback? onRequestRefresh;
+
   /// Called when the user picks a suggestion or submits the field (non-empty).
   final ValueChanged<String>? onNameCommitted;
+
+  /// Remove a name from local memory (not the shared roster).
+  final ValueChanged<String>? onForgetRemembered;
   final bool dense;
 
   @override
@@ -63,8 +74,6 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
   void _onFocusChange() {
     if (widget.focusNode.hasFocus) {
       widget.onRequestRefresh?.call();
-      // Nudge Autocomplete to re-run optionsBuilder once the roster arrives
-      // while the field is already focused.
       if (widget.names.isNotEmpty) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
@@ -78,13 +87,18 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
     }
   }
 
+  bool _isRemembered(String name) =>
+      widget.rememberedNames.contains(name.trim().toLowerCase());
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(bottom: widget.dense ? 4 : 6),
       child: RawAutocomplete<String>(
-        // Rebuild when roster size changes so options refresh without retyping.
-        key: ValueKey('emp-ac-${widget.names.length}-${widget.labelText}'),
+        key: ValueKey(
+          'emp-ac-${widget.names.length}-${widget.rememberedNames.length}-'
+          '${widget.labelText}',
+        ),
         textEditingController: widget.controller,
         focusNode: widget.focusNode,
         optionsBuilder: (textEditingValue) {
@@ -157,10 +171,25 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
                   itemCount: opts.length,
                   itemBuilder: (context, i) {
                     final name = opts[i];
+                    final remembered = _isRemembered(name);
                     return ListTile(
                       dense: true,
                       title: Text(name),
+                      subtitle: remembered
+                          ? const Text(
+                              'Saved on this device',
+                              style: TextStyle(fontSize: 11),
+                            )
+                          : null,
                       onTap: () => onSelected(name),
+                      trailing: remembered && widget.onForgetRemembered != null
+                          ? IconButton(
+                              tooltip: 'Remove from saved memory',
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () =>
+                                  widget.onForgetRemembered!(name),
+                            )
+                          : null,
                     );
                   },
                 ),

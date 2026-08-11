@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
+import 'app_snack.dart';
 import 'app_update.dart';
 import 'theme.dart';
 
@@ -137,9 +138,7 @@ class _InstallProgressDialogState extends State<_InstallProgressDialog> {
 /// Header Update control — dialog on Windows, bottom sheet on mobile.
 Future<void> showUpdateFlow(BuildContext context) async {
   if (kIsWeb) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Updates are not supported on web.')),
-    );
+    showAppSnack(context, 'Updates are not supported on web.');
     return;
   }
 

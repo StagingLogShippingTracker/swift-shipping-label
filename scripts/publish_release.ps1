@@ -200,9 +200,11 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- **Bulk Labels (Propak / Avery 5163)** on Windows and Android: upload a Swift Order Acknowledgement PDF, expand quantities into stickers, generate editable Word (.docx) + PDF
-- TAG# vs PART# follows the OA line notes; missing identity prompts Proceed / Skip / Cancel (check with PM)
-- Android PDF picker uses the system document picker (same reliable path as logo import)
+- **Customer logos:** crop to visible content; Swift logo height locked; customers match Swift height and pack left-to-right (shrink only if needed)
+- **Shipping Label:** Sales Order preferred font size 48 pt
+- **Receiving:** duplicate PM field removed; Swift Contact labeled as PM (legacy PM presets migrate correctly)
+- **BOL:** denser carrier/driver acceptance layout; classic thin freight charge radios; disclaimer footer spans full page frame; signature boxes tightened
+- **UI:** top floating snack notifications; remove remembered contact names with ×; Swift logo always shown
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

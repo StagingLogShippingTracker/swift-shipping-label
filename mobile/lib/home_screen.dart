@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
+import 'app_snack.dart';
 import 'app_storage.dart';
 import 'app_theme_scope.dart';
 import 'bol_document_number.dart';
@@ -85,8 +86,8 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Order & PM',
-    'Swift sales order, contact, and project manager',
-    [LabelFields.salesOrder, LabelFields.swiftContact, LabelFields.pm],
+    'Swift sales order and PM (project manager)',
+    [LabelFields.salesOrder, LabelFields.swiftContact],
   ),
   (
     'Received',
@@ -328,17 +329,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() {});
     } on PresetSyncException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Preset sync: ${e.message}')),
-        );
+        showAppSnack(context, 'Preset sync: ${e.message}');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Preset sync failed — using local presets.'),
-          ),
-        );
+        showAppSnack(context, 'Preset sync failed — using local presets.');
       }
     }
     await _syncSignaturesQuietly();
@@ -350,9 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() {});
     } on SignatureSyncException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signature sync: ${e.message}')),
-        );
+        showAppSnack(context, 'Signature sync: ${e.message}');
       }
     } catch (_) {
       // Signatures are optional — ignore offline failures.
@@ -364,15 +357,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await _presetSync.pushPreset(kind, displayName);
     } on PresetSyncException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cloud sync: ${e.message}')),
-        );
+        showAppSnack(context, 'Cloud sync: ${e.message}');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cloud sync failed — saved locally.')),
-        );
+        showAppSnack(context, 'Cloud sync failed — saved locally.');
       }
     }
   }
@@ -382,17 +371,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await _presetSync.deletePreset(kind, displayName);
     } on PresetSyncException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cloud sync: ${e.message}')),
-        );
+        showAppSnack(context, 'Cloud sync: ${e.message}');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cloud sync failed — deleted locally only.'),
-          ),
-        );
+        showAppSnack(context, 'Cloud sync failed — deleted locally only.');
       }
     }
   }
@@ -549,9 +532,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _presetName = displayName);
     await _pushPresetQuietly(_kind, displayName);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved preset “$displayName”.')),
-      );
+      showAppSnack(context, 'Saved preset “$displayName”.');
     }
   }
 
@@ -651,21 +632,16 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (recreate && mounted) {
         if (result.recreateSucceeded == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Recreate finished — logo cleaned.')),
-          );
+          showAppSnack(context, 'Recreate finished — logo cleaned.');
         } else {
           final detail = (result.recreateError ?? 'unknown error').trim();
           final short = detail.length > 140
               ? '${detail.substring(0, 140)}…'
               : detail;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Recreate failed — imported original instead. $short',
-              ),
-              duration: const Duration(seconds: 6),
-            ),
+          showAppSnack(
+            context,
+            'Recreate failed — imported original instead. $short',
+            duration: const Duration(seconds: 6),
           );
         }
       }
@@ -690,9 +666,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     var logos = widget.storage.listLogos();
     if (logos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No logos in storage yet — use Browse.')),
-      );
+      showAppSnack(context, 'No logos in storage yet — use Browse.');
       return;
     }
 
@@ -790,13 +764,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                             await widget.storage.deleteStoredLogo(f);
                                         if (!ctx.mounted) return;
                                         if (!deleted) {
-                                          ScaffoldMessenger.of(ctx).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
+                                          showAppSnack(ctx, 
                                                 'Could not delete “$name”.',
-                                              ),
-                                            ),
-                                          );
+                                              );
                                           return;
                                         }
                                         setState(() {
@@ -804,10 +774,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         });
                                         setDialogState(() {});
                                         if (!ctx.mounted) return;
-                                        ScaffoldMessenger.of(ctx).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Deleted “$name”.')),
-                                        );
+                                        showAppSnack(ctx, 'Deleted “$name”.');
                                       },
                                     ),
                                   ),
@@ -884,11 +851,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _findLogoOnWeb() async {
     if (_findingLogo) return;
     if (_logoPaths.length >= maxCustomerLogos) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Already have 2 logos. Remove one to find another.'),
-        ),
-      );
+      showAppSnack(context, 'Already have 2 logos. Remove one to find another.');
       return;
     }
 
@@ -1035,14 +998,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final candidates = LogoFinder.filterForPicker(rawCandidates);
       if (!mounted) return;
       if (candidates.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
+        showAppSnack(context, 
               'No logo found across Google, Bing, Brands of the World, and other sources. '
               'Try a website domain or upload manually.',
-            ),
-          ),
-        );
+            );
         setState(() => _findingLogo = false);
         return;
       }
@@ -1153,16 +1112,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted) return;
       final hint = chosen.hint.isEmpty ? '' : '\n${chosen.hint}';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logo from ${chosen.source}.$hint')),
-      );
+      showAppSnack(context, 'Logo from ${chosen.source}.$hint');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Web find failed: $e. Try Upload manually.'),
-          ),
-        );
+        showAppSnack(context, 'Web find failed: $e. Try Upload manually.');
       }
     } finally {
       if (mounted) setState(() => _findingLogo = false);
@@ -1317,19 +1270,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (!mounted) return;
       setState(() => _bulkParsing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
+      showAppSnack(context, 
             'Sample OA not found — upload an Order Acknowledgement PDF.',
-          ),
-        ),
-      );
+          );
     } catch (e) {
       if (!mounted) return;
       setState(() => _bulkParsing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sample load failed: $e')),
-      );
+      showAppSnack(context, 'Sample load failed: $e');
     }
   }
 
@@ -1358,9 +1305,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _bulkParse = null;
             _bulkSourcePath = null;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Bulk label upload cancelled.')),
-          );
+          showAppSnack(context, 'Bulk label upload cancelled.');
           return;
         }
         parsed = parsed.applyingMissingIdAction(action);
@@ -1372,15 +1317,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _bulkParsing = false;
       });
       if (parsed.lines.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        showAppSnack(context, 
               parsed.warnings.isEmpty
                   ? 'No label lines found in that PDF.'
                   : parsed.warnings.first,
-            ),
-          ),
-        );
+            );
       }
     } catch (e) {
       if (!mounted) return;
@@ -1388,9 +1329,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _bulkParsing = false;
         _bulkParse = null;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not read Order Acknowledgement: $e')),
-      );
+      showAppSnack(context, 'Could not read Order Acknowledgement: $e');
     }
   }
 
@@ -1493,7 +1432,7 @@ class _HomeScreenState extends State<HomeScreen> {
           LabelFields.poNum,
           LabelFields.project,
           LabelFields.salesOrder,
-          LabelFields.pm,
+          LabelFields.swiftContact,
           LabelFields.dateReceived,
           LabelFields.receivedBy,
           LabelFields.specialInstructions,
@@ -1569,11 +1508,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_bolCustomerCopy) bolCopies.add('CUSTOMER COPY');
       if (bolCopies.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Select at least one BOL copy to generate.'),
-          ),
-        );
+        showAppSnack(context, 'Select at least one BOL copy to generate.');
         return;
       }
     }
@@ -1683,15 +1618,11 @@ class _HomeScreenState extends State<HomeScreen> {
           LabelKind.bulk => '',
         };
         final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved$pages$openHint:\n${file.path}')),
-        );
+        showAppSnack(context, 'Saved$pages$openHint:\n${file.path}');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF failed: $e')),
-        );
+        showAppSnack(context, 'PDF failed: $e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1702,20 +1633,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final parsed = _bulkParse;
     if (parsed == null || parsed.totalLabels < 1) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Upload an Order Acknowledgement PDF first.'),
-        ),
-      );
+      showAppSnack(context, 'Upload an Order Acknowledgement PDF first.');
       return;
     }
     if (parsed.poNumber.trim().isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PO Number missing — check the uploaded OA PDF.'),
-        ),
-      );
+      showAppSnack(context, 'PO Number missing — check the uploaded OA PDF.');
       return;
     }
 
@@ -1756,21 +1679,16 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (mounted) {
         final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Saved ${labels.length} Propak labels on ${parsed.sheetCount} '
-              'sheet${parsed.sheetCount == 1 ? '' : 's'}$openHint:\n'
-              '${docxFile.path}\n(PDF also saved: ${p.basename(pdfFile.path)})',
-            ),
-          ),
+        showAppSnack(
+          context,
+          'Saved ${labels.length} Propak labels on ${parsed.sheetCount} '
+          'sheet${parsed.sheetCount == 1 ? '' : 's'}$openHint:\n'
+          '${docxFile.path}\n(PDF also saved: ${p.basename(pdfFile.path)})',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bulk label generate failed: $e')),
-        );
+        showAppSnack(context, 'Bulk label generate failed: $e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1952,15 +1870,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (mounted) {
         setState(() => _selectedSavedSignature = saved);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved signature “${saved.name}”.')),
-        );
+        showAppSnack(context, 'Saved signature “${saved.name}”.');
       }
     } on SignatureSyncException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save signature: ${e.message}')),
-        );
+        showAppSnack(context, 'Could not save signature: ${e.message}');
       }
     }
   }
@@ -1969,9 +1883,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final sigs = _signatureSync.localSignatures;
     if (sigs.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No saved signatures yet.')),
-        );
+        showAppSnack(context, 'No saved signatures yet.');
       }
       return;
     }
@@ -1991,9 +1903,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (picked == null || !mounted) return;
     final bytes = await _signatureSync.loadBytes(picked);
     if (bytes == null || !mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load signature.')),
-      );
+      showAppSnack(context, 'Could not load signature.');
       return;
     }
     setState(() {
@@ -2128,23 +2038,40 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildEmployeeNameField(String key) {
     final ctrl = _controllers[key]!;
     final meta = _meta(key);
-    final label = meta.$2.toUpperCase();
+    // Receiving form: Swift Contact field is the PM (duplicate PM field removed).
+    final label = (key == LabelFields.swiftContact && _kind == LabelKind.receiving)
+        ? 'PM'
+        : meta.$2.toUpperCase();
     final hint = switch (key) {
+      LabelFields.swiftContact when _kind == LabelKind.receiving =>
+        'Type PM name or pick from directory',
       LabelFields.swiftContact => 'Type a name or pick from directory',
       LabelFields.receivedBy => 'Type who received or pick from directory',
       BolFields.shipperCertName => 'Type shipper name or pick from directory',
       _ => 'Type a name or pick from directory',
     };
+    final remembered = {
+      for (final n in widget.storage.rememberedContacts) n.toLowerCase(),
+    };
     return EmployeeAutocompleteField(
       controller: ctrl,
       focusNode: _employeeFocusFor(key),
       names: _swiftContactNames,
+      rememberedNames: remembered,
       labelText: label,
       hintText: hint,
       loading: _swiftContactsLoading,
       onRequestRefresh: () => _loadSwiftContacts(forceRefresh: true),
       onNameCommitted: (name) => _rememberContactNames([name]),
+      onForgetRemembered: _forgetRememberedContact,
     );
+  }
+
+  Future<void> _forgetRememberedContact(String name) async {
+    final removed = await widget.storage.forgetContact(name);
+    if (!removed || !mounted) return;
+    _refreshContactSuggestions();
+    showAppSnack(context, 'Removed “$name” from saved memory.');
   }
 
   /// On Windows, pair single-line fields into two columns for denser forms.

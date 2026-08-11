@@ -75,7 +75,7 @@ PIECE_BAND_ROW_H = (
 )
 ENTRY_HERO = 22
 # Sales Order matches Ship To Name (hero) entry size.
-ENTRY_SO = ENTRY_HERO
+ENTRY_SO = 48.0
 ENTRY_NOTES = 18
 ENTRY_MIN = 9
 LINE_GAP = 3.0

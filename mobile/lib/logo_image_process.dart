@@ -25,6 +25,45 @@ class LogoImageProcessor {
   static Uint8List process(Uint8List input) =>
       processWithOptions(input, LogoImportOptions.standard());
 
+  /// Crop to opaque / non-background content bounds so PDF height matching
+  /// uses the visible artwork, not transparent (or flat) padding.
+  ///
+  /// Uses a true pixel bounding-box (not whole-row peeling), so soft shadows
+  /// or single fringe pixels cannot keep large empty margins around square icons.
+  static Uint8List normalizeToVisibleContent(Uint8List input) {
+    if (input.isEmpty) return input;
+    final decoded = img.decodeImage(input);
+    if (decoded == null) return input;
+
+    var image = decoded.numChannels == 4
+        ? decoded.clone()
+        : decoded.convert(numChannels: 4);
+
+    // Transparent padding → alpha. Opaque white/flat canvas → bg match.
+    final bg = _hasMeaningfulTransparency(image)
+        ? null
+        : _estimateBackgroundColor(image);
+
+    final beforeW = image.width;
+    final beforeH = image.height;
+    // Ignore faint anti-alias / drop-shadow fringe when finding the ink box.
+    image = _cropToContentBBox(image, bg, minAlpha: 40);
+
+    if (image.width == beforeW && image.height == beforeH) {
+      // Fallback: looser alpha peel if bbox found nothing new.
+      image = _trimEmptyMargins(image, bg);
+      if (image.width == beforeW &&
+          image.height == beforeH &&
+          decoded.numChannels == 4) {
+        return input;
+      }
+    }
+
+    // Minimal pad only (1px) — large pad would shrink visible ink vs Swift again.
+    image = _addPadding(image, fraction: 0.01, minPad: 1, maxPad: 4);
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
   /// Apply [options]: optional manual crop, bg removal, auto margin trim.
   static Uint8List processWithOptions(
     Uint8List input,
@@ -210,6 +249,56 @@ class LogoImageProcessor {
     );
   }
 
+  /// Pixel AABB of "solid" content (ignores faint fringe below [minAlpha]).
+  static img.Image _cropToContentBBox(
+    img.Image image,
+    (int r, int g, int b)? bg, {
+    int minAlpha = 40,
+  }) {
+    var minX = image.width;
+    var minY = image.height;
+    var maxX = -1;
+    var maxY = -1;
+
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < minAlpha) continue;
+        if (bg != null &&
+            _colorDistance(
+                  p.r.toInt(),
+                  p.g.toInt(),
+                  p.b.toInt(),
+                  bg.$1,
+                  bg.$2,
+                  bg.$3,
+                ) <=
+                colorTolerance) {
+          continue;
+        }
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return image;
+
+    minX = math.max(0, minX - safeInset);
+    minY = math.max(0, minY - safeInset);
+    maxX = math.min(image.width - 1, maxX + safeInset);
+    maxY = math.min(image.height - 1, maxY + safeInset);
+
+    return img.copyCrop(
+      image,
+      x: minX,
+      y: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
+    );
+  }
+
   /// Peel only fully empty outer rows/columns — never shrink into artwork.
   static img.Image _trimEmptyMargins(
     img.Image image,
@@ -269,12 +358,15 @@ class LogoImageProcessor {
     );
   }
 
-  static img.Image _addPadding(img.Image image) {
+  static img.Image _addPadding(
+    img.Image image, {
+    double fraction = paddingFraction,
+    int minPad = minPadding,
+    int maxPad = maxPadding,
+  }) {
     final side = math.max(image.width, image.height);
-    final pad = (side * paddingFraction)
-        .round()
-        .clamp(minPadding, maxPadding)
-        .toInt();
+    final pad =
+        (side * fraction).round().clamp(minPad, maxPad).toInt();
 
     final out = img.Image(
       width: image.width + pad * 2,

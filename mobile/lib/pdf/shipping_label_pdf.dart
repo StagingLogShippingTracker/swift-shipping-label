@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:vector_math/vector_math_64.dart';
 
 import '../label_data.dart';
+import '../logo_image_process.dart';
 import '../pdf_render_options.dart';
 
 /// Port of `generate_swift_shipping_label_pdf.py` — Swiss layout, flat print PDF.
@@ -50,8 +51,8 @@ class ShippingLabelPdf {
 
   static const entrySize = 18.0;
   static const entryHero = 22.0;
-  /// Sales Order matches Ship To Name (hero) entry size.
-  static const entrySo = entryHero;
+  /// Shipping Sales Order No. preferred font size (pt).
+  static const entrySo = 48.0;
   static const entryRecvSo = 48.0;
   static const entryNotes = 18.0;
   static const entryMin = 9.0;
@@ -272,13 +273,17 @@ class ShippingLabelPdf {
             final customerLogos = <PdfImage>[];
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
               if (bytes.isNotEmpty) {
+                // Size by visible ink bounds so padded square icons match
+                // tight rectangular wordmarks at the shared Swift height.
+                final normalized =
+                    LogoImageProcessor.normalizeToVisibleContent(bytes);
                 customerLogos.add(
-                  PdfImage.file(context.document, bytes: bytes),
+                  PdfImage.file(context.document, bytes: normalized),
                 );
               }
             }
             PdfImage? swiftLogo;
-            if (options.showSwiftLogo && swiftLogoBytes != null) {
+            if (swiftLogoBytes != null) {
               swiftLogo =
                   PdfImage.file(context.document, bytes: swiftLogoBytes!);
             }
@@ -490,10 +495,10 @@ class ShippingLabelPdf {
     c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
   }
 
-  /// Customer/C/O logo default height on Shipping & Receiving (pt).
+  /// Fixed Swift logo height (pt). Never scaled by customer logos or logoScale.
   static const customerLogoTargetH = 62.24;
 
-  /// Keep logos clear of the orange header frames (top bumper / band edges).
+  /// Keep logos clear of the orange header frames (band edges).
   static const customerLogoBandInset = 2.0;
 
   /// Horizontal gap between Logo 1 and Logo 2 (C/O).
@@ -502,59 +507,21 @@ class ShippingLabelPdf {
   /// Breathing gap between the customer-logo row and Swift (never overlap).
   static const customerLogoToSwiftGap = 12.0;
 
-  /// Uniform height for 1–2 customer logos: start at [targetH] (exact Swift
-  /// height when available), then downscale together if the row is wider than
-  /// the safe-zone [availW] or taller than the orange-bar band. Never changes
-  /// Swift's reserved position/size.
-  void _drawCustomerLogoRow(
+  /// Draw 1–2 customer logos at height [h], left-to-right in [availW].
+  void _drawCustomerLogoRowAt(
     PdfGraphics c,
-    List<PdfImage> logos,
+    List<PdfImage> valid,
+    List<double> widths,
     double leftX,
-    double logoBottom,
+    double bandBottom,
     double bandTop,
-    double targetH,
-    double availW, {
-    double gap = customerLogoGap,
-  }) {
-    final valid = <PdfImage>[];
-    for (final l in logos) {
-      final iw = l.width.toDouble();
-      final ih = l.height.toDouble();
-      if (iw > 0 && ih > 0) valid.add(l);
-    }
-    if (valid.isEmpty || availW <= 0) return;
-
-    final bandInnerH =
-        (bandTop - logoBottom - 2 * customerLogoBandInset).clamp(1.0, 10000.0);
-    var h = targetH > bandInnerH ? bandInnerH : targetH;
-    if (h <= 0) return;
-
-    final widths = <double>[
-      for (final l in valid) l.width.toDouble() / l.height.toDouble() * h,
-    ];
-    var combined =
-        widths.fold<double>(0, (a, b) => a + b) + gap * (valid.length - 1);
-    if (combined > availW) {
-      final scale = availW / combined;
-      h *= scale;
-      for (var i = 0; i < widths.length; i++) {
-        widths[i] *= scale;
-      }
-      combined = availW;
-    }
-
-    // Re-clamp height if width shrink left them still outside the band.
-    if (h > bandInnerH) {
-      final scale = bandInnerH / h;
-      h = bandInnerH;
-      for (var i = 0; i < widths.length; i++) {
-        widths[i] *= scale;
-      }
-    }
-
-    final bandCenter = (bandTop + logoBottom) / 2;
+    double h,
+    double availW,
+    double gap,
+  ) {
+    final bandCenter = (bandTop + bandBottom) / 2;
     var y = bandCenter - h / 2;
-    final minY = logoBottom + customerLogoBandInset;
+    final minY = bandBottom + customerLogoBandInset;
     final maxY = bandTop - customerLogoBandInset - h;
     if (y < minY) y = minY;
     if (maxY >= minY && y > maxY) y = maxY;
@@ -562,12 +529,60 @@ class ShippingLabelPdf {
     var x = leftX;
     final rightLimit = leftX + availW;
     for (var i = 0; i < valid.length; i++) {
-      final w = widths[i];
-      // Hard stop: never draw past the reserved Swift / frame edge.
-      if (x + w > rightLimit + 0.01) break;
+      var w = widths[i];
+      final remain = rightLimit - x;
+      if (remain < 2) break;
+      if (w > remain) w = remain;
       c.drawImage(valid[i], x, y, w, h);
       x += w + gap;
     }
+  }
+
+  /// Size customer logos to [targetH] (Swift's height). Shrink uniformly only
+  /// when the row is wider than [availW] — and only as much as needed.
+  void _drawCustomerLogosMatchingHeight(
+    PdfGraphics c,
+    List<PdfImage> logos,
+    double leftX,
+    double bandBottom,
+    double bandTop,
+    double targetH,
+    double availW,
+  ) {
+    final valid = <PdfImage>[
+      for (final l in logos)
+        if (l.width > 0 && l.height > 0) l,
+    ];
+    if (valid.isEmpty || availW <= 0 || targetH <= 0) return;
+
+    final bandInnerH =
+        (bandTop - bandBottom - 2 * customerLogoBandInset).clamp(1.0, 10000.0);
+    var h = targetH > bandInnerH ? bandInnerH : targetH;
+
+    var widths = <double>[
+      for (final l in valid) l.width.toDouble() / l.height.toDouble() * h,
+    ];
+    var combined = widths.fold<double>(0, (a, b) => a + b) +
+        customerLogoGap * (valid.length - 1);
+
+    // Shrink only if the row cannot fit — single or multiple.
+    if (combined > availW && combined > 0) {
+      final scale = availW / combined;
+      h *= scale;
+      widths = [for (final w in widths) w * scale];
+    }
+
+    _drawCustomerLogoRowAt(
+      c,
+      valid,
+      widths,
+      leftX,
+      bandBottom,
+      bandTop,
+      h,
+      availW,
+      customerLogoGap,
+    );
   }
 
   double _drawHeader(
@@ -582,66 +597,62 @@ class ShippingLabelPdf {
     final yTop = pageH - my - 14;
     final bandH = 0.92 * inch;
     final logoBottom = yTop - bandH;
+    final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
+    final ruleY = logoBottom - airUnderLogos;
+
     final logos = customerLogos.take(maxCustomerLogos).toList();
+    final place = options.showCustomerLogos
+        ? options.logoPlacement
+        : PdfLogoPlacement.hidden;
 
-    final bandInnerH = bandH - 2 * customerLogoBandInset;
-
-    // Swift size/position is computed first; customer logos match its height.
+    // --- Swift size is FIXED. Never depends on customer logos or logoScale. ---
     final swiftMaxW = colW * 0.95;
-    final swiftMaxH = bandH - 4;
+    final swiftMaxH = customerLogoTargetH; // locked constant (62.24 pt)
     double swiftW = 0;
     double swiftH = 0;
-    if (options.showSwiftLogo && swiftLogo != null) {
+    if (swiftLogo != null) {
       final iw = swiftLogo.width.toDouble();
       final ih = swiftLogo.height.toDouble();
       if (iw > 0 && ih > 0) {
-        final scale = (swiftMaxW / iw < swiftMaxH / ih)
-            ? swiftMaxW / iw
-            : swiftMaxH / ih;
+        final scale =
+            (swiftMaxW / iw < swiftMaxH / ih) ? swiftMaxW / iw : swiftMaxH / ih;
         swiftW = iw * scale;
         swiftH = ih * scale;
       }
     }
 
-    // Exact height match to Swift when present; otherwise the 62.24 pt target.
-    var logoH = swiftH > 0
+    // Customer logos match Swift's height. logoScale only when Swift is absent.
+    final customerTargetH = swiftH > 0
         ? swiftH
-        : (customerLogoTargetH * options.logoScale);
-    if (logoH > bandInnerH) logoH = bandInnerH;
-
-    final place = options.showCustomerLogos
-        ? options.logoPlacement
-        : PdfLogoPlacement.hidden;
+        : (customerLogoTargetH * options.logoScale.clamp(0.6, 1.5));
 
     if (place == PdfLogoPlacement.left && logos.isNotEmpty) {
-      // Customer logos sit left of Swift; avail width stops before Swift.
       final swiftLeftX = mx + contentW - swiftW;
       final availForCustomer = swiftW > 0
           ? (swiftLeftX - customerLogoToSwiftGap - mx).clamp(0.0, contentW)
           : contentW;
-      _drawCustomerLogoRow(
+      _drawCustomerLogosMatchingHeight(
         c,
         logos,
         mx,
         logoBottom,
         yTop,
-        logoH,
+        customerTargetH,
         availForCustomer,
       );
     } else if (place == PdfLogoPlacement.right && logos.isNotEmpty) {
-      // Swift stays on the left; customer logos use the remaining right span.
       final swiftRightEdge = mx + swiftW;
       final startX = swiftW > 0
           ? swiftRightEdge + customerLogoToSwiftGap
           : mx + contentW * 0.58;
       final avail = (mx + contentW - startX).clamp(0.0, contentW);
-      _drawCustomerLogoRow(
+      _drawCustomerLogosMatchingHeight(
         c,
         logos,
         startX,
         logoBottom,
         yTop,
-        logoH,
+        customerTargetH,
         avail,
       );
     } else if (logos.isEmpty && place != PdfLogoPlacement.belowSwift) {
@@ -652,41 +663,32 @@ class ShippingLabelPdf {
         ..strokePath();
     }
 
-    if (options.showSwiftLogo && swiftLogo != null && swiftW > 0) {
-      final w = swiftW;
-      final h = swiftH;
-      final drawX = place == PdfLogoPlacement.right
-          ? mx
-          : (mx + contentW - w);
-      // Center between top thick bumper bottom and thin accent top.
-      final yTopBarBottom = pageH - my + 4;
-      final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
-      final ruleY = logoBottom - airUnderLogos;
-      const ruleH = 2.5;
-      final ruleDrawY = ruleY - 0.5;
-      final yBottomBarTop = ruleDrawY + ruleH;
-      final gap = yTopBarBottom - yBottomBarTop;
-      final yLogoBottom = yBottomBarTop + (gap - h) / 2;
-      c.drawImage(swiftLogo, drawX, yLogoBottom, w, h);
+    if (swiftLogo != null && swiftW > 0) {
+      final drawX =
+          place == PdfLogoPlacement.right ? mx : (mx + contentW - swiftW);
+      final bandCenter = (yTop + logoBottom) / 2;
+      var yLogoBottom = bandCenter - swiftH / 2;
+      final minY = logoBottom + customerLogoBandInset;
+      final maxY = yTop - customerLogoBandInset - swiftH;
+      if (yLogoBottom < minY) yLogoBottom = minY;
+      if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
+      c.drawImage(swiftLogo, drawX, yLogoBottom, swiftW, swiftH);
     }
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
       final belowTop = logoBottom - customerLogoBandInset;
-      final belowBottom = logoBottom - logoH - 4;
-      _drawCustomerLogoRow(
+      final belowBottom = logoBottom - customerTargetH - 4;
+      _drawCustomerLogosMatchingHeight(
         c,
         logos,
         mx,
         belowBottom,
         belowTop,
-        logoH,
+        customerTargetH,
         contentW,
       );
     }
 
-    // Rule under logos + optional RECEIVING chip (fixed Y — not shifted by logos).
-    final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
-    final ruleY = logoBottom - airUnderLogos;
     c.setFillColor(swift);
     _fillRRect(c, mx, ruleY - 0.5, contentW, 2.5, 1.0);
 
@@ -864,7 +866,7 @@ class ShippingLabelPdf {
       preferredSize: entryRecvSo,
       minRowH: 48,
     );
-    yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.pm, rx, colW, sample);
+    yR = _fieldRow(c, fonts, yR, 'PM', LabelFields.swiftContact, rx, colW, sample);
 
     final yMid = yL < yR ? yL : yR;
     _fieldRow(
@@ -945,7 +947,7 @@ class ShippingLabelPdf {
     halfCell(mx + half + gap, 'Received By', LabelFields.receivedBy);
   }
 
-  /// Sales Order — preferred size matches Ship To Name ([entrySo] / [entryHero]).
+  /// Sales Order — preferred size [entrySo] (Shipping) / [entryRecvSo] (Receiving).
   double _drawSalesOrderRow(
     PdfGraphics c,
     _ResolvedFonts fonts,

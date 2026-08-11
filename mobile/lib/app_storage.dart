@@ -628,6 +628,20 @@ class AppStorage {
     return true;
   }
 
+  /// Wipe a single remembered contact name (local memory only).
+  /// Returns true when the list changed.
+  Future<bool> forgetContact(String raw) async {
+    final name = raw.trim();
+    if (name.isEmpty) return false;
+    final key = name.toLowerCase();
+    final next =
+        rememberedContacts.where((n) => n.toLowerCase() != key).toList();
+    if (next.length == rememberedContacts.length) return false;
+    rememberedContacts = next;
+    await saveRememberedContacts();
+    return true;
+  }
+
   /// Wipe local remembered contact names (does not touch Supabase roster).
   Future<void> clearRememberedContacts() async {
     rememberedContacts = [];

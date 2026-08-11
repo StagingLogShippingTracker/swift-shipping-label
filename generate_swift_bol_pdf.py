@@ -669,7 +669,7 @@ def checkbox_field(c: canvas.Canvas, form, name: str, x: float, y: float, label:
 
 
 def radio_option(c: canvas.Canvas, form, group: str, value: str, x: float, y: float, label: str,
-                 size: float = 8) -> float:
+                 size: float = 9) -> float:
     """Circular radio widget. Returns the width occupied (widget + label)."""
     label_size = 6.5
     label_gap = 4.0
@@ -693,7 +693,7 @@ def radio_option(c: canvas.Canvas, form, group: str, value: str, x: float, y: fl
     c.setFillColor(INK_SECONDARY)
     c.setFont("Helvetica", label_size)
     label_x = x + size + label_gap
-    label_y = y + size / 2 - label_size * 0.35
+    label_y = y + size / 2 - label_size * 0.32
     c.drawString(label_x, label_y, label)
     return size + label_gap + c.stringWidth(label, "Helvetica", label_size)
 
@@ -711,28 +711,30 @@ def _bezier_circle(cx: float, cy: float, r: float) -> str:
 
 
 def _radio_circle_ap(on: bool, size: float = 9) -> StreamObject:
-    """Donut radio AP: outer stroke + inset fill with a clear white gap."""
+    """Classic thin dark-gray ring; selected adds a centered dark-gray dot."""
     cx = cy = size / 2.0
-    stroke = max(1.0, min(1.35, size * 0.125))
-    gap = size * 0.20
-    outer_r = size / 2.0 - stroke / 2.0
-    ring = _bezier_circle(cx, cy, outer_r)
+    stroke = max(0.75, min(1.05, size * 0.09))
+    outer_r = size / 2.0
+    hole_r = max(1.0, outer_r - stroke)
+    dot_r = max(1.6, min(hole_r - 0.6, size * 0.20))
+    outer = _bezier_circle(cx, cy, outer_r)
+    hole = _bezier_circle(cx, cy, hole_r)
+    # Dark gray #4A4A4A matching secondary ink (not brand orange).
+    gray = "0.290 0.290 0.290"
     if on:
-        inner_r = max(1.0, size / 2.0 - stroke - gap)
-        dot = _bezier_circle(cx, cy, inner_r)
-        # Orange fill (#CE4E30) matching Swift brand.
+        dot = _bezier_circle(cx, cy, dot_r)
         data = (
             f"q\n"
-            f"1 1 1 rg 0 0 {size:.2f} {size:.2f} re f\n"
-            f"0 0 0 RG {stroke:.2f} w {ring} s\n"
-            f"0.808 0.306 0.188 rg {dot} f\n"
+            f"{gray} rg {outer} f\n"
+            f"1 1 1 rg {hole} f\n"
+            f"{gray} rg {dot} f\n"
             f"Q\n"
         )
     else:
         data = (
             f"q\n"
-            f"1 1 1 rg 0 0 {size:.2f} {size:.2f} re f\n"
-            f"0 0 0 RG {stroke:.2f} w {ring} s\n"
+            f"{gray} rg {outer} f\n"
+            f"1 1 1 rg {hole} f\n"
             f"Q\n"
         )
     encoded = data.encode("ascii")
@@ -859,22 +861,25 @@ def rebuild_freight_radios(pdf_path: Path) -> None:
 
 def sig_fields(c: canvas.Canvas, form, x: float, y_top: float, y_bottom: float, w: float,
                rows: list[list[tuple[str, str, float]]], *,
-               top_inset: float | None = None) -> None:
+               top_inset: float | None = None,
+               bottom_inset: float | None = None) -> None:
     """Label near band top; value locked just above a rule pinned to band bottom."""
     inner_x = x + PAD
     inner_w = w - 2 * PAD
-    inset_top = BODY_INSET if top_inset is None else top_inset
-    inset_bot = 5
+    n = len(rows)
+    dense = n >= 5
+    inset_top = (2.5 if dense else BODY_INSET) if top_inset is None else top_inset
+    inset_bot = (2.5 if dense else 5.0) if bottom_inset is None else bottom_inset
     content_top = y_top - inset_top
     content_bot = y_bottom + inset_bot
     avail_h = content_top - content_bot
     if avail_h < 20 or not rows:
         return
 
-    n = len(rows)
-    value_size = 8.0
-    value_above_rule = 2.5
-    rule_above_band_bot = 3.5
+    value_size = 7.0 if dense else 8.0
+    value_above_rule = 1.4 if dense else 2.5
+    rule_above_band_bot = 2.0 if dense else 3.5
+    label_from_band_top = 2.5 if dense else 5.0
     col_gap = 10
     row_h = avail_h / n
 
@@ -882,9 +887,9 @@ def sig_fields(c: canvas.Canvas, form, x: float, y_top: float, y_bottom: float, 
         band_top = content_top - i * row_h
         band_bot = band_top - row_h
         y_rule = band_bot + rule_above_band_bot
-        # Widget sits flush above the rule so printed/typed values do not drift.
-        field_h = max(value_size + 3.0, 11.0)
-        label_y = min(band_top - 5.0, y_rule + 11.5)
+        # Keep fillable widgets short so they stay under the category header.
+        field_h = max(value_size + 2.0, 9.0 if dense else 11.0)
+        label_y = band_top - label_from_band_top
 
         total = sum(frac for _, _, frac in row)
         cx = inner_x
@@ -943,15 +948,17 @@ def draw_footer(c: canvas.Canvas) -> None:
     box_y = FOOTER_BASE
     box_h = FOOTER_BOX_H
     box_top = box_y + box_h
+    frame_x = MARGIN - 3
+    frame_w = CONTENT_W + 6
     c.setStrokeColor(RULE)
     c.setLineWidth(0.5)
-    c.rect(MARGIN, box_y, CONTENT_W, box_h, stroke=1, fill=0)
+    c.rect(frame_x, box_y, frame_w, box_h, stroke=1, fill=0)
     c.setFillColor(SWIFT)
-    c.rect(MARGIN, box_top - 2, CONTENT_W, 2, stroke=0, fill=1)
+    c.rect(frame_x, box_top - 2, frame_w, 2, stroke=0, fill=1)
 
     # Readable disclaimer — was ~2.3pt and illegible on phones.
     size, leading = 5.2, 6.2
-    text_w = CONTENT_W - 2 * PAD
+    text_w = frame_w - 2 * PAD
     text_h = measure_wrapped_text(c, LEGAL, text_w, size=size, leading=leading)
     body_top = box_top - 3
     body_bot = box_y + 2
@@ -959,7 +966,7 @@ def draw_footer(c: canvas.Canvas) -> None:
     top_pad = max((body_h - text_h) / 2, 1.0)
     legal_top = body_top - top_pad - size + 0.5
     wrap_text_lines(
-        c, LEGAL, MARGIN + PAD, legal_top, text_w,
+        c, LEGAL, frame_x + PAD, legal_top, text_w,
         size=size, leading=leading, min_y=body_bot + 1,
     )
 
@@ -1512,7 +1519,7 @@ def draw_bol_page(
     inner_right = rx + col_w - PAD
     # Measure each option width, then space remaining gap evenly between them.
     c.setFont("Helvetica", 6.5)
-    widths = [radio_size + 4 + c.stringWidth(lbl, "Helvetica", 6.5) for _, lbl in options]  # 4 = label gap
+    widths = [radio_size + 4 + c.stringWidth(lbl, "Helvetica", 6.5) for _, lbl in options]
     total_w = sum(widths)
     gaps = 2  # spaces between the three options
     free = max(inner_right - inner_left - total_w, 0)
@@ -1601,10 +1608,13 @@ def draw_bol_page(
     y -= block_h + GAP
 
     sw = (CONTENT_W - 2 * GAP) / 3
-    sh = 1.28 * inch
     hdr = 14
     sx = MARGIN
     body_top = y - hdr
+    above_disclaimer_gap = 8.0
+    min_body_bot = FOOTER_BASE + FOOTER_BOX_H + above_disclaimer_gap
+    max_sh = body_top - min_body_bot
+    sh = min(1.28 * inch, max_sh)
     body_bot = body_top - sh
     pad_in = PAD
 
@@ -1637,7 +1647,7 @@ def draw_bol_page(
         [("driver_sign", "Signature", 1.0)],
         [("vehicle_id", "Vehicle ID", 1.0)],
         [("departure_time", "Departure", 0.62), ("driver_date", "Date", 0.38)],
-    ], top_inset=BODY_INSET)
+    ], top_inset=2.5, bottom_inset=2.5)
     sx += sw + GAP
 
     # --- Consignee Delivery Receipt ---
@@ -1649,7 +1659,7 @@ def draw_bol_page(
         [("consignee_date", "Date", 1.0)],
     ], top_inset=BODY_INSET)
 
-    # Outer page frame stops above the footer.
+    # Outer page frame ends with the signature boxes; disclaimer sits below.
     draw_page_frame(c, content_bot=body_bot - 4)
     draw_footer(c)
 

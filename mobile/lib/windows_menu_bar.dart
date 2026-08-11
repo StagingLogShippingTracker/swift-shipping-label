@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
+import 'app_snack.dart';
 import 'app_storage.dart';
 import 'feedback_forms.dart';
 import 'label_data.dart';
@@ -144,7 +145,7 @@ class WindowsAppMenuBar extends StatelessWidget {
   }
 
   Future<void> _snack(BuildContext context, String message) async {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    showAppSnack(context, message);
   }
 
   Future<void> _openPath(BuildContext context, String path) async {

@@ -383,17 +383,23 @@ class SwiftTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: elevated,
+        // High contrast: solid ink / dark panel (not washed elevated grey).
+        backgroundColor: dark ? const Color(0xFF323842) : SwiftColors.ink,
         contentTextStyle: TextStyle(
           fontFamily: fontFamily,
-          color: Colors.white,
-          fontSize: 13,
+          color: const Color(0xFFF7F5F2),
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
         ),
         actionTextColor: SwiftColors.accentOn,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(desktop ? 8 : 10),
+          borderRadius: BorderRadius.circular(28),
         ),
-        elevation: 4,
+        elevation: 10,
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: desktop ? 16 : 32,
+          vertical: 10,
+        ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,

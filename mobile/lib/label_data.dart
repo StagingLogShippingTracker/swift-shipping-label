@@ -206,7 +206,7 @@ List<String> presetKeysFor(LabelKind kind) {
         LabelFields.project,
         LabelFields.poNum,
         LabelFields.specialInstructions,
-        LabelFields.pm,
+        LabelFields.swiftContact,
       ];
     case LabelKind.bol:
       return const [
@@ -270,7 +270,7 @@ class ShippingLabelData {
     LabelFields.project: 'Gateway Pipelines & CBR Pad 107 Lateral FEL3',
     LabelFields.poNum: '278-07-31 - 0009',
     LabelFields.salesOrder: '1380380',
-    LabelFields.pm: 'CHRIS ACORN',
+    LabelFields.swiftContact: 'CHRIS ACORN',
     LabelFields.dateReceived: 'May 1st, 2026',
     LabelFields.receivedBy: 'Keith Blackman',
     LabelFields.specialInstructions:
@@ -384,6 +384,14 @@ class CustomerPreset {
     for (final key in presetKeysFor(kind)) {
       final v = json[key];
       if (v != null) fields[key] = '$v';
+    }
+    // Receiving used a separate `pm` key; form+PDF now use swift_contact as PM.
+    if (kind == LabelKind.receiving &&
+        (fields[LabelFields.swiftContact] ?? '').trim().isEmpty) {
+      final legacyPm = json[LabelFields.pm];
+      if (legacyPm != null && '$legacyPm'.trim().isNotEmpty) {
+        fields[LabelFields.swiftContact] = '$legacyPm'.trim();
+      }
     }
     if (kind == LabelKind.bol &&
         (fields[LabelFields.salesOrder] ?? '').trim().isEmpty) {
