@@ -53,7 +53,7 @@ class ShippingLabelPdf {
   static const entryHero = 22.0;
   /// Shipping Sales Order No. preferred font size (pt).
   static const entrySo = 48.0;
-  static const entryRecvSo = 48.0;
+  static const entryRecvSo = 60.0;
   static const entryNotes = 18.0;
   static const entryMin = 9.0;
   static const lineGap = 3.0;
@@ -448,7 +448,9 @@ class ShippingLabelPdf {
       var yy = y + h - fontSize - 2;
       for (final line in lines) {
         if (yy < y - 1) break;
-        c.drawString(f, fontSize, line, x + 1, yy);
+        final tw = stringWidth(f, line, fontSize);
+        final tx = centered ? x + (w - tw) / 2 : x + 1;
+        c.drawString(f, fontSize, line, tx, yy);
         yy -= fontSize + lineGap;
       }
     } else {
@@ -733,6 +735,8 @@ class ShippingLabelPdf {
     int maxLines = wrapMaxLines,
     bool hero = false,
     PdfColor? valueBgWhenNonEmpty,
+    bool showRule = true,
+    bool centered = false,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
@@ -788,9 +792,12 @@ class ShippingLabelPdf {
         font: bold,
         multiline: multiline,
         textColor: alertFill ? white : black,
+        centered: centered,
       );
     }
-    _hairline(c, x, y - vh - 1, colWidth);
+    if (showRule) {
+      _hairline(c, x, y - vh - 1, colWidth);
+    }
     return y - vh - 12;
   }
 
@@ -817,7 +824,8 @@ class ShippingLabelPdf {
     );
 
     // Full-width vertical stack (Customer → Project → PO → Special Instructions
-    // → Sales Order → PM). Body entries prefer 22 pt; Sales Order stays 48 pt.
+    // → Sales Order → PM). Body entries prefer 22 pt; Sales Order prefers 60 pt.
+    // Values are centered; PM has no underline (clean space above received band).
     y = _fieldRow(
       c,
       fonts,
@@ -829,6 +837,7 @@ class ShippingLabelPdf {
       sample,
       hero: true,
       preferredSize: entryHero,
+      centered: true,
     );
     y = _fieldRow(
       c,
@@ -842,6 +851,7 @@ class ShippingLabelPdf {
       multiline: true,
       maxLines: 3,
       preferredSize: entryHero,
+      centered: true,
     );
     y = _fieldRow(
       c,
@@ -855,6 +865,7 @@ class ShippingLabelPdf {
       multiline: true,
       maxLines: 2,
       preferredSize: entryHero,
+      centered: true,
     );
     y = _fieldRow(
       c,
@@ -869,6 +880,7 @@ class ShippingLabelPdf {
       maxLines: 2,
       preferredSize: entryHero,
       valueBgWhenNonEmpty: recvInstructionsAlert,
+      centered: true,
     );
     y = _drawSalesOrderRow(
       c,
@@ -880,6 +892,7 @@ class ShippingLabelPdf {
       pillBg: recvSoBg,
       preferredSize: entryRecvSo,
       minRowH: 48,
+      centerPill: true,
     );
     _fieldRow(
       c,
@@ -891,9 +904,10 @@ class ShippingLabelPdf {
       contentW,
       sample,
       preferredSize: entryHero,
+      centered: true,
+      showRule: false,
     );
 
-    _hairline(c, mx, recvTop + 10, contentW, ruleSoft);
     _drawReceivedBand(c, fonts, recvTop, sample);
 
     c
@@ -968,6 +982,7 @@ class ShippingLabelPdf {
     PdfColor? pillBg,
     double? preferredSize,
     double minRowH = 28,
+    bool centerPill = false,
   }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
     y -= 4;
@@ -988,9 +1003,10 @@ class ShippingLabelPdf {
         textW + 2 * padX > colWidth ? colWidth : textW + 2 * padX;
     final pillH = size + 2 * padY;
     final rowH = pillH < minRowH ? minRowH : pillH;
+    final pillX = centerPill ? x + (colWidth - pillW) / 2 : x;
 
     c.setFillColor(pillBg ?? soBg);
-    _fillRRect(c, x, y - pillH, pillW, pillH, 8);
+    _fillRRect(c, pillX, y - pillH, pillW, pillH, 8);
 
     if (val.isNotEmpty) {
       final textBoxH = size + 4;
@@ -999,12 +1015,13 @@ class ShippingLabelPdf {
         c,
         fonts,
         val,
-        x + padX,
+        pillX + padX,
         textY,
         pillW - 2 * padX,
         textBoxH,
         fontSize: size,
         font: fonts.calibriBold,
+        centered: centerPill,
       );
     }
     _hairline(c, x, y - rowH - 1, colWidth);

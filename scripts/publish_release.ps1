@@ -200,8 +200,8 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- **Android portrait UI:** kind selector no longer wraps mid-word (labels stay on one line); header document badge and Update control stay readable on narrow screens
-- Landscape layout unchanged
+- **Receiving Label:** centered field values, Sales Order pill at 60 pt (centered), and no break line under PM
+- Shipping Label unchanged
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

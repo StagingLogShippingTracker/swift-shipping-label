@@ -58,7 +58,7 @@ ENTRY = "Calibri"
 ENTRY_BOLD = "Calibri-Bold"
 ENTRY_SIZE = 18
 ENTRY_HERO = 22
-ENTRY_SO = 48
+ENTRY_SO = 60
 ENTRY_MIN = 9
 LINE_GAP = 3.0
 WRAP_MAX_LINES = 3
@@ -211,6 +211,7 @@ def draw_value(
     font_name: str = ENTRY_BOLD,
     multiline: bool = False,
     text_color=BLACK,
+    centered: bool = False,
 ) -> None:
     if not text:
         return
@@ -222,10 +223,14 @@ def draw_value(
         for line in lines:
             if yy < y - 1:
                 break
-            c.drawString(x + 1, yy, line)
+            tw = stringWidth(line, font_name, font_size)
+            tx = x + (w - tw) / 2 if centered else x + 1
+            c.drawString(tx, yy, line)
             yy -= font_size + LINE_GAP
     else:
-        c.drawString(x + 1, y + (h - font_size) / 2 + 1, text)
+        tw = stringWidth(text, font_name, font_size)
+        tx = x + (w - tw) / 2 if centered else x + 1
+        c.drawString(tx, y + (h - font_size) / 2 + 1, text)
 
 
 def draw_image_fit(
@@ -440,6 +445,8 @@ def draw_labeled_value(
     multiline: bool = False,
     max_lines: int = WRAP_MAX_LINES,
     alert_when_nonempty: bool = False,
+    show_rule: bool = True,
+    centered: bool = False,
 ) -> float:
     micro_label(c, x, y, label)
     y -= 4
@@ -462,6 +469,7 @@ def draw_labeled_value(
             ENTRY_BOLD,
             multiline=True,
             text_color=WHITE if alert_fill else BLACK,
+            centered=centered,
         )
     else:
         size = fit_single_line_size(
@@ -481,12 +489,22 @@ def draw_labeled_value(
             size,
             ENTRY_BOLD,
             text_color=WHITE if alert_fill else BLACK,
+            centered=centered,
         )
-    hairline(c, x, y - vh - 1, col_w)
+    if show_rule:
+        hairline(c, x, y - vh - 1, col_w)
     return y - vh - 14
 
 
-def draw_sales_order_pill(c: canvas.Canvas, y: float, x: float, col_w: float, value: str) -> float:
+def draw_sales_order_pill(
+    c: canvas.Canvas,
+    y: float,
+    x: float,
+    col_w: float,
+    value: str,
+    *,
+    center_pill: bool = False,
+) -> float:
     micro_label(c, x, y, "Swift Sales Order No.")
     y -= 4
     val = (value or "").strip()
@@ -496,21 +514,23 @@ def draw_sales_order_pill(c: canvas.Canvas, y: float, x: float, col_w: float, va
     pill_w = min(col_w, text_w + 2 * pad_x)
     pill_h = size + 2 * pad_y
     row_h = max(pill_h, 48)
+    pill_x = x + (col_w - pill_w) / 2 if center_pill else x
 
     c.setFillColor(SO_BG)
-    c.roundRect(x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
+    c.roundRect(pill_x, y - pill_h, pill_w, pill_h, 8, stroke=0, fill=1)
     if val:
         text_box_h = size + 4
         text_y = y - pill_h + (pill_h - text_box_h) / 2
         draw_value(
             c,
             val,
-            x + pad_x,
+            pill_x + pad_x,
             text_y,
             max(pill_w - 2 * pad_x, 20),
             text_box_h,
             size,
             ENTRY_BOLD,
+            centered=center_pill,
         )
     hairline(c, x, y - row_h - 1, col_w)
     return y - row_h - 14
@@ -551,9 +571,10 @@ def draw_label_page(
 
     y = draw_header(c, customer_logo, customer_logo2)
 
-    # Full-width vertical stack. Body entries prefer 22 pt; Sales Order stays 48 pt.
+    # Full-width vertical stack. Body entries prefer 22 pt; Sales Order prefers 60 pt.
+    # Values are centered; PM has no underline (clean space above received band).
     y = draw_labeled_value(
-        c, y, "Customer", sample.get("customer", ""), MX, CONTENT_W, hero=True
+        c, y, "Customer", sample.get("customer", ""), MX, CONTENT_W, hero=True, centered=True
     )
     y = draw_labeled_value(
         c,
@@ -565,6 +586,7 @@ def draw_label_page(
         multiline=True,
         max_lines=3,
         preferred=ENTRY_HERO,
+        centered=True,
     )
     y = draw_labeled_value(
         c,
@@ -576,6 +598,7 @@ def draw_label_page(
         multiline=True,
         max_lines=2,
         preferred=ENTRY_HERO,
+        centered=True,
     )
     y = draw_labeled_value(
         c,
@@ -588,13 +611,23 @@ def draw_label_page(
         max_lines=2,
         preferred=ENTRY_HERO,
         alert_when_nonempty=True,
+        centered=True,
     )
-    y = draw_sales_order_pill(c, y, MX, CONTENT_W, sample.get("sales_order", ""))
+    y = draw_sales_order_pill(
+        c, y, MX, CONTENT_W, sample.get("sales_order", ""), center_pill=True
+    )
     draw_labeled_value(
-        c, y, "PM", sample.get("pm", ""), MX, CONTENT_W, preferred=ENTRY_HERO
+        c,
+        y,
+        "PM",
+        sample.get("pm", ""),
+        MX,
+        CONTENT_W,
+        preferred=ENTRY_HERO,
+        centered=True,
+        show_rule=False,
     )
 
-    hairline(c, MX, recv_top + 10, CONTENT_W, RULE_SOFT)
     draw_received_band(c, recv_top, sample)
 
     c.setFillColor(LABEL_C)
