@@ -1,0 +1,36 @@
+{
+    "ended":  "2026-08-06T00:05:55.9534755-06:00",
+    "started":  "2026-08-06T00:04:14.2517482-06:00",
+    "exe":  "dist\\Swift Document Generator\\swift_shipping_label.exe",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  true,
+                          "notes":  "open=menu_fy=315 zone=1573; search=tabs4; class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\sureus_murphy_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\sureus_murphy_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\sureus_murphy_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:04:14.2667539-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  5246,
+                          "ended":  "2026-08-06T00:04:43.4978503-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  false,
+                          "notes":  "open=menu_fy=255 zone=142; search=tabs4; class=dialog_open; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\bfl_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\bfl_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_r1\\bfl_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:04:43.5592433-06:00",
+                          "classification":  "dialog_open",
+                          "ms":  61962,
+                          "ended":  "2026-08-06T00:05:55.9534755-06:00"
+                      }
+                  ],
+    "deadline":  "2026-08-06T00:24:14.2487451-06:00"
+}

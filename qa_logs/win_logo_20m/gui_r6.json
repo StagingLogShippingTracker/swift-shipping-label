@@ -1,0 +1,46 @@
+{
+    "ended":  "2026-08-06T01:27:27.0810927-06:00",
+    "started":  "2026-08-06T01:22:16.3519075-06:00",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=164034; search=Enter; chooseLogo=False mid=897 bright=48152; ",
+                          "started":  "2026-08-06T01:22:16.3908969-06:00",
+                          "real_choose":  false,
+                          "ms":  73225,
+                          "bytes":  194304,
+                          "ended":  "2026-08-06T01:23:51.0171849-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=164034; search=Enter; chooseLogo=False mid=897 bright=48152; ",
+                          "started":  "2026-08-06T01:23:51.1507185-06:00",
+                          "real_choose":  false,
+                          "ms":  72928,
+                          "bytes":  194304,
+                          "ended":  "2026-08-06T01:25:24.6512877-06:00"
+                      },
+                      {
+                          "company":  "Whitecap",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=149762; search=Enter; chooseLogo=False mid=897 bright=48152; ",
+                          "started":  "2026-08-06T01:25:24.6592859-06:00",
+                          "real_choose":  false,
+                          "ms":  72942,
+                          "bytes":  194304,
+                          "ended":  "2026-08-06T01:26:58.2595772-06:00"
+                      },
+                      {
+                          "company":  "Arjae Design Solutions",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=146093; search=Enter; chooseLogo=True mid=38224 bright=11402; ",
+                          "started":  "2026-08-06T01:26:58.2665918-06:00",
+                          "real_choose":  true,
+                          "ms":  7567,
+                          "bytes":  232977,
+                          "ended":  "2026-08-06T01:27:27.0800956-06:00"
+                      }
+                  ]
+}

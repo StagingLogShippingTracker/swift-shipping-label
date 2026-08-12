@@ -1,3 +1,135 @@
-﻿{
+{
+  "customers": {
+    "shipping::WORLEY (BHP JANSEN)": {
+      "kind": "shipping",
+      "customer": "WORLEYCORD LP.",
+      "ship_to": "BHP JANSEN",
+      "location": "JANSEN PROJECT SITE\nJANSEN, SASKATCHEWAN S0K 2B0",
+      "attn": "PAMELA PETERS 403-862-8334 / JEFFREY MAKAR 780-206-9418",
+      "carrier": "",
+      "freight_charges": "",
+      "third_party_billing": "",
+      "swift_contact": "KIM MULDER",
+      "special_instructions": "**SEND WEIGHTS AND DIMENSIONS TO KIM**",
+      "logos": [
+        "Worley Cord LP.png",
+        "images _1_ _4_.png"
+      ],
+      "logo": "Worley Cord LP.png"
+    },
+    "shipping::SUREUS MURPHY": {
+      "kind": "shipping",
+      "customer": "SUREUS MURPHY",
+      "ship_to": "SUREUS MURPHY JOINT VENTURE - HOLD FOR PICK-UP",
+      "location": "39650 GOVERNMENT ROAD\nSQUAMISH, B.C.",
+      "attn": "",
+      "carrier": "VAN KAM",
+      "freight_charges": "",
+      "third_party_billing": "",
+      "swift_contact": "BEN KARPIAK",
+      "special_instructions": "HOLD AT VAN KAM DEPOT FOR PICKUP - 10155 GRACE ROAD, SURREY, B.C. V3V 3V7",
+      "logos": [
+        "SMJV_Alpha.png"
+      ],
+      "logo": "SMJV_Alpha.png"
+    },
+    "shipping::ARJAE DESIGN SOLUTIONS LTD.": {
+      "kind": "shipping",
+      "customer": "ARJAE DESIGN SOLUTIONS LTD.",
+      "ship_to": "ARJAE DESIGN SOLUTIONS LTD.",
+      "location": "1012 16 AVENUE\nNISKU, AB",
+      "attn": "JEFF DANYLUK",
+      "carrier": "MURRAY'S (PRE-PAID)",
+      "freight_charges": "",
+      "third_party_billing": "",
+      "swift_contact": "RENEE JEAN",
+      "special_instructions": "",
+      "logos": [
+        "ARJAE.png"
+      ],
+      "logo": "ARJAE.png"
+    },
+    "receiving::PROPAK SYSTEMS LTD.": {
+      "kind": "receiving",
+      "customer": "PROPAK SYSTEMS LTD.",
+      "project": "",
+      "po_num": "P612203",
+      "special_instructions": "",
+      "swift_contact": "AMBER SHUYA",
+      "logos": [
+        "Propak-Energy-Services-Logo.png"
+      ],
+      "logo": "Propak-Energy-Services-Logo.png"
+    },
+    "receiving::SHELL CANADA ENERGY": {
+      "kind": "receiving",
+      "customer": "SHELL CANADA ENERGY",
+      "project": "WO/NT NO: 63594766",
+      "po_num": "4514449097OS",
+      "special_instructions": "",
+      "swift_contact": "KIM MULDER",
+      "logos": [
+        "RETI-Shell-Canada.png"
+      ],
+      "logo": "RETI-Shell-Canada.png"
+    },
+    "receiving::SUREUS MURPHY": {
+      "kind": "receiving",
+      "customer": "SUREUS MURPHY",
+      "project": "TDW TOR FITTINGS",
+      "po_num": "2330-142617",
+      "special_instructions": "LONG LEAD",
+      "swift_contact": "CHRIS ACORN",
+      "logos": [
+        "SMJV_Alpha.png"
+      ],
+      "logo": "SMJV_Alpha.png"
+    },
+    "bol::K": {
+      "kind": "bol",
+      "customer": "",
+      "special_instructions": "eefew",
+      "po_num": "efewfew",
+      "project": "fefew",
+      "consignee_name": "ewetwe",
+      "consignee_address": "efefwwe",
+      "consignee_contact_name": "efewfe",
+      "consignee_contact_number": "ewfewf",
+      "freight_charges": "third_party",
+      "third_party_billing": "hkjkjkkhj",
+      "packing_list": "efwefe",
+      "sales_order": "1234",
+      "driver_company": "ddwefe",
+      "shipper_cert_name": "Brice Johnson",
+      "logos": []
+    },
+    "shipping::WORLEYCORD (SQUAMISH)": {
+      "kind": "shipping",
+      "customer": "WORLEYCORD LP",
+      "ship_to": "WORLEYCORD LP",
+      "location": "37525 INNOVATION AVENUE\nSQUAMISH, BRITISH COLUMBIA\nV8B 0A2",
+      "attn": "DUNCAN MOORES",
+      "carrier": "TBD",
+      "freight_charges": "",
+      "third_party_billing": "",
+      "swift_contact": "KIM MULDER",
+      "special_instructions": "JEAN-LUC BRASSARD (306) 631-4157 / MARGOT DIEHL (780) 906-0617 / JEFFREY LONGSTREET (250) 809-2545",
+      "logos": [
+        "Worley Cord LP.png"
+      ],
+      "logo": "Worley Cord LP.png"
+    },
+    "receiving::ARC RESOURCES LTD.": {
+      "kind": "receiving",
+      "customer": "ARC RESOURCES LTD.",
+      "project": "08-07 SUPERPAD WATER DISPOSAL",
+      "po_num": "50002483",
+      "special_instructions": "",
+      "swift_contact": "SEAN FITZPATRICK",
+      "logos": [
+        "Arc Resources LTD.png"
+      ],
+      "logo": "Arc Resources LTD.png"
+    }
+  }
 }
-

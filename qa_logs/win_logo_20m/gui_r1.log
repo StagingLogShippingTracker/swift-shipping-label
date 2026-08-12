@@ -1,0 +1,29 @@
+SESSION START 2026-08-06 12:04:14 AM deadline=2026-08-06 12:24:14 AM
+=== Sureus Murphy 00:04:14 ===
+  wait 5s class=picker_likely
+  -> ok=True open=menu_fy=315 zone=1573; search=tabs4; class=picker_likely; 
+=== BFL 00:04:43 ===
+  wait 5s class=dialog_open
+  wait 10s class=dialog_open
+  wait 16s class=dialog_open
+  wait 21s class=dialog_open
+  wait 26s class=dialog_open
+  wait 31s class=dialog_open
+  wait 36s class=dialog_open
+  wait 41s class=dialog_open
+  wait 46s class=dialog_open
+  wait 52s class=dialog_open
+  wait 57s class=dialog_open
+  wait 62s class=dialog_open
+  -> ok=False open=menu_fy=255 zone=142; search=tabs4; class=dialog_open; 
+=== Whitecap 00:05:55 ===
+  wait 5s class=dialog_open
+  wait 10s class=dialog_open
+  wait 16s class=dialog_open
+  wait 21s class=dialog_open
+  wait 26s class=dialog_open
+  wait 31s class=dialog_open
+  wait 36s class=dialog_open
+  wait 41s class=dialog_open
+  wait 46s class=dialog_open
+  wait 52s class=dialog_open

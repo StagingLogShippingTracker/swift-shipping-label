@@ -1,0 +1,175 @@
+{
+    "ended":  "2026-08-05T23:04:05.5885546-06:00",
+    "started":  "2026-08-05T22:51:39.8632239-06:00",
+    "round":  4,
+    "companies":  [
+                      {
+                          "company":  "Mastec Purnell",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\mastec_purnell_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\mastec_purnell_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\mastec_purnell_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\mastec_purnell_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:51:41.9463471-06:00",
+                          "ms":  55738,
+                          "ended":  "2026-08-05T22:52:43.9981485-06:00"
+                      },
+                      {
+                          "company":  "Shell",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\shell_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\shell_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\shell_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\shell_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:52:44.0441522-06:00",
+                          "ms":  55834,
+                          "ended":  "2026-08-05T22:53:45.7744547-06:00"
+                      },
+                      {
+                          "company":  "Flint Energy",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\flint_energy_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\flint_energy_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\flint_energy_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\flint_energy_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:53:45.7776418-06:00",
+                          "ms":  55801,
+                          "ended":  "2026-08-05T22:54:47.7311680-06:00"
+                      },
+                      {
+                          "company":  "Strike Group",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\strike_group_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\strike_group_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\strike_group_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\strike_group_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:54:47.7371651-06:00",
+                          "ms":  55714,
+                          "ended":  "2026-08-05T22:55:49.6546045-06:00"
+                      },
+                      {
+                          "company":  "5Blue Process Equipment",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\5blue_process_equipment_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\5blue_process_equipment_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\5blue_process_equipment_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\5blue_process_equipment_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:55:49.6676122-06:00",
+                          "ms":  55705,
+                          "ended":  "2026-08-05T22:56:51.9218851-06:00"
+                      },
+                      {
+                          "company":  "ATCO",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\atco_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\atco_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\atco_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\atco_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:56:51.9268864-06:00",
+                          "ms":  55727,
+                          "ended":  "2026-08-05T22:57:53.6090855-06:00"
+                      },
+                      {
+                          "company":  "Arc Resources LTD",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\arc_resources_ltd_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\arc_resources_ltd_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\arc_resources_ltd_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\arc_resources_ltd_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:57:53.6133190-06:00",
+                          "ms":  55800,
+                          "ended":  "2026-08-05T22:58:55.8688933-06:00"
+                      },
+                      {
+                          "company":  "CDE Engineering LTD",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\cde_engineering_ltd_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\cde_engineering_ltd_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\cde_engineering_ltd_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\cde_engineering_ltd_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:58:55.8739513-06:00",
+                          "ms":  55740,
+                          "ended":  "2026-08-05T22:59:58.1536118-06:00"
+                      },
+                      {
+                          "company":  "EPCOR",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\epcor_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\epcor_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\epcor_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\epcor_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T22:59:58.1586154-06:00",
+                          "ms":  55711,
+                          "ended":  "2026-08-05T23:00:59.8877171-06:00"
+                      },
+                      {
+                          "company":  "DNOW",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\dnow_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\dnow_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\dnow_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\dnow_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T23:00:59.8937183-06:00",
+                          "ms":  55682,
+                          "ended":  "2026-08-05T23:02:01.5530658-06:00"
+                      },
+                      {
+                          "company":  "Comco",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\comco_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\comco_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\comco_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\comco_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T23:02:01.5580654-06:00",
+                          "ms":  55892,
+                          "ended":  "2026-08-05T23:03:03.3553721-06:00"
+                      },
+                      {
+                          "company":  "Apex Valves",
+                          "ok":  true,
+                          "notes":  "4-tab Search; wait 55s",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\apex_valves_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\apex_valves_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\apex_valves_03_wait.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round4\\apex_valves_04_result.png"
+                                          ],
+                          "started":  "2026-08-05T23:03:03.3699598-06:00",
+                          "ms":  55691,
+                          "ended":  "2026-08-05T23:04:05.5885546-06:00"
+                      }
+                  ]
+}

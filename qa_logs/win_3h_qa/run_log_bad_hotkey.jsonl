@@ -1,0 +1,6 @@
+﻿{"notes":"search=Enter; chooseLogo=True; dismissed; ","ms":5559,"bytes":192700,"started":"2026-08-06T00:48:40.4107153-06:00","ended":"2026-08-06T00:48:57.2084229-06:00","phase":"logo","company":"Shell","n":1,"ok":true}
+{"notes":"search=Enter; chooseLogo=True; dismissed; ","ms":5475,"bytes":192700,"started":"2026-08-06T00:48:57.3328309-06:00","ended":"2026-08-06T00:49:13.9107926-06:00","phase":"logo","company":"ATCO","n":2,"ok":true}
+{"notes":"search=Enter; chooseLogo=True; dismissed; ","ms":5476,"bytes":192700,"started":"2026-08-06T00:49:13.9152656-06:00","ended":"2026-08-06T00:49:30.5985761-06:00","phase":"logo","company":"EPCOR","n":3,"ok":true}
+{"notes":"search=Enter; chooseLogo=True; selectedTile; ","ms":5487,"bytes":192700,"started":"2026-08-06T00:49:30.6035742-06:00","ended":"2026-08-06T00:49:48.9864685-06:00","phase":"logo","company":"Arc Resources LTD","n":4,"ok":true}
+{"notes":"search=Enter; chooseLogo=True; dismissed; ","ms":5520,"bytes":191196,"started":"2026-08-06T00:49:48.9914682-06:00","ended":"2026-08-06T00:50:05.5964138-06:00","phase":"logo","company":"DNOW","n":5,"ok":true}
+{"notes":"search=Enter; chooseLogo=False; dismissed; ","ms":72273,"bytes":120,"started":"2026-08-06T00:50:05.6013855-06:00","ended":"2026-08-06T00:51:29.0114478-06:00","phase":"logo","company":"Whitecap","n":6,"ok":false}

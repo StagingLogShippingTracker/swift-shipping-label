@@ -1,0 +1,645 @@
+{
+  "started": "2026-08-05T22:34:32.706387",
+  "companies": [
+    {
+      "company": "Mastec Purnell",
+      "ms": 25603,
+      "count": 11,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (mastec.com)",
+          "score": 197,
+          "url": "https://mastec.com/Images/_98_9aa57b75-cc3a-4084-8be6-d206a123ee66.png",
+          "bytes": 11126,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (mastec.com)",
+          "score": 197,
+          "url": "https://mastec.com/Images/_98_ed765b79-9a28-4102-92ae-23439623e38e.png",
+          "bytes": 60473,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (mastec.com)",
+          "score": 191,
+          "url": "https://mastec.com/Images/_98_c52bbcd2-f8b1-451a-909a-3c28b4be218e.png",
+          "bytes": 2976,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (mastec.com)",
+          "score": 191,
+          "url": "https://mastec.com/Images/_98_0c4195f2-3033-4364-aa66-af9c5a571b7c.png",
+          "bytes": 3416,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Site scrape (mastec.com)",
+          "score": 191,
+          "url": "https://mastec.com/Images/_98_c3febed3-84d2-4295-961d-e1e52d35f868.png",
+          "bytes": 3761,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Site scrape (mastec.com)",
+          "score": 191,
+          "url": "https://mastec.com/Images/_98_9079897c-0702-4d1e-98e2-0e7ae3fe0fe4.png",
+          "bytes": 3001,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Mastec_Purnell\\5.png"
+        }
+      ]
+    },
+    {
+      "company": "Shell",
+      "ms": 24586,
+      "count": 4,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Known brand logo",
+          "score": 306,
+          "url": "https://brandslogos.com/wp-content/uploads/images/large/shell-logo.png",
+          "bytes": 120349,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Shell\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Known brand logo",
+          "score": 306,
+          "url": "https://1000logos.net/wp-content/uploads/2017/06/Shell-Logo.png",
+          "bytes": 217768,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Shell\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Google Favicon (shell.com)",
+          "score": 64,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=shell.com",
+          "bytes": 8904,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Shell\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 38,
+          "url": "https://quals.ai/wp-content/uploads/2024/09/shell-logo.png.webp",
+          "bytes": 2538,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Shell\\3.webp"
+        }
+      ]
+    },
+    {
+      "company": "Flint Energy",
+      "ms": 24772,
+      "count": 6,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (flintcorp.com)",
+          "score": 207,
+          "url": "https://flintcorp.com/wp-content/uploads/2023/02/flint-logo.webp",
+          "bytes": 16384,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\0.webp"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (flintcorp.com)",
+          "score": 207,
+          "url": "https://flintcorp.com/wp-content/uploads/2022/10/flint-logo-v.webp",
+          "bytes": 25878,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (flintcorp.com)",
+          "score": 207,
+          "url": "https://flintcorp.com/wp-content/uploads/2023/02/flint-logo-white.webp",
+          "bytes": 16350,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\2.webp"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (flintcorp.com)",
+          "score": 204,
+          "url": "https://flintcorp.com/wp-content/uploads/2024/03/flint_og_logo.jpg",
+          "bytes": 80261,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://heartofgahospice.org/wp-content/uploads/2025/10/heartofgahospice.org-our-partners-flint-energy.png",
+          "bytes": 26325,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Google Favicon (flintcorp.com)",
+          "score": 64,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=flintcorp.com",
+          "bytes": 20653,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Flint_Energy\\5.png"
+        }
+      ]
+    },
+    {
+      "company": "Strike Group",
+      "ms": 25503,
+      "count": 15,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (strikegroup.ca)",
+          "score": 289,
+          "url": "https://www.strikegroup.ca/wp-content/themes/truemarket/assets/dist/images/StrikeGroup-Logo.png",
+          "bytes": 25885,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (strikegroup.ca)",
+          "score": 255,
+          "url": "https://www.strikegroup.ca/wp-content/themes/truemarket/assets/dist/images/logo-best-managed-companies.png",
+          "bytes": 7270,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 120,
+          "url": "https://strikegroupsecurityservices.com/wp-content/uploads/2017/12/strikelogo.png",
+          "bytes": 5842,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\2.webp"
+        },
+        {
+          "i": 3,
+          "source": "Google Favicon (strikegroup.ca)",
+          "score": 94,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=strikegroup.ca",
+          "bytes": 2736,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 78,
+          "url": "https://www.nicepng.com/png/detail/810-8101321_carrier-strike-group-ten-logo-carrier-strike-group.png",
+          "bytes": 200898,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\4.jpg"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 78,
+          "url": "https://www.kindpng.com/picc/m/273-2735773_carrier-strike-group-two-logo-government-of-the.png",
+          "bytes": 63615,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Strike_Group\\5.png"
+        }
+      ]
+    },
+    {
+      "company": "5Blue Process Equipment",
+      "ms": 24645,
+      "count": 7,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (5blue.com)",
+          "score": 247,
+          "url": "https://5blue.com/wp-content/themes/5blue3/dist/img/logo.png",
+          "bytes": 12079,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (5blue.com)",
+          "score": 193,
+          "url": "https://5blue.com/wp-content/uploads/2021/04/cropped-512x512-1-192x192.png",
+          "bytes": 15743,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (5blue.com)",
+          "score": 193,
+          "url": "https://5blue.com/wp-content/uploads/2021/04/cropped-512x512-1-180x180.png",
+          "bytes": 15851,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Google Favicon (5blue.com)",
+          "score": 100,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=5blue.com",
+          "bytes": 15722,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 54,
+          "url": "https://5blue.com/wp-content/uploads/2021/02/1-5B1061-Ortho-TRB-15-min.png",
+          "bytes": 503156,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 47,
+          "url": "https://5blue.com/wp-content/uploads/2020/12/IMG_0409-scaled-e1607039533991.jpg",
+          "bytes": 230425,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\5Blue_Process_Equipment\\5.jpg"
+        }
+      ]
+    },
+    {
+      "company": "ATCO",
+      "ms": 25430,
+      "count": 5,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Known brand logo",
+          "score": 300,
+          "url": "https://www.atco.com/content/dam/atco-website/en-ca/web/assets/global-files/atco-logo.png",
+          "bytes": 3099,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\ATCO\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://atcoeg.com/images/logo.png",
+          "bytes": 59101,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\ATCO\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://atcogases.com/wp-content/uploads/2025/12/atco-logo.png",
+          "bytes": 89871,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\ATCO\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 61,
+          "url": "http://mis.atcoindustries.com/Images/atco/atco_logo.jpg",
+          "bytes": 14832,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\ATCO\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Google Favicon (atco.com)",
+          "score": 50,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=atco.com",
+          "bytes": 602,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\ATCO\\4.png"
+        }
+      ]
+    },
+    {
+      "company": "Arc Resources LTD",
+      "ms": 24543,
+      "count": 12,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (arcresources.com)",
+          "score": 261,
+          "url": "https://www.arcresources.com/wp-content/uploads/2022/08/ARC-Logo-Colour.png",
+          "bytes": 18808,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\0.webp"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (arcresources.com)",
+          "score": 261,
+          "url": "https://www.arcresources.com/wp-content/uploads/2022/02/arc_Logo_PNG_.png",
+          "bytes": 18232,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (arcresources.com)",
+          "score": 235,
+          "url": "https://www.arcresources.com/wp-content/uploads/2022/06/cropped-Arc_Fav-192x192.png",
+          "bytes": 9982,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\2.webp"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (arcresources.com)",
+          "score": 235,
+          "url": "https://www.arcresources.com/wp-content/uploads/2022/06/cropped-Arc_Fav-180x180.png",
+          "bytes": 12866,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\3.webp"
+        },
+        {
+          "i": 4,
+          "source": "Google Favicon (arcresources.com)",
+          "score": 100,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=arcresources.com",
+          "bytes": 15012,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 89,
+          "url": "https://www.arcresources.com/wp-content/uploads/2022/08/ARC-Door-2048x815.jpg",
+          "bytes": 141557,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Arc_Resources_LTD\\5.jpg"
+        }
+      ]
+    },
+    {
+      "company": "CDE Engineering LTD",
+      "ms": 25326,
+      "count": 9,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (cdeeng.com)",
+          "score": 195,
+          "url": "https://cdeeng.com/wp-content/uploads/2022/12/logo-for-print-1.png",
+          "bytes": 7356,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (cdeeng.com)",
+          "score": 175,
+          "url": "https://cdeeng.com/wp-content/uploads/2022/11/512-150x150.png",
+          "bytes": 12861,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (cdeeng.com)",
+          "score": 175,
+          "url": "https://cdeeng.com/wp-content/uploads/2022/11/512-300x300.png",
+          "bytes": 32122,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Google Favicon (cdeeng.com)",
+          "score": 76,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=cdeeng.com",
+          "bytes": 7295,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 54,
+          "url": "https://cdeeng.com/wp-content/uploads/2023/02/473656757.png",
+          "bytes": 275235,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 48,
+          "url": "https://cdeeng.com/wp-content/uploads/2023/02/08998ty78rty7ery.png",
+          "bytes": 1109866,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\CDE_Engineering_LTD\\5.png"
+        }
+      ]
+    },
+    {
+      "company": "EPCOR",
+      "ms": 24229,
+      "count": 5,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (epcor.com)",
+          "score": 183,
+          "url": "https://epcor.com/content/dam/epcor/images/dm-images/logos-and-icons/epcor-logo.png",
+          "bytes": 4646,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\EPCOR\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 52,
+          "url": "https://epcor.org/Portals/0/adam/Noke-Components/L4RlKeyGDEuiPjzS5_F9Iw/Image/epcorpluspayments-prof-logos.png",
+          "bytes": 15828,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\EPCOR\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 52,
+          "url": "https://epcorfdy.com/wp-content/uploads/2024/02/cropped-Epcor_Logo_2023.png",
+          "bytes": 21487,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\EPCOR\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 52,
+          "url": "https://epcorfdy.com/wp-content/uploads/2024/02/cropped-Epcor_Logo_2023-300x100.png",
+          "bytes": 8380,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\EPCOR\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Google Favicon (epcor.com)",
+          "score": 50,
+          "url": "https://www.google.com/s2/favicons?sz=256&domain_url=epcor.com",
+          "bytes": 1919,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\EPCOR\\4.png"
+        }
+      ]
+    },
+    {
+      "company": "DNOW",
+      "ms": 24993,
+      "count": 7,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (dnow.com)",
+          "score": 177,
+          "url": "https://www.dnow.com/hubfs/Logos/DNOW_logo_featured.png",
+          "bytes": 6218,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\0.webp"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (dnow.com)",
+          "score": 159,
+          "url": "https://www.dnow.com/hubfs/WC/Images/Company/News/Wholesaler_Magazine_logo_featured.webp",
+          "bytes": 9410,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 64,
+          "url": "https://www.dnow.com/hs-fs/hubfs/DistributionNOW_July2020/Images/PS_DNOW_logo_color.png?width=600&height=438&name=PS_DNOW_logo_color.png",
+          "bytes": 25926,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\2.webp"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 52,
+          "url": "https://dnow.eglue.it/wp-content/uploads/2024/02/Logo-Dnow-875x1024.png",
+          "bytes": 72959,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 50,
+          "url": "https://www.dnow.com/hubfs/WC/Images/Homepage/Work-with-DNOW-container-image.webp",
+          "bytes": 26252,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\4.webp"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 44,
+          "url": "https://d5zl670fz21s1.cloudfront.net/logos/dnow.com.png",
+          "bytes": 17571,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\DNOW\\5.png"
+        }
+      ]
+    },
+    {
+      "company": "Comco",
+      "ms": 24248,
+      "count": 6,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Known brand logo",
+          "score": 300,
+          "url": "https://www.russelmetals.com/wp-content/uploads/comco-pipe-supply-company-1-5.png",
+          "bytes": 5010,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\0.webp"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 123,
+          "url": "https://www.russelmetals.com/wp-content/uploads/rm-british-columbia-logo-1.png",
+          "bytes": 18790,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 119,
+          "url": "https://www.russelmetals.com/wp-content/uploads/elite-supply-vector-logo-w500.jpg",
+          "bytes": 22278,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\2.jpg"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 116,
+          "url": "https://www.russelmetals.com/wp-content/uploads/sanborn-tube-logo-blue-and-black-master-1.jpg",
+          "bytes": 24932,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 116,
+          "url": "https://www.russelmetals.com/wp-content/uploads/sunbelt-main-logo-12.jpg",
+          "bytes": 11544,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\4.jpg"
+        },
+        {
+          "i": 5,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 116,
+          "url": "https://www.russelmetals.com/wp-content/uploads/newlogostacked.jpg",
+          "bytes": 70577,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Comco\\5.jpg"
+        }
+      ]
+    },
+    {
+      "company": "Apex Valves",
+      "ms": 24905,
+      "count": 9,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (apexdistribution.com)",
+          "score": 192,
+          "url": "https://www.russelmetals.com/wp-content/uploads/apex-logo.jpg",
+          "bytes": 23168,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\0.jpg"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 135,
+          "url": "https://www.russelmetals.com/wp-content/uploads/rm-british-columbia-logo-1.png",
+          "bytes": 18790,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 131,
+          "url": "https://www.russelmetals.com/wp-content/uploads/elite-supply-vector-logo-w500.jpg",
+          "bytes": 22278,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\2.jpg"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 128,
+          "url": "https://www.russelmetals.com/wp-content/uploads/sanborn-tube-logo-blue-and-black-master-1.jpg",
+          "bytes": 24932,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 128,
+          "url": "https://www.russelmetals.com/wp-content/uploads/sunbelt-main-logo-12.jpg",
+          "bytes": 11544,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\4.jpg"
+        },
+        {
+          "i": 5,
+          "source": "Site scrape (russelmetals.com)",
+          "score": 128,
+          "url": "https://www.russelmetals.com/wp-content/uploads/newlogostacked.jpg",
+          "bytes": 70577,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\images_2026-08-05T222933904053\\Apex_Valves\\5.jpg"
+        }
+      ]
+    }
+  ]
+}

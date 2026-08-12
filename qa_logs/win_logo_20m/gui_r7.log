@@ -1,0 +1,102 @@
+SESSION 2026-08-06 1:33:50 AM
+=== Sureus Murphy 01:33:50 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=15s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=377835 mid=39123 bright=10570
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=39123 bright=10570; 
+=== BFL 01:34:33 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=15s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=273305 mid=36796 bright=11046
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=36796 bright=11045; 
+=== Whitecap 01:35:16 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=15s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=146667 mid=863 bright=50301
+  wait t=29s bytes=216970 mid=37840 bright=12331
+  wait t=37s bytes=216970 mid=37840 bright=12331
+  wait t=44s bytes=216970 mid=37840 bright=12331
+  wait t=51s bytes=216970 mid=37840 bright=12331
+  wait t=59s bytes=216970 mid=37840 bright=12331
+  wait t=66s bytes=216970 mid=37840 bright=12331
+  -> ok=False dlg_bytes=155966; search=Enter; chooseLogo=False mid=37840 bright=12331; 
+=== Arjae Design Solutions 01:36:42 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=14s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=200292 mid=37960 bright=12247
+  wait t=29s bytes=194874 mid=894 bright=48148
+  wait t=36s bytes=194304 mid=897 bright=48152
+  wait t=44s bytes=194304 mid=897 bright=48152
+  wait t=51s bytes=194304 mid=897 bright=48152
+  wait t=58s bytes=194304 mid=897 bright=48152
+  wait t=65s bytes=194304 mid=897 bright=48152
+  -> ok=False dlg_bytes=155966; search=Enter; chooseLogo=False mid=897 bright=48152; 
+=== Paramount Resources 01:38:09 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=14s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=249699 mid=38570 bright=11552
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=38570 bright=11552; 
+=== Suncor 01:38:51 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=15s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=146667 mid=863 bright=50301
+  wait t=29s bytes=146667 mid=863 bright=50301
+  wait t=36s bytes=120 mid=0 bright=0
+  wait t=43s bytes=120 mid=0 bright=0
+  wait t=51s bytes=120 mid=0 bright=0
+  wait t=58s bytes=120 mid=0 bright=0
+  wait t=65s bytes=120 mid=0 bright=0
+  wait t=72s bytes=120 mid=0 bright=0
+  -> ok=False dlg_bytes=155966; search=Enter; chooseLogo=False mid=0 bright=0; 
+=== Warren Valve 01:40:23 ===
+  wait t=7s bytes=120 mid=0 bright=0
+  wait t=14s bytes=120 mid=0 bright=0
+  wait t=21s bytes=120 mid=0 bright=0
+  wait t=29s bytes=120 mid=0 bright=0
+  wait t=36s bytes=120 mid=0 bright=0
+  wait t=43s bytes=120 mid=0 bright=0
+  wait t=50s bytes=120 mid=0 bright=0
+  wait t=57s bytes=120 mid=0 bright=0
+  wait t=64s bytes=120 mid=0 bright=0
+  wait t=71s bytes=120 mid=0 bright=0
+  -> ok=False dlg_bytes=155966; search=Enter; chooseLogo=False mid=0 bright=0; 
+=== Shell 01:41:59 ===
+  wait t=7s bytes=194304 mid=897 bright=48152
+  wait t=15s bytes=194304 mid=897 bright=48152
+  wait t=22s bytes=194304 mid=897 bright=48152
+  wait t=29s bytes=194304 mid=897 bright=48152
+  wait t=36s bytes=283807 mid=37224 bright=10923
+  -> ok=True dlg_bytes=201879; search=Enter; chooseLogo=True mid=37224 bright=10923; 
+=== ATCO 01:42:56 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=14s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=440617 mid=39038 bright=10172
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=39038 bright=10172; 
+=== EPCOR 01:43:39 ===
+  wait t=7s bytes=206876 mid=594 bright=47965
+  wait t=15s bytes=199966 mid=48414 bright=0
+  wait t=22s bytes=199966 mid=48414 bright=0
+  wait t=30s bytes=264524 mid=2113 bright=9928
+  wait t=37s bytes=201878 mid=48339 bright=75
+  wait t=44s bytes=194304 mid=897 bright=48152
+  wait t=51s bytes=194304 mid=897 bright=48152
+  wait t=59s bytes=194304 mid=897 bright=48152
+  wait t=66s bytes=237677 mid=37982 bright=10034
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=37982 bright=10034; 
+=== Arc Resources LTD 01:45:05 ===
+  wait t=7s bytes=146667 mid=863 bright=50301
+  wait t=14s bytes=146667 mid=863 bright=50301
+  wait t=22s bytes=355646 mid=38659 bright=11375
+  -> ok=True dlg_bytes=155966; search=Enter; chooseLogo=True mid=38659 bright=11375; 
+=== DNOW 01:45:48 ===
+  wait t=7s bytes=194874 mid=894 bright=48148
+  wait t=15s bytes=206274 mid=594 bright=47946
+  wait t=22s bytes=349780 mid=759 bright=10358
+  wait t=29s bytes=349780 mid=759 bright=10358
+  wait t=36s bytes=349780 mid=759 bright=10358
+  wait t=44s bytes=201879 mid=48339 bright=75
+  wait t=51s bytes=194304 mid=897 bright=48152
+  wait t=58s bytes=194304 mid=897 bright=48152
+  wait t=65s bytes=194304 mid=897 bright=48152
+  -> ok=False dlg_bytes=155966; search=Enter; chooseLogo=False mid=897 bright=48152; 
+DONE PASS 7/12

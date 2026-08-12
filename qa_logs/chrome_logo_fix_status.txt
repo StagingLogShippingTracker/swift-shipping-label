@@ -1,0 +1,403 @@
+﻿cwd=C:\Users\Brice\OneDrive\Documents\swift_document_generator
+distExists=True
+releaseExe=True
+distExe=True
+chromeSvg=True
+brandAssetsHead:
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+/// Brand image paths used in app chrome (not PDF).
+class SwiftBrandAssets {
+  SwiftBrandAssets._();
+
+  /// Document / PDF orange mark (raster).
+  static const logoOrange = 'assets/images/swift_supply_logo_orange.png';
+
+  /// Legacy solid-orange raster (kept for compatibility; UI uses [logoChromeSvg]).
+  static const logoOrangeSolid =
+      'assets/images/swift_supply_logo_orange_solid.png';
+
+  /// Crisp vector lockup for UI chrome (avoids PNG pixelation on large/high-DPI
+  /// monitors). True SVG paths, all-orange (#CE4E30).
+  static const logoChromeSvg = 'assets/images/swift_supply_logo_chrome.svg';
+
+  /// White wordmark for legacy orange headers (light-only accents).
+  static const headerWhite = 'assets/images/swift_supply_header_white.png';
+
+  /// Chrome logo asset â€” solid orange vector for light and dark.
+  static String chromeLogo({required bool dark}) => logoChromeSvg;
+}
+
+/// DPI-aware Swift Supply mark for toolbars / headers.
+///
+/// Uses a true SVG so edges stay sharp when Windows display scaling or large
+/// monitors increase the painted size.
+class SwiftChromeLogo extends StatelessWidget {
+  const SwiftChromeLogo({
+    super.key,
+    required this.height,
+    this.isDark = false,
+  });
+
+  final double height;
+
+  /// Reserved for future light/dark variants; chrome is solid orange either way.
+  final bool isDark;
+GIT:
+ D "customer_logos/Pacific Canbriam.png"
+ M mobile/lib/brand_assets.dart
+ M mobile/lib/home_screen.dart
+ M mobile/pubspec.lock
+ M mobile/pubspec.yaml
+ M presets.json
+?? .tools/
+?? QA_REPORT_WINDOWS_1H.md
+?? _analyze_icon_shape.py
+?? _android_after_check.png
+?? _android_after_check_crop.png
+?? _android_after_import.png
+?? _android_after_import_small.png
+?? _android_card_crop.png
+?? _android_home.png
+?? _android_home2.png
+?? _android_home2_small.png
+?? _android_home_small.png
+?? _android_logcat.txt
+?? _android_recreate_checked.png
+?? _android_recreate_checked_small.png
+?? _android_recreate_run2.log
+?? _android_upload_buttons.png
+?? _android_upload_dialog.png
+?? _android_upload_dialog_small.png
+?? _atco_out.json
+?? _atco_out.png
+?? _atco_out.svg
+?? _atco_processed.png
+?? _brand_export.log
+?? _check_alpha.py
+?? _check_icon_corners.py
+?? _compare_new_orange.png
+?? _compare_old_orange.png
+?? _cpe_processed.png
+?? _debug_mask.png
+?? _debug_white_raster.png
+?? _embed_render.png
+?? _epcor_dart_out.png
+?? _epcor_dart_out.png.svg
+?? _epcor_out.json
+?? _epcor_out.png
+?? _epcor_out.svg
+?? _epcor_processed.png
+?? _fastenal_processed.png
+?? _fit_icon_radius.py
+?? _header_on_black.png
+?? _header_on_orange.png
+?? _header_preview.png
+?? _header_preview2.png
+?? _mastec_out.json
+?? _mastec_out.png
+?? _mastec_out.svg
+?? _mastec_processed.png
+?? _measure_icon_radius.py
+?? _new_header.png
+?? _old_script.py
+?? _publish_v1.1.18.log
+?? _publish_v1.1.22.log
+?? _publish_v1.1.28.log
+?? _publish_v1.1.33.log
+?? _publish_v1.1.38.log
+?? _publish_v1.1.39.log
+?? _publish_v1.1.40.log
+?? _publish_v1.1.41.log
+?? _publish_v1.1.42.log
+?? _publish_v1.1.43.log
+?? _publish_v1.1.43_android.log
+?? _publish_v1.1.43_apk.log
+?? _publish_v1.1.44.log
+?? _publish_v1.1.45.log
+?? _publish_v1.1.47.log
+?? _publish_v1.1.52.log
+?? _publish_v1.1.53.log
+?? _publish_v1.1.58.log
+?? _publish_v1.1.58_r2.log
+?? _publish_v1.1.59.log
+?? _publish_v1.1.60.log
+?? _publish_v1.1.61.log
+?? _publish_v1.1.62.log
+?? _publish_v1.1.63.log
+?? _publish_v1.1.64.log
+?? _qa_current_on_gray.png
+?? _qa_icon_current_square.png
+?? _qa_icon_fixed_preview.png
+?? _qa_icon_old_png256.png
+?? _qa_icon_old_rounded.png
+?? _qa_icon_round_18.png
+?? _qa_icon_round_22.png
+?? _qa_icon_round_25.png
+?? _qa_old_ico_on_gray.png
+?? _qa_old_png_on_gray.png
+?? _qa_swift_opaque.png
+?? _quick_qa.png
+?? _quick_test.png
+?? _quick_test.qa_render.png
+?? _quick_test.svg
+?? _receiving_photo_preview.png
+?? _receiving_photo_ref.png
+?? _recreate_qa/
+?? _t.png
+?? _t.svg
+?? _t_ccomp.qa_render.png
+?? _t_ccomp.svg
+?? _t_opencv.png
+?? _t_opencv.qa_render.png
+?? _t_opencv.svg
+?? _t_polish.png
+?? _t_polish.svg
+?? _t_potrace.png
+?? _t_potrace.qa_render.png
+?? _t_potrace.svg
+?? _t_refine.png
+?? _t_refine.svg
+?? _t_tree.qa_render.png
+?? _t_tree.svg
+?? _t_vtracer.png
+?? _t_vtracer.qa_render.png
+?? _t_vtracer.svg
+?? _test_ccomp.png
+?? _test_ccomp.svg
+?? _test_embed.png
+?? _test_embed.svg
+?? _test_header.png
+?? _test_opencv.png
+?? _test_opencv.svg
+?? _test_orange.svg
+?? _test_polish.png
+?? _test_polish.svg
+?? _test_render.png
+?? _test_tree.png
+?? _test_tree.svg
+?? _tmp_solid_vector.svg
+?? _trace_tests/
+?? _v1126_header.png
+?? _v1126_orange.png
+?? _v1127_orange.png
+?? _vblack.png
+?? _verify_orange_from_svg.png
+?? _vtrace_test.png
+?? _vtrace_test2.png
+?? _vwhite.png
+?? _wolf_processed.png
+?? assets/brand/swift_supply_logo_chrome.svg
+?? assets/brand/swift_supply_logo_orange.qa_render.png
+?? assets/brand/swift_supply_logo_white.qa_render.png
+?? "customer_logos/1785390668198 - Copy.png"
+?? customer_logos/ARJAE.png
+?? customer_logos/Propak-Energy-Services-Logo.png
+?? customer_logos/RETI-Shell-Canada.png
+?? customer_logos/SMJV_Alpha.png
+?? "customer_logos/Worley Cord LP.png"
+?? "customer_logos/images _1_ _4_.png"
+?? mobile/assets/images/swift_supply_logo_chrome.svg
+?? mobile/qa_logs/
+?? mobile/test/chrome_logo_svg_test.dart
+?? mobile/test/logo_finder_win_20m_test.dart
+?? mobile/test/logo_finder_win_hour_companion_test.dart
+?? qa_logs/android_shot_11_customer.png
+?? qa_logs/android_shot_12_after_scroll.png
+?? qa_logs/android_shot_13_after_generate.png
+?? qa_logs/android_shot_14_relaunch.png
+?? qa_logs/android_shot_15_scrolled.png
+?? qa_logs/android_shot_16_loaded_sample.png
+?? qa_logs/android_shot_17_generate_dialog.png
+?? qa_logs/android_shot_19_receiving.png
+?? qa_logs/android_shot_20_receiving_scrolled.png
+?? qa_logs/android_shot_21_bol_load.png
+?? qa_logs/android_shot_22_bol_scroll.png
+?? qa_logs/android_shot_24_receiving.png
+?? qa_logs/android_shot_26_freight_before.png
+?? qa_logs/android_shot_27_collect.png
+?? qa_logs/android_shot_28_thirdparty.png
+?? qa_logs/android_shot_29_restart.png
+?? qa_logs/android_shot_2_receiving.png
+?? qa_logs/android_shot_31_fastenal_imported.png
+?? qa_logs/android_shot_32_second_slot.png
+?? qa_logs/android_shot_3_bol.png
+?? qa_logs/android_shot_4_recreate_tap.png
+?? qa_logs/android_shot_6_after_recreate_tap.png
+?? qa_logs/android_shot_7_find_logo.png
+?? qa_logs/android_shot_8_typed.png
+?? qa_logs/bol_10row_mid.png
+?? qa_logs/bol_10row_product_total.png
+?? qa_logs/bol_full_qa.png
+?? qa_logs/bol_goods_and_totals.png
+?? qa_logs/bol_goods_rows.png
+?? qa_logs/bol_page1_footer_zone.png
+?? qa_logs/bol_page1_full.png
+?? qa_logs/bol_page2_footer_zone.png
+?? qa_logs/bol_page2_full.png
+?? qa_logs/bol_page3_footer_zone.png
+?? qa_logs/bol_page3_full.png
+?? qa_logs/bol_product_band.png
+?? qa_logs/funnel_diag.log
+?? qa_logs/funnel_diag2.log
+?? qa_logs/funnel_diag3.log
+?? qa_logs/logo_hour_images/
+?? qa_logs/logo_hour_mid_report.txt
+?? qa_logs/logo_hour_session.txt
+?? qa_logs/logo_live_round.json
+?? qa_logs/logo_live_round1.json
+?? qa_logs/logo_live_round1.log
+?? qa_logs/logo_live_round10.json
+?? qa_logs/logo_live_round10.log
+?? qa_logs/logo_live_round11.json
+?? qa_logs/logo_live_round11.log
+?? qa_logs/logo_live_round12.json
+?? qa_logs/logo_live_round12.log
+?? qa_logs/logo_live_round13.json
+?? qa_logs/logo_live_round13.log
+?? qa_logs/logo_live_round14.json
+?? qa_logs/logo_live_round14.log
+?? qa_logs/logo_live_round15.json
+?? qa_logs/logo_live_round15.log
+?? qa_logs/logo_live_round16.json
+?? qa_logs/logo_live_round16.log
+?? qa_logs/logo_live_round17.json
+?? qa_logs/logo_live_round17.log
+?? qa_logs/logo_live_round2.json
+?? qa_logs/logo_live_round2.log
+?? qa_logs/logo_live_round3.json
+?? qa_logs/logo_live_round3.log
+?? qa_logs/logo_live_round4_save.log
+?? qa_logs/logo_live_round5.json
+?? qa_logs/logo_live_round5.log
+?? qa_logs/logo_live_round6.json
+?? qa_logs/logo_live_round6.log
+?? qa_logs/logo_live_round7.json
+?? qa_logs/logo_live_round7.log
+?? qa_logs/logo_live_round8.json
+?? qa_logs/logo_live_round8.log
+?? qa_logs/logo_live_round9.json
+?? qa_logs/logo_live_round9.log
+?? qa_logs/logo_shell_recheck.json
+?? qa_logs/logo_solid_h26_dpr1.0.png
+?? qa_logs/logo_solid_h26_dpr1.25.png
+?? qa_logs/logo_solid_h26_dpr1.5.png
+?? qa_logs/logo_solid_h26_dpr2.0.png
+?? qa_logs/logo_solid_h26_dpr2.5.png
+?? qa_logs/logo_solid_h26_dpr3.0.png
+?? qa_logs/logo_solid_h36_dpr1.0.png
+?? qa_logs/logo_solid_h36_dpr1.25.png
+?? qa_logs/logo_solid_h36_dpr1.5.png
+?? qa_logs/logo_solid_h36_dpr2.0.png
+?? qa_logs/logo_solid_h36_dpr2.5.png
+?? qa_logs/logo_solid_h36_dpr3.0.png
+?? qa_logs/logo_solid_h48_dpr1.0.png
+?? qa_logs/logo_solid_h48_dpr1.25.png
+?? qa_logs/logo_solid_h48_dpr1.5.png
+?? qa_logs/logo_solid_h48_dpr2.0.png
+?? qa_logs/logo_solid_h48_dpr2.5.png
+?? qa_logs/logo_solid_h48_dpr3.0.png
+?? qa_logs/logo_solid_h64_dpr1.0.png
+?? qa_logs/logo_solid_h64_dpr1.25.png
+?? qa_logs/logo_solid_h64_dpr1.5.png
+?? qa_logs/logo_solid_h64_dpr2.0.png
+?? qa_logs/logo_solid_h64_dpr2.5.png
+?? qa_logs/logo_solid_h64_dpr3.0.png
+?? qa_logs/logo_solid_h80_dpr1.0.png
+?? qa_logs/logo_solid_h80_dpr1.25.png
+?? qa_logs/logo_solid_h80_dpr1.5.png
+?? qa_logs/logo_solid_h80_dpr2.0.png
+?? qa_logs/logo_solid_h80_dpr2.5.png
+?? qa_logs/logo_solid_h80_dpr3.0.png
+?? qa_logs/mastec_purnell_wide.png
+?? qa_logs/orange_logo_edge_zoom.png
+?? qa_logs/picker_cap_test.log
+?? qa_logs/recreate_out/
+?? qa_logs/recreate_zoom/
+?? qa_logs/recv_centered_preview.png
+?? qa_logs/recv_centered_so60_norule_preview.png
+?? qa_logs/recv_centered_so60_preview.png
+?? qa_logs/recv_centered_so72_preview.png
+?? qa_logs/recv_fullwidth_verify.png
+?? qa_logs/recv_no_pm_rule_preview.png
+?? qa_logs/recv_permanent_v1168.png
+?? qa_logs/recv_pm_norule_crop.png
+?? qa_logs/recv_pm_rule_before_after.png
+?? qa_logs/recv_preview_now.png
+?? qa_logs/shipping_piece_count_36pt_band.png
+?? qa_logs/shipping_piece_count_36pt_page.png
+?? qa_logs/solid_logo_edge_zoom.png
+?? qa_logs/swift_logo_asset_compare.png
+?? qa_logs/win_3h_qa/
+?? qa_logs/win_logo_20m/SESSION_START.txt
+?? qa_logs/win_logo_20m/_patch_dialog.py
+?? qa_logs/win_logo_20m/_probe_open.ps1
+?? qa_logs/win_logo_20m/build_windows.log
+?? qa_logs/win_logo_20m/build_windows2.log
+?? qa_logs/win_logo_20m/build_windows_r3.log
+?? qa_logs/win_logo_20m/build_windows_r4.log
+?? qa_logs/win_logo_20m/build_windows_r4b.log
+?? qa_logs/win_logo_20m/build_windows_r5.log
+?? qa_logs/win_logo_20m/build_windows_r5b.log
+?? qa_logs/win_logo_20m/build_windows_r5c.log
+?? qa_logs/win_logo_20m/build_windows_r5d.log
+?? qa_logs/win_logo_20m/build_windows_r7.log
+?? qa_logs/win_logo_20m/build_windows_r7b.log
+?? qa_logs/win_logo_20m/calibrate/
+?? qa_logs/win_logo_20m/companion_2026-08-05T235401912482.json
+?? qa_logs/win_logo_20m/companion_run.log
+?? qa_logs/win_logo_20m/gui_live.json
+?? qa_logs/win_logo_20m/gui_live.log
+?? qa_logs/win_logo_20m/gui_live/
+?? qa_logs/win_logo_20m/gui_live_pid.txt
+?? qa_logs/win_logo_20m/gui_live_run.log
+?? qa_logs/win_logo_20m/gui_live_run2.log
+?? qa_logs/win_logo_20m/gui_live_run3.log
+?? qa_logs/win_logo_20m/gui_live_run4.err.log
+?? qa_logs/win_logo_20m/gui_live_run4.log
+?? qa_logs/win_logo_20m/gui_r1.err.log
+?? qa_logs/win_logo_20m/gui_r1.json
+?? qa_logs/win_logo_20m/gui_r1.log
+?? qa_logs/win_logo_20m/gui_r1/
+?? qa_logs/win_logo_20m/gui_r2.err.log
+?? qa_logs/win_logo_20m/gui_r2.json
+?? qa_logs/win_logo_20m/gui_r2.log
+?? qa_logs/win_logo_20m/gui_r2/
+?? qa_logs/win_logo_20m/gui_r2_pid.txt
+?? qa_logs/win_logo_20m/gui_r3.json
+?? qa_logs/win_logo_20m/gui_r3.log
+?? qa_logs/win_logo_20m/gui_r3/
+?? qa_logs/win_logo_20m/gui_r3_err.log
+?? qa_logs/win_logo_20m/gui_r3_pid.txt
+?? qa_logs/win_logo_20m/gui_r5.json
+?? qa_logs/win_logo_20m/gui_r5.log
+?? qa_logs/win_logo_20m/gui_r5/
+?? qa_logs/win_logo_20m/gui_r5_err.log
+?? qa_logs/win_logo_20m/gui_r5_pid.txt
+?? qa_logs/win_logo_20m/gui_r6.json
+?? qa_logs/win_logo_20m/gui_r6.log
+?? qa_logs/win_logo_20m/gui_r6/
+?? qa_logs/win_logo_20m/gui_r6_err.log
+?? qa_logs/win_logo_20m/gui_r6_pid.txt
+?? qa_logs/win_logo_20m/gui_r7.json
+?? qa_logs/win_logo_20m/gui_r7.log
+?? qa_logs/win_logo_20m/gui_r7/
+?? qa_logs/win_logo_20m/gui_r7_err.log
+?? qa_logs/win_logo_20m/gui_r7_pid.txt
+?? qa_logs/win_logo_20m/gui_r7_retest/
+?? qa_logs/win_logo_20m/images_2026-08-05T235401912482/
+?? qa_logs/win_logo_20m/manual/
+?? qa_logs/win_logo_20m/probe/
+?? qa_logs/win_logo_20m/run_gui.ps1
+?? qa_logs/win_logo_20m/run_gui_live.ps1
+?? qa_logs/win_logo_20m/run_gui_r2.ps1
+?? qa_logs/win_logo_20m/run_gui_r3.ps1
+?? qa_logs/win_logo_20m/run_gui_r4.ps1
+?? qa_logs/win_logo_20m/run_gui_r5.ps1
+?? qa_logs/win_logo_20m/run_gui_r6.ps1
+?? qa_logs/win_logo_20m/run_gui_r7.ps1
+?? qa_logs/win_logo_hour/
+?? scripts/__pycache__/
+?? signatures/
+?? swift_supply_logo_orange.png

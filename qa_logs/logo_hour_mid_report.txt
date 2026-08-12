@@ -1,0 +1,19 @@
+Logo hour session mid-report
+Start: 2026-08-05 21:16
+Now: 2026-08-05T21:36:28.8768062-06:00
+
+Baseline problems:
+- Wikipedia poisoned Strike (carrier strike group) and Flint (water crisis)
+- Gemini 429 slowed every candidate download
+- Shell og:image returned family lifestyle photo
+- Strike lacked strikegroup.ca resolution
+- 5Blue lacked 5blue.com resolution
+
+Fixes applied:
+- Gemini quota circuit breaker (20 min cool-down after 429)
+- Wikipedia title gates + poison keywords + logo filename preference
+- Homepage logo scrape (www + non-www), og:image only if URL hints logo
+- Known domain hints + verified brand logo URLs
+- Scoring: prefer *logo.png paths; demote og/hero/social cards
+
+Round5 tops: MasTec site, Shell pecten, Flint flintcorp, Strike strikegroup.ca logo, 5Blue logo.png

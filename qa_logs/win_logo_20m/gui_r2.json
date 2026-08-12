@@ -1,0 +1,38 @@
+{
+    "ended":  "2026-08-06T00:30:52.2193704-06:00",
+    "started":  "2026-08-06T00:29:39.7998662-06:00",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  true,
+                          "notes":  "search=Enter; picker=True; ",
+                          "started":  "2026-08-06T00:29:39.8298698-06:00",
+                          "ms":  6576,
+                          "ended":  "2026-08-06T00:29:58.1709494-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  true,
+                          "notes":  "search=Enter; picker=True; ",
+                          "started":  "2026-08-06T00:29:58.3425175-06:00",
+                          "ms":  6467,
+                          "ended":  "2026-08-06T00:30:16.1056166-06:00"
+                      },
+                      {
+                          "company":  "Whitecap",
+                          "ok":  true,
+                          "notes":  "search=Enter; picker=True; ",
+                          "started":  "2026-08-06T00:30:16.1119911-06:00",
+                          "ms":  6484,
+                          "ended":  "2026-08-06T00:30:33.9031254-06:00"
+                      },
+                      {
+                          "company":  "Arjae Design Solutions",
+                          "ok":  true,
+                          "notes":  "search=Enter; picker=True; ",
+                          "started":  "2026-08-06T00:30:33.9081261-06:00",
+                          "ms":  6518,
+                          "ended":  "2026-08-06T00:30:52.2193704-06:00"
+                      }
+                  ]
+}

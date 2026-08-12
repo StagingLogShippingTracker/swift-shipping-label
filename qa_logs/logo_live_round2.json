@@ -1,0 +1,87 @@
+[
+  {
+    "company": "Mastec Purnell",
+    "domain": "mastec.com",
+    "ok": true,
+    "count": 3,
+    "ms": 6732,
+    "error": null,
+    "top": [
+      "[65] Bing Images (247452b)",
+      "[62] Bing Images (58539b)",
+      "[58] Bing Images (241967b)"
+    ]
+  },
+  {
+    "company": "Shell",
+    "domain": "shell.com",
+    "ok": true,
+    "count": 8,
+    "ms": 6026,
+    "error": null,
+    "top": [
+      "[193] Site scrape (shell.co.uk) (107588b)",
+      "[155] Site scrape (shell.co.uk) (4161b)",
+      "[150] Site scrape (shell.com) (23484b)",
+      "[123] Site scrape (shell.ca) (4161b)",
+      "[119] Site scrape (shell.com) (4161b)",
+      "[107] Site scrape (shell.com.au) (4161b)",
+      "[64] Google Favicon (shell.com) (8904b)",
+      "[38] Bing Images (2538b)"
+    ]
+  },
+  {
+    "company": "Flint Energy",
+    "domain": "",
+    "ok": true,
+    "count": 19,
+    "ms": 19868,
+    "error": null,
+    "top": [
+      "[215] Site scrape (flintenergy.com) (16384b)",
+      "[215] Site scrape (flintenergy.com) (25878b)",
+      "[215] Site scrape (flintenergy.com) (16350b)",
+      "[212] Site scrape (flintenergy.com) (80261b)",
+      "[155] Site scrape (flintenergy.com) (3436b)",
+      "[155] Site scrape (flintenergy.com) (3182b)",
+      "[100] Google Favicon (flintenergy.com) (20653b)",
+      "[85] Site scrape (flintenergy.ca) (3059b)"
+    ]
+  },
+  {
+    "company": "Strike Group",
+    "domain": "",
+    "ok": true,
+    "count": 13,
+    "ms": 25575,
+    "error": null,
+    "top": [
+      "[264] Bing Images (6724b)",
+      "[94] Google Favicon (strikegroup.ca) (2736b)",
+      "[78] Bing Images (200898b)",
+      "[78] Bing Images (63615b)",
+      "[71] Bing Images (17942b)",
+      "[68] Bing Images (217364b)",
+      "[68] Bing Images (128901b)",
+      "[64] Bing Images (49592b)"
+    ]
+  },
+  {
+    "company": "5Blue Process Equipment",
+    "domain": "",
+    "ok": true,
+    "count": 9,
+    "ms": 24698,
+    "error": null,
+    "top": [
+      "[221] Site scrape (5blue.com) (12079b)",
+      "[193] Site scrape (5blue.com) (15743b)",
+      "[193] Site scrape (5blue.com) (15851b)",
+      "[186] Site scrape (5blue.com) (132124b)",
+      "[179] Site scrape (5blue.com) (1313b)",
+      "[100] Google Favicon (5blue.com) (15722b)",
+      "[54] Bing Images (503156b)",
+      "[47] Bing Images (230425b)"
+    ]
+  }
+]

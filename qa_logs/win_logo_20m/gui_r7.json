@@ -1,0 +1,126 @@
+{
+    "ended":  "2026-08-06T01:47:14.2917576-06:00",
+    "started":  "2026-08-06T01:33:50.5580686-06:00",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=39123 bright=10570; ",
+                          "started":  "2026-08-06T01:33:50.6046023-06:00",
+                          "real_choose":  true,
+                          "ms":  22364,
+                          "bytes":  377835,
+                          "ended":  "2026-08-06T01:34:33.4069690-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=36796 bright=11045; ",
+                          "started":  "2026-08-06T01:34:33.5115096-06:00",
+                          "real_choose":  true,
+                          "ms":  22616,
+                          "bytes":  273308,
+                          "ended":  "2026-08-06T01:35:16.1305677-06:00"
+                      },
+                      {
+                          "company":  "Whitecap",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=False mid=37840 bright=12331; ",
+                          "started":  "2026-08-06T01:35:16.1381154-06:00",
+                          "real_choose":  false,
+                          "ms":  66519,
+                          "bytes":  216970,
+                          "ended":  "2026-08-06T01:36:42.9116146-06:00"
+                      },
+                      {
+                          "company":  "Arjae Design Solutions",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=False mid=897 bright=48152; ",
+                          "started":  "2026-08-06T01:36:42.9171550-06:00",
+                          "real_choose":  false,
+                          "ms":  65593,
+                          "bytes":  194304,
+                          "ended":  "2026-08-06T01:38:09.1593420-06:00"
+                      },
+                      {
+                          "company":  "Paramount Resources",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=38570 bright=11552; ",
+                          "started":  "2026-08-06T01:38:09.1669775-06:00",
+                          "real_choose":  true,
+                          "ms":  21942,
+                          "bytes":  249699,
+                          "ended":  "2026-08-06T01:38:51.6266100-06:00"
+                      },
+                      {
+                          "company":  "Suncor",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=False mid=0 bright=0; ",
+                          "started":  "2026-08-06T01:38:51.6362718-06:00",
+                          "real_choose":  false,
+                          "ms":  72021,
+                          "bytes":  120,
+                          "ended":  "2026-08-06T01:40:23.6821437-06:00"
+                      },
+                      {
+                          "company":  "Warren Valve",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=False mid=0 bright=0; ",
+                          "started":  "2026-08-06T01:40:23.6895993-06:00",
+                          "real_choose":  false,
+                          "ms":  71425,
+                          "bytes":  120,
+                          "ended":  "2026-08-06T01:41:59.6009738-06:00"
+                      },
+                      {
+                          "company":  "Shell",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=201879; search=Enter; chooseLogo=True mid=37224 bright=10923; ",
+                          "started":  "2026-08-06T01:41:59.6119732-06:00",
+                          "real_choose":  true,
+                          "ms":  36840,
+                          "bytes":  283807,
+                          "ended":  "2026-08-06T01:42:56.6066339-06:00"
+                      },
+                      {
+                          "company":  "ATCO",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=39038 bright=10172; ",
+                          "started":  "2026-08-06T01:42:56.6136347-06:00",
+                          "real_choose":  true,
+                          "ms":  22362,
+                          "bytes":  440617,
+                          "ended":  "2026-08-06T01:43:39.2005131-06:00"
+                      },
+                      {
+                          "company":  "EPCOR",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=37982 bright=10034; ",
+                          "started":  "2026-08-06T01:43:39.2065159-06:00",
+                          "real_choose":  true,
+                          "ms":  66591,
+                          "bytes":  237677,
+                          "ended":  "2026-08-06T01:45:05.9620052-06:00"
+                      },
+                      {
+                          "company":  "Arc Resources LTD",
+                          "ok":  true,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=True mid=38659 bright=11375; ",
+                          "started":  "2026-08-06T01:45:05.9704231-06:00",
+                          "real_choose":  true,
+                          "ms":  21980,
+                          "bytes":  355646,
+                          "ended":  "2026-08-06T01:45:48.5634044-06:00"
+                      },
+                      {
+                          "company":  "DNOW",
+                          "ok":  false,
+                          "notes":  "dlg_bytes=155966; search=Enter; chooseLogo=False mid=897 bright=48152; ",
+                          "started":  "2026-08-06T01:45:48.5746345-06:00",
+                          "real_choose":  false,
+                          "ms":  65629,
+                          "bytes":  194304,
+                          "ended":  "2026-08-06T01:47:14.2917576-06:00"
+                      }
+                  ]
+}

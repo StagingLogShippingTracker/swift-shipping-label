@@ -1,0 +1,143 @@
+{
+    "ended":  "2026-08-06T00:17:27.6588582-06:00",
+    "started":  "2026-08-06T00:13:10.0087381-06:00",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  false,
+                          "notes":  "open=menu_fy=278 zone=990; search=click(975,847,n=54); class=idle_or_snackbar; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\sureus_murphy_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\sureus_murphy_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\sureus_murphy_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:13:10.0282076-06:00",
+                          "classification":  "idle_or_snackbar",
+                          "ms":  35126,
+                          "ended":  "2026-08-06T00:13:57.2148958-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  true,
+                          "notes":  "open=menu_fy=278 zone=990; search=click(975,847,n=54); class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\bfl_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\bfl_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\bfl_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:13:57.3239467-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  30537,
+                          "ended":  "2026-08-06T00:14:39.4211713-06:00"
+                      },
+                      {
+                          "company":  "Whitecap",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:14:39.4272621-06:00",
+                          "ended":  "2026-08-06T00:14:55.9113751-06:00"
+                      },
+                      {
+                          "company":  "Arjae Design Solutions",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:14:55.9179152-06:00",
+                          "ended":  "2026-08-06T00:15:12.3517430-06:00"
+                      },
+                      {
+                          "company":  "Paramount Resources",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:15:12.3578198-06:00",
+                          "ended":  "2026-08-06T00:15:28.6973303-06:00"
+                      },
+                      {
+                          "company":  "Suncor",
+                          "ok":  true,
+                          "notes":  "open=menu_fy=282 zone=990; search=click(975,847,n=54); class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\suncor_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\suncor_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\suncor_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:15:28.7033278-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  5219,
+                          "ended":  "2026-08-06T00:15:48.7017198-06:00"
+                      },
+                      {
+                          "company":  "Warren Valve",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:15:48.7067239-06:00",
+                          "ended":  "2026-08-06T00:16:05.1235946-06:00"
+                      },
+                      {
+                          "company":  "Shell",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:16:05.1356713-06:00",
+                          "ended":  "2026-08-06T00:16:21.4992864-06:00"
+                      },
+                      {
+                          "company":  "ATCO",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:16:21.5092842-06:00",
+                          "ended":  "2026-08-06T00:16:37.9058218-06:00"
+                      },
+                      {
+                          "company":  "EPCOR",
+                          "ok":  true,
+                          "notes":  "open=menu_fy=278 zone=990; search=click(975,847,n=54); class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\epcor_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\epcor_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\gui_live\\epcor_03_result.png"
+                                          ],
+                          "started":  "2026-08-06T00:16:37.9138284-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  5201,
+                          "ended":  "2026-08-06T00:16:54.8185867-06:00"
+                      },
+                      {
+                          "company":  "Arc Resources LTD",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:16:54.8293591-06:00",
+                          "ended":  "2026-08-06T00:17:11.2435744-06:00"
+                      },
+                      {
+                          "company":  "DNOW",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog zone=0",
+                          "screenshots":  [
+
+                                          ],
+                          "started":  "2026-08-06T00:17:11.2493662-06:00",
+                          "ended":  "2026-08-06T00:17:27.6588582-06:00"
+                      }
+                  ],
+    "deadline":  "2026-08-06T00:33:10.0047378-06:00"
+}

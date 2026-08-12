@@ -1,0 +1,78 @@
+[
+  {
+    "company": "Mastec Purnell",
+    "domain": "mastec.com",
+    "ok": true,
+    "count": 4,
+    "ms": 31538,
+    "error": null,
+    "top": [
+      "[65] Bing Images (247452b)",
+      "[65] Bing Images (16160b)",
+      "[62] Bing Images (58539b)",
+      "[58] Bing Images (241967b)"
+    ]
+  },
+  {
+    "company": "Shell",
+    "domain": "shell.com",
+    "ok": true,
+    "count": 3,
+    "ms": 23407,
+    "error": null,
+    "top": [
+      "[64] Google Favicon (shell.com) (8904b)",
+      "[38] Bing Images (2538b)",
+      "[33] Wikipedia (Shell plc) (692175b)"
+    ]
+  },
+  {
+    "company": "Flint Energy",
+    "domain": "",
+    "ok": true,
+    "count": 8,
+    "ms": 29178,
+    "error": null,
+    "top": [
+      "[100] Google Favicon (flintenergy.com) (20653b)",
+      "[68] Bing Images (26325b)",
+      "[68] Bing Images (10856b)",
+      "[61] Bing Images (100110b)",
+      "[51] Bing Images (36076b)",
+      "[47] Bing Images (35995b)",
+      "[33] Wikipedia (Flint water crisis) (155640b)",
+      "[33] Wikipedia (Caroline Flint) (473702b)"
+    ]
+  },
+  {
+    "company": "Strike Group",
+    "domain": "",
+    "ok": true,
+    "count": 14,
+    "ms": 50381,
+    "error": null,
+    "top": [
+      "[120] Wikipedia (Carrier strike group) (193110b)",
+      "[117] Wikipedia (UK Carrier Strike Group) (385395b)",
+      "[115] Bing Images (315692b)",
+      "[85] Wikipedia (Special Forces Strike Group) (41688b)",
+      "[78] Bing Images (200898b)",
+      "[78] Bing Images (63615b)",
+      "[71] Bing Images (17942b)",
+      "[68] Bing Images (128901b)"
+    ]
+  },
+  {
+    "company": "5Blue Process Equipment",
+    "domain": "",
+    "ok": true,
+    "count": 3,
+    "ms": 29136,
+    "error": null,
+    "top": [
+      "[54] Bing Images (503156b)",
+      "[47] Bing Images (230425b)",
+      "[47] Bing Images (43205b)"
+    ]
+  }
+]

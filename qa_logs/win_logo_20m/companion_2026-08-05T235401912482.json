@@ -1,0 +1,808 @@
+{
+  "started": "2026-08-06T00:04:29.693830",
+  "companies": [
+    {
+      "company": "Sureus Murphy",
+      "ms": 68381,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 80,
+          "url": "https://d2cdki9wzwrm1b.cloudfront.net/userfiles/brands/murphy-logo.png",
+          "bytes": 18774,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 71,
+          "url": "https://www.murphygroup.com/wp-content/uploads/2024/08/j-murphy-and-sons-limited-vector-logo.png",
+          "bytes": 15573,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 71,
+          "url": "https://www.vhv.rs/dpng/d/12-128623_murphy-usa-logo-vector-hd-png-download.png",
+          "bytes": 101682,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://charlesfaram.com/wp-content/uploads/2025/03/Murphy-and-Son-Logo-Square.png",
+          "bytes": 63527,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://cdn.freebiesupply.com/logos/large/2x/murphy-1-logo-png-transparent.png",
+          "bytes": 102261,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://www.eua-utilitynetworks.org.uk/media/4eb0b6eb9145b947272d549bd3d2f578/1000/Murphylogo.png",
+          "bytes": 172027,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://bcgrasslands.org/wp-content/uploads/2023/12/surerus-murphy-logo-corporate-colours-with-black-text.png",
+          "bytes": 118697,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://cs3.mit.edu/sites/default/files/sponsor/murphy_logo.png",
+          "bytes": 38299,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Sureus_Murphy\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Surerus Murphy",
+      "ms": 53735,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (surerus-murphy.com)",
+          "score": 253,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2023/12/CORlogo-Yellow-and-Black_2c.png",
+          "bytes": 10529,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (surerus-murphy.com)",
+          "score": 221,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2023/12/SMJV_Alpha.png",
+          "bytes": 6785,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (surerus-murphy.com)",
+          "score": 221,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2023/12/SMJV_Alpha-150x150.png",
+          "bytes": 7209,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 138,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2024/06/North-Montney-Kahta-Logo-print.png",
+          "bytes": 215080,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 138,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2024/06/Karr-Logo-Design-FINAL-01-1.png",
+          "bytes": 33307,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 122,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2023/12/trust-c253820.png",
+          "bytes": 37810,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 122,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2024/05/Permanent.png",
+          "bytes": 426657,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 115,
+          "url": "https://www.surerus-murphy.com/wp-content/uploads/2023/12/facilities-surerus-murphy-joint-venture-infrastructure-construction-net-zero-energy-future-050-1536x1023.jpeg",
+          "bytes": 378774,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Surerus_Murphy\\7.jpg"
+        }
+      ]
+    },
+    {
+      "company": "BFL",
+      "ms": 58526,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (bfl.com)",
+          "score": 165,
+          "url": "https://www.abbott.com/content/dam/corp/abbottglobal/test-hub/Abbott-Logo.png",
+          "bytes": 16096,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-01.png",
+          "bytes": 20224,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-04.png",
+          "bytes": 19723,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-05.png",
+          "bytes": 32397,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-12.png",
+          "bytes": 80352,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-07.png",
+          "bytes": 13809,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-08.png",
+          "bytes": 9817,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Site scrape (bfl.com.au)",
+          "score": 125,
+          "url": "https://centrepointfinance.com.au/wp-content/uploads/2022/11/logo-02.png",
+          "bytes": 46046,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\BFL\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Whitecap",
+      "ms": 55787,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecapgeospatial.com/WC_logo.png",
+          "bytes": 127303,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecapcarwash.com/wp-content/uploads/2024/01/Whitecap-Primary-Logo_Blue.png",
+          "bytes": 38064,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecaptech.com/wp-content/uploads/2023/11/Whitecap_Logo_Horizontal_Blue-1030x320.png",
+          "bytes": 35755,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "http://whitecapmanufacturing.com/cdn/shop/files/Logo_whitecap.png?height=628&pad_color=ffffff&v=1758556947&width=1200",
+          "bytes": 16638,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\3.webp"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecapalpine.ca/wp-content/themes/whitecap2018/images/Whitecap_Logo_Black.png",
+          "bytes": 23093,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecapmgt.com/wp-content/uploads/2025/08/whitecap-logo.png",
+          "bytes": 62959,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://whitecap-consulting.com/wp-content/uploads/2025/09/new-logo.png",
+          "bytes": 14913,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 222,
+          "url": "https://whitecap.bswift.com/images/custlogos/4cd4d074-6de1-4707-b892-ba1d9da017db-client_logo.png",
+          "bytes": 6860,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Whitecap\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Arjae Design Solutions",
+      "ms": 55934,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 108,
+          "url": "https://arjae.ca/wp-content/uploads/2026/03/csa-full-logo.png",
+          "bytes": 48256,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://arjaenergys.in/wp-content/uploads/2024/07/Arja-Energsy-pvt-ltd-Logo-2-1024x276.png",
+          "bytes": 24946,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://arjaenergys.in/wp-content/uploads/2024/07/Arja-Energsy-pvt-ltd-Logo-2.png",
+          "bytes": 68876,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\2.webp"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 94,
+          "url": "https://www.swopedesignsolutions.com/wp-content/uploads/2023/03/SDS-Logo.png",
+          "bytes": 76643,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 92,
+          "url": "https://arjae.ca/wp-content/uploads/2026/03/Our-Facilities-Photos-3.png",
+          "bytes": 44390,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 92,
+          "url": "https://arjae.ca/wp-content/uploads/2026/03/Our-Facilities-Photos-2.png",
+          "bytes": 57873,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 92,
+          "url": "https://arjae.ca/wp-content/uploads/2026/03/asme-.png",
+          "bytes": 40810,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 92,
+          "url": "https://arjae.ca/wp-content/uploads/2026/03/image-56.png",
+          "bytes": 195488,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Arjae_Design_Solutions\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Paramount Resources",
+      "ms": 58644,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 142,
+          "url": "https://paramountpromoshop.com/cdn/shop/files/Paramount_Resources_Ltd._Logo_Colour_2348cad1-265a-4859-90e5-55156fd504d6_2048x.png?v=1710875512",
+          "bytes": 75502,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\0.webp"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 110,
+          "url": "https://www.marketbeat.com/logos/paramount-resources-ltd-logo.png?v=20240604123216",
+          "bytes": 16198,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\1.webp"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 110,
+          "url": "https://www.pngkey.com/png/detail/346-3465134_paramount-resources-ltd-paramount-resources-logo.png",
+          "bytes": 56027,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\2.jpg"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 110,
+          "url": "https://boereport.com/wp-content/uploads/2025/05/Paramount-Resources-Logo.png",
+          "bytes": 11684,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 110,
+          "url": "https://www.marketbeat.com/logos/paramount-resources-ltd-logo-1200x675.png?v=20240604123216",
+          "bytes": 13932,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\4.webp"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 110,
+          "url": "https://www.biocap.ca/wp-content/uploads/2023/01/Paramount-Resources-Logo-364x245.png",
+          "bytes": 43639,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 100,
+          "url": "https://theironhub.com/wp-content/uploads/2025/07/paramount_resources-logo-white.webp",
+          "bytes": 5920,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\6.webp"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 94,
+          "url": "https://static.vecteezy.com/system/resources/previews/056/658/340/non_2x/paramount-logo-square-rounded-paramount-logo-paramount-logo-free-download-free-png.png",
+          "bytes": 299541,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Paramount_Resources\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Suncor",
+      "ms": 55780,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 228,
+          "url": "https://suncoroutdoors.com/wp-content/uploads/2022/11/Suncor-Outdoors-Logo-WPForms-01.png",
+          "bytes": 27414,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 89,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/news-and-stories/logos/card-images/suncor-full-colour-reverse.jpg?sc=0.5&modified=20230321151434&hash=B4AEEE1621F1154F6810D9F4225C7895",
+          "bytes": 15671,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\1.jpg"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 89,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/news-and-stories/logos/card-images/suncor-one-colour-white-reverse.jpg?sc=0.5&modified=20230321151447&hash=A7F8FC858800A718399CFCAFB4ADF7A4",
+          "bytes": 11998,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\2.jpg"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 83,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/news-and-stories/logos/card-images/sef-full-colour-positive-vertical.jpg?sc=0.5&modified=20230321151405&hash=2FACFCC93EECDCDF444B6F17BF7DBC40",
+          "bytes": 6665,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 83,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/news-and-stories/logos/card-images/sef-full-colour-positive-horizontal.jpg?sc=0.5&modified=20230321151356&hash=A794201E821DCBD70A897BFB2F9332D1",
+          "bytes": 7221,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\4.jpg"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 73,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/who-we-are/history/the-biggest-gamble/1979.jpg?bc=white&mw=240&modified=20221207173821&hash=FF94DA3501FE5E4BAFB0875C477C5C3A",
+          "bytes": 21139,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\5.jpg"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 73,
+          "url": "https://sustainability-prd-cdn.suncor.com/-/media/project/suncor/images/who-we-are/history/the-early-years/1920.jpg?bc=white&mw=240&modified=20230127152740&hash=521C413CF4787BCD48013DD50AF63615",
+          "bytes": 16356,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\6.jpg"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 71,
+          "url": "https://vectorseek.com/wp-content/uploads/2026/05/SunCorp-Logo-PNG-SVG-Vector-01-300x300.png",
+          "bytes": 8715,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Suncor\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Warren Valve",
+      "ms": 58148,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Bing Images",
+          "score": 298,
+          "url": "https://www.warrenvalves.com/images/green_sb1-logo-t2.png",
+          "bytes": 47032,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Site scrape (warrenvalve.com)",
+          "score": 283,
+          "url": "https://warrenvalve.com/assets/images/template/Warren-Valve-Distributed-Products-Logo.png",
+          "bytes": 6982,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Site scrape (warrenvalve.com)",
+          "score": 283,
+          "url": "https://warrenvalve.com/assets/images/template/Warren-Valve-Engineered-Products-Logo.png",
+          "bytes": 6958,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Site scrape (warrenvalve.com)",
+          "score": 226,
+          "url": "https://warrenvalve.com/assets/images/banners/Warren-Website-Footer-logos.jpg",
+          "bytes": 474843,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\3.jpg"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 128,
+          "url": "https://www.warrenvalve.com/assets/images/template/Warren-Valve-Distributed-Products-Logo.png",
+          "bytes": 6982,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 128,
+          "url": "https://www.warrenvalve.com/assets/images/template/Warren-Valve-Engineered-Products-Logo.png",
+          "bytes": 6958,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 127,
+          "url": "https://www.warrenvalve.com/assets/images/banners/Warren-Website-Footer-logos.jpg",
+          "bytes": 474843,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\6.jpg"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 122,
+          "url": "https://www.warrencontrols.com/wp-content/uploads/2024/02/valve-works-logo-400x59.png",
+          "bytes": 9722,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Warren_Valve\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "Shell",
+      "ms": 54283,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Known brand logo",
+          "score": 306,
+          "url": "https://brandslogos.com/wp-content/uploads/images/large/shell-logo.png",
+          "bytes": 120349,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Known brand logo",
+          "score": 306,
+          "url": "https://1000logos.net/wp-content/uploads/2017/06/Shell-Logo.png",
+          "bytes": 217768,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "DuckDuckGo Icon (shell.com)",
+          "score": 70,
+          "url": "https://icons.duckduckgo.com/ip3/shell.com.ico",
+          "bytes": 34494,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\2.ico"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://brandslogos.com/wp-content/uploads/images/large/shell-logo-1.png",
+          "bytes": 139380,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 68,
+          "url": "https://brandlogos.net/wp-content/uploads/2014/09/royal_dutch_shell-logo-brandlogo.net_.png",
+          "bytes": 42995,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 67,
+          "url": "https://pngset.com/images/shell-logo-vector-advertisement-poster-text-label-transparent-png-2236222.png",
+          "bytes": 18029,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 67,
+          "url": "https://toppng.com/uploads/preview/shell-exploration-and-production-shell-logo-vector-11563582729nhiqgcmp7s.png",
+          "bytes": 327992,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 67,
+          "url": "https://toppng.com/uploads/preview/shell-logo-vector-11574250023ccxn75tmly.png",
+          "bytes": 253812,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\Shell\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "ATCO",
+      "ms": 54518,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Known brand logo",
+          "score": 300,
+          "url": "https://www.atco.com/content/dam/atco-website/en-ca/web/assets/global-files/atco-logo.png",
+          "bytes": 3099,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://www.atco-us.com/wp-content/uploads/2019/01/atco-logo-1000-tr.png",
+          "bytes": 123279,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://www.atcolab.com/wp-content/uploads/2018/12/Atco-LOGO-1.png",
+          "bytes": 24810,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://mis.atcoindustries.com/Images/ATCO_LOGO_Color.png",
+          "bytes": 19353,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://theatcogroup.com/wp-content/uploads/2024/02/cropped-ATCO-Group-Logo-Final-.png",
+          "bytes": 36201,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://www.atcolab.com/wp-content/uploads/2018/12/Atco-Logo.png",
+          "bytes": 21140,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://atcoeg.com/images/logo.png",
+          "bytes": 59101,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 96,
+          "url": "https://www.atcorecords.com/assets/logo.png",
+          "bytes": 17110,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\ATCO\\7.png"
+        }
+      ]
+    },
+    {
+      "company": "EPCOR",
+      "ms": 54027,
+      "count": 30,
+      "hit30": true,
+      "error": null,
+      "tops": [
+        {
+          "i": 0,
+          "source": "Site scrape (epcor.com)",
+          "score": 183,
+          "url": "https://epcor.com/content/dam/epcor/images/dm-images/logos-and-icons/epcor-logo.png",
+          "bytes": 4646,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\0.png"
+        },
+        {
+          "i": 1,
+          "source": "Bing Images",
+          "score": 80,
+          "url": "https://epcor.org/Portals/0/adam/Noke-Components/L4RlKeyGDEuiPjzS5_F9Iw/Image/epcorpluspayments-prof-logos.png",
+          "bytes": 15828,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\1.png"
+        },
+        {
+          "i": 2,
+          "source": "Bing Images",
+          "score": 80,
+          "url": "https://epcor.org/Portals/0/adam/Noke-Components/AKV26aY9A0OJeL7U_gDuoA/Image/epcorplusneach-logos.png",
+          "bytes": 23646,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\2.png"
+        },
+        {
+          "i": 3,
+          "source": "Bing Images",
+          "score": 80,
+          "url": "https://epcorfdy.com/wp-content/uploads/2024/02/cropped-Epcor_Logo_2023.png",
+          "bytes": 21487,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\3.png"
+        },
+        {
+          "i": 4,
+          "source": "Bing Images",
+          "score": 67,
+          "url": "https://tsuutina.com/wp-content/uploads/2025/08/EPCOR_Logo.svg_-768x760.png",
+          "bytes": 10218,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\4.png"
+        },
+        {
+          "i": 5,
+          "source": "Bing Images",
+          "score": 64,
+          "url": "https://anemoia.nl/wp-content/uploads/2019/12/logo-Epcor.png",
+          "bytes": 67804,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\5.png"
+        },
+        {
+          "i": 6,
+          "source": "Bing Images",
+          "score": 64,
+          "url": "https://www.aardeunderground.ca/img/logo-epcor-56.png",
+          "bytes": 20845,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\6.png"
+        },
+        {
+          "i": 7,
+          "source": "Bing Images",
+          "score": 64,
+          "url": "https://talentmap.com/wp-content/uploads/2020/04/epcor_logo.png",
+          "bytes": 175224,
+          "file": "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_20m\\images_2026-08-05T235401912482\\EPCOR\\7.png"
+        }
+      ]
+    }
+  ]
+}

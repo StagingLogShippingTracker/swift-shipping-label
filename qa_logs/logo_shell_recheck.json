@@ -1,0 +1,37 @@
+[
+  {
+    "i": 0,
+    "score": 151,
+    "source": "Site scrape (shell.co.uk)",
+    "bytes": 4161,
+    "file": "../qa_logs/logo_hour_images/Shell_recheck/0.png"
+  },
+  {
+    "i": 1,
+    "score": 119,
+    "source": "Site scrape (shell.ca)",
+    "bytes": 4161,
+    "file": "../qa_logs/logo_hour_images/Shell_recheck/1.png"
+  },
+  {
+    "i": 2,
+    "score": 115,
+    "source": "Site scrape (shell.com)",
+    "bytes": 4161,
+    "file": "../qa_logs/logo_hour_images/Shell_recheck/2.png"
+  },
+  {
+    "i": 3,
+    "score": 103,
+    "source": "Site scrape (shell.com.au)",
+    "bytes": 4161,
+    "file": "../qa_logs/logo_hour_images/Shell_recheck/3.png"
+  },
+  {
+    "i": 4,
+    "score": 64,
+    "source": "Google Favicon (shell.com)",
+    "bytes": 8904,
+    "file": "../qa_logs/logo_hour_images/Shell_recheck/4.png"
+  }
+]

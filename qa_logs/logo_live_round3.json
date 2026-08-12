@@ -1,0 +1,91 @@
+[
+  {
+    "company": "Mastec Purnell",
+    "domain": "mastec.com",
+    "ok": true,
+    "count": 10,
+    "ms": 25581,
+    "error": null,
+    "top": [
+      "[197] Site scrape (mastec.com) (11126b)",
+      "[197] Site scrape (mastec.com) (60473b)",
+      "[191] Site scrape (mastec.com) (2976b)",
+      "[191] Site scrape (mastec.com) (3416b)",
+      "[191] Site scrape (mastec.com) (3761b)",
+      "[191] Site scrape (mastec.com) (3001b)",
+      "[183] Site scrape (mastec.com) (2224b)",
+      "[183] Site scrape (mastec.com) (1863b)"
+    ]
+  },
+  {
+    "company": "Shell",
+    "domain": "shell.com",
+    "ok": true,
+    "count": 7,
+    "ms": 25460,
+    "error": null,
+    "top": [
+      "[193] Site scrape (shell.co.uk) (107588b)",
+      "[151] Site scrape (shell.co.uk) (4161b)",
+      "[150] Site scrape (shell.com) (23484b)",
+      "[119] Site scrape (shell.ca) (4161b)",
+      "[115] Site scrape (shell.com) (4161b)",
+      "[103] Site scrape (shell.com.au) (4161b)",
+      "[64] Google Favicon (shell.com) (8904b)"
+    ]
+  },
+  {
+    "company": "Flint Energy",
+    "domain": "",
+    "ok": true,
+    "count": 12,
+    "ms": 25672,
+    "error": null,
+    "top": [
+      "[179] Site scrape (flintcorp.com) (16384b)",
+      "[179] Site scrape (flintcorp.com) (25878b)",
+      "[179] Site scrape (flintcorp.com) (16350b)",
+      "[176] Site scrape (flintcorp.com) (80261b)",
+      "[111] Site scrape (flintcorp.com) (3436b)",
+      "[111] Site scrape (flintcorp.com) (3182b)",
+      "[90] Bing Images (970590b)",
+      "[68] Bing Images (26325b)"
+    ]
+  },
+  {
+    "company": "Strike Group",
+    "domain": "",
+    "ok": true,
+    "count": 16,
+    "ms": 26348,
+    "error": null,
+    "top": [
+      "[261] Site scrape (strikegroup.ca) (25885b)",
+      "[255] Site scrape (strikegroup.ca) (7270b)",
+      "[199] Site scrape (strikegroup.ca) (8025b)",
+      "[193] Site scrape (strikegroup.ca) (2643b)",
+      "[99] Bing Images (315692b)",
+      "[94] Google Favicon (strikegroup.ca) (2736b)",
+      "[89] Bing Images (101765b)",
+      "[89] Bing Images (660052b)"
+    ]
+  },
+  {
+    "company": "5Blue Process Equipment",
+    "domain": "",
+    "ok": true,
+    "count": 9,
+    "ms": 24761,
+    "error": null,
+    "top": [
+      "[219] Site scrape (5blue.com) (12079b)",
+      "[193] Site scrape (5blue.com) (15743b)",
+      "[193] Site scrape (5blue.com) (15851b)",
+      "[179] Site scrape (5blue.com) (1313b)",
+      "[166] Site scrape (5blue.com) (132124b)",
+      "[100] Google Favicon (5blue.com) (15722b)",
+      "[54] Bing Images (503156b)",
+      "[47] Bing Images (230425b)"
+    ]
+  }
+]

@@ -1,0 +1,54 @@
+{
+    "ended":  "2026-08-05T22:35:36.7358414-06:00",
+    "started":  "2026-08-05T22:34:56.0247348-06:00",
+    "round":  2,
+    "companies":  [
+                      {
+                          "company":  "Mastec Purnell",
+                          "ok":  true,
+                          "notes":  "dlgSearchZone=923; Search(971,834); class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\mastec_purnell_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\mastec_purnell_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\mastec_purnell_03_result.png"
+                                          ],
+                          "top_sources":  [
+
+                                          ],
+                          "started":  "2026-08-05T22:34:56.0337412-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  4288,
+                          "ended":  "2026-08-05T22:35:08.8756132-06:00"
+                      },
+                      {
+                          "company":  "Shell",
+                          "ok":  false,
+                          "notes":  "Could not open Find logo dialog",
+                          "screenshots":  [
+
+                                          ],
+                          "top_sources":  [
+
+                                          ],
+                          "started":  "2026-08-05T22:35:08.9625045-06:00",
+                          "ended":  "2026-08-05T22:35:24.0520260-06:00"
+                      },
+                      {
+                          "company":  "Flint Energy",
+                          "ok":  true,
+                          "notes":  "dlgSearchZone=923; Search(971,834); class=picker_likely; ",
+                          "screenshots":  [
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\flint_energy_01_dialog.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\flint_energy_02_typed.png",
+                                              "C:\\Users\\Brice\\OneDrive\\Documents\\swift_document_generator\\qa_logs\\win_logo_hour\\round2\\flint_energy_03_result.png"
+                                          ],
+                          "top_sources":  [
+
+                                          ],
+                          "started":  "2026-08-05T22:35:24.0560256-06:00",
+                          "classification":  "picker_likely",
+                          "ms":  4223,
+                          "ended":  "2026-08-05T22:35:36.7358414-06:00"
+                      }
+                  ]
+}

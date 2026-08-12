@@ -1,0 +1,72 @@
+{
+    "ended":  "2026-08-06T01:21:04.1910533-06:00",
+    "started":  "2026-08-06T01:18:13.9362741-06:00",
+    "companies":  [
+                      {
+                          "company":  "Sureus Murphy",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:18:13.9853355-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:18:31.3187933-06:00"
+                      },
+                      {
+                          "company":  "BFL",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:18:31.4248705-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:18:48.4692170-06:00"
+                      },
+                      {
+                          "company":  "Whitecap",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:18:48.4762187-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:19:05.5441409-06:00"
+                      },
+                      {
+                          "company":  "Arjae Design Solutions",
+                          "ok":  true,
+                          "notes":  "dlg bytes=194874 mid=894 orange=112; search=Enter; chooseLogo=True mid=36966 bright=11282; ",
+                          "started":  "2026-08-06T01:19:05.5508021-06:00",
+                          "real_choose":  true,
+                          "ms":  22389,
+                          "bytes":  279495,
+                          "ended":  "2026-08-06T01:19:55.7960306-06:00"
+                      },
+                      {
+                          "company":  "Paramount Resources",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:19:55.8133282-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:20:13.0412717-06:00"
+                      },
+                      {
+                          "company":  "Suncor",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:20:13.0525987-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:20:30.0942396-06:00"
+                      },
+                      {
+                          "company":  "Warren Valve",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:20:30.1002418-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:20:47.1450725-06:00"
+                      },
+                      {
+                          "company":  "Shell",
+                          "ok":  false,
+                          "notes":  "dialog_open_failed",
+                          "started":  "2026-08-06T01:20:47.1506331-06:00",
+                          "real_choose":  false,
+                          "ended":  "2026-08-06T01:21:04.1900534-06:00"
+                      }
+                  ]
+}

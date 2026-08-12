@@ -1,0 +1,41 @@
+SESSION 2026-08-06 1:22:16 AM
+=== Sureus Murphy 01:22:16 ===
+  wait t=7s bytes=164034 mid=48964 bright=1523
+  wait t=15s bytes=164034 mid=48964 bright=1523
+  wait t=22s bytes=164034 mid=48964 bright=1523
+  wait t=29s bytes=164034 mid=48964 bright=1523
+  wait t=37s bytes=164034 mid=48964 bright=1523
+  wait t=44s bytes=211622 mid=47215 bright=1200
+  wait t=51s bytes=194304 mid=897 bright=48152
+  wait t=58s bytes=194304 mid=897 bright=48152
+  wait t=66s bytes=194304 mid=897 bright=48152
+  wait t=73s bytes=194304 mid=897 bright=48152
+  -> ok=False dlg_bytes=164034; search=Enter; chooseLogo=False mid=897 bright=48152; 
+=== BFL 01:23:51 ===
+  wait t=7s bytes=164034 mid=48964 bright=1523
+  wait t=14s bytes=164034 mid=48964 bright=1523
+  wait t=22s bytes=164034 mid=48964 bright=1523
+  wait t=29s bytes=164034 mid=48964 bright=1523
+  wait t=36s bytes=164034 mid=48964 bright=1523
+  wait t=44s bytes=164034 mid=48964 bright=1523
+  wait t=51s bytes=206876 mid=594 bright=47965
+  wait t=58s bytes=194304 mid=897 bright=48152
+  wait t=65s bytes=194304 mid=897 bright=48152
+  wait t=73s bytes=194304 mid=897 bright=48152
+  -> ok=False dlg_bytes=164034; search=Enter; chooseLogo=False mid=897 bright=48152; 
+=== Whitecap 01:25:24 ===
+  wait t=7s bytes=149762 mid=46729 bright=3661
+  wait t=15s bytes=149762 mid=46729 bright=3661
+  wait t=22s bytes=149762 mid=46729 bright=3661
+  wait t=29s bytes=149762 mid=46729 bright=3661
+  wait t=36s bytes=149762 mid=46729 bright=3661
+  wait t=44s bytes=149762 mid=46729 bright=3661
+  wait t=51s bytes=149762 mid=46729 bright=3661
+  wait t=58s bytes=194309 mid=896 bright=48152
+  wait t=65s bytes=194304 mid=897 bright=48152
+  wait t=73s bytes=194304 mid=897 bright=48152
+  -> ok=False dlg_bytes=149762; search=Enter; chooseLogo=False mid=897 bright=48152; 
+=== Arjae Design Solutions 01:26:58 ===
+  wait t=7s bytes=232977 mid=38224 bright=11402
+  -> ok=True dlg_bytes=146093; search=Enter; chooseLogo=True mid=38224 bright=11402; 
+=== Paramount Resources 01:27:27 ===

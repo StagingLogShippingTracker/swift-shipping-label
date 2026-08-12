@@ -1,0 +1,26 @@
+SESSION START 2026-08-06 12:13:10 AM deadline=2026-08-06 12:33:10 AM
+=== Sureus Murphy 00:13:10 ===
+  -> ok=False open=menu_fy=278 zone=990; search=click(975,847,n=54); class=idle_or_snackbar; 
+=== BFL 00:13:57 ===
+  -> ok=True open=menu_fy=278 zone=990; search=click(975,847,n=54); class=picker_likely; 
+=== Whitecap 00:14:39 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== Arjae Design Solutions 00:14:55 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== Paramount Resources 00:15:12 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== Suncor 00:15:28 ===
+  -> ok=True open=menu_fy=282 zone=990; search=click(975,847,n=54); class=picker_likely; 
+=== Warren Valve 00:15:48 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== Shell 00:16:05 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== ATCO 00:16:21 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== EPCOR 00:16:37 ===
+  -> ok=True open=menu_fy=278 zone=990; search=click(975,847,n=54); class=picker_likely; 
+=== Arc Resources LTD 00:16:54 ===
+  -> ok=False Could not open Find logo dialog zone=0
+=== DNOW 00:17:11 ===
+  -> ok=False Could not open Find logo dialog zone=0
+DONE gui_live PASS 3/12 elapsed=4.3m

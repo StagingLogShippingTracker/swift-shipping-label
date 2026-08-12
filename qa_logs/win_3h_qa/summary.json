@@ -1,0 +1,20 @@
+﻿{
+    "started":  "2026-08-06T01:42:09.4149279-06:00",
+    "ended":  "2026-08-06T04:21:08.8168479-06:00",
+    "totalMinutes":  159,
+    "logo":  {
+                 "attempts":  131,
+                 "pass":  122,
+                 "minutes":  98.5,
+                 "fail":  9
+             },
+    "bol":  {
+                "attempts":  89,
+                "pass":  0,
+                "minutes":  60.5,
+                "fail":  89,
+                "pdfs":  [
+
+                         ]
+            }
+}

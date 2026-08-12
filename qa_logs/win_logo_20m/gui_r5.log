@@ -1,0 +1,21 @@
+SESSION 2026-08-06 1:18:13 AM
+=== Sureus Murphy 01:18:13 ===
+  -> ok=False dialog_open_failed
+=== BFL 01:18:31 ===
+  -> ok=False dialog_open_failed
+=== Whitecap 01:18:48 ===
+  -> ok=False dialog_open_failed
+=== Arjae Design Solutions 01:19:05 ===
+  wait t=7s bytes=194304 mid=897 bright=48152
+  wait t=15s bytes=194304 mid=897 bright=48152
+  wait t=22s bytes=279495 mid=36966 bright=11282
+  -> ok=True dlg bytes=194874 mid=894 orange=112; search=Enter; chooseLogo=True mid=36966 bright=11282; 
+=== Paramount Resources 01:19:55 ===
+  -> ok=False dialog_open_failed
+=== Suncor 01:20:13 ===
+  -> ok=False dialog_open_failed
+=== Warren Valve 01:20:30 ===
+  -> ok=False dialog_open_failed
+=== Shell 01:20:47 ===
+  -> ok=False dialog_open_failed
+=== ATCO 01:21:04 ===
