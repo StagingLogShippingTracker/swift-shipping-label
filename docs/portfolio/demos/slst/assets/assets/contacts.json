@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Alex Rivera",
+    "designation": "Project Manager",
+    "email": "alex.rivera@example.com",
+    "branch": "Fort St. John"
+  },
+  {
+    "name": "Jordan Lee",
+    "designation": "Yard Lead",
+    "email": "jordan.lee@example.com",
+    "branch": "Grande Prairie"
+  },
+  {
+    "name": "Sam Patel",
+    "designation": "Shipping Coordinator",
+    "email": "sam.patel@example.com",
+    "branch": "Corporate"
+  },
+  {
+    "name": "Casey Nguyen",
+    "designation": "Warehouse Associate",
+    "email": "casey.nguyen@example.com",
+    "branch": "Red Deer"
+  },
+  {
+    "name": "Morgan Blake",
+    "designation": "Operations Supervisor",
+    "email": "morgan.blake@example.com",
+    "branch": "Edmonton"
+  },
+  {
+    "name": "Riley Chen",
+    "designation": "Dispatcher",
+    "email": "riley.chen@example.com",
+    "branch": "Calgary"
+  },
+  {
+    "name": "Taylor Brooks",
+    "designation": "QA / Receiving",
+    "email": "taylor.brooks@example.com",
+    "branch": "Fort St. John"
+  },
+  {
+    "name": "Jamie Ortiz",
+    "designation": "Carrier Liaison",
+    "email": "jamie.ortiz@example.com",
+    "branch": "Corporate"
+  }
+]

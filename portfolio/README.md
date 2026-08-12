@@ -34,3 +34,13 @@ Builds both Flutter web demos and force-pushes the `gh-pages` branch.
 - SLST product repo locally is **staging-tracker** (`C:\Users\Brice\Downloads\staging-tracker`).
 - These demos are sandboxes (sample data). Production apps ship as Flutter Windows + Android.
 - Contacts in the SLST demo are fictional placeholders (not the production roster).
+
+## Sync to dedicated portfolio repo (Windows)
+
+This cloud agent cannot push to `StagingLogShippingTracker/portfolio`. On your machine:
+
+```powershell
+cd C:\Users\Brice\OneDrive\Documents\portfolio
+# copy updated sources from this PR's portfolio/ folder, then:
+.\scripts\deploy_pages.ps1
+```
