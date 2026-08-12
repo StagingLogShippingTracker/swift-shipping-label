@@ -15,6 +15,7 @@ import 'bol_item_type.dart';
 import 'brand_assets.dart';
 import 'bulk/bulk_label_models.dart';
 import 'bulk/order_ack_pdf_text.dart';
+import 'changelog.dart';
 import 'circle_selector.dart';
 import 'contact_sync.dart';
 import 'document_history_sync.dart';
@@ -182,7 +183,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late final Map<String, TextEditingController> _controllers;
   String? _presetName;
   /// Selected customer logo paths (primary first, optional C/O second).
@@ -210,11 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Customer text for which the template prompt was already resolved this session.
   String? _templatePromptResolvedForCustomer;
   final FocusNode _customerFocusNode = FocusNode();
+  /// Portrait Android chrome: 1 = full header, 0 = collapsed strip (Chrome-like).
+  late final AnimationController _mobileChromeCtrl;
+  late final Animation<double> _mobileChromeT;
   Uint8List? _shipperSignatureBytes;
   SavedSignature? _selectedSavedSignature;
   AppUiSettings _uiSettings = AppUiSettings.defaults;
-  /// Portrait Android: full header + kind selector collapse while scrolling.
-  bool _mobileChromeExpanded = true;
   /// Box-sized (1/4 page) shipping/receiving labels. Disabled for BOL.
   bool _boxSizedLabel = false;
   /// Parsed Order Acknowledgement for Bulk Labels mode.
@@ -243,6 +246,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _addressBookSync = AddressBookSync();
     _documentHistorySync = DocumentHistorySync(widget.storage);
     _customerFocusNode.addListener(_onCustomerFocusChanged);
+    _mobileChromeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 340),
+      value: 1,
+    );
+    _mobileChromeT = CurvedAnimation(
+      parent: _mobileChromeCtrl,
+      curve: Curves.easeInOutCubic,
+      reverseCurve: Curves.easeInOutCubic,
+    );
     _controllers = {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
@@ -253,6 +266,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUiSettings();
     _syncPresetsOnLaunch();
     _refreshContactSuggestions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowChangelogPrompt();
+    });
+  }
+
+  Future<void> _maybeShowChangelogPrompt() async {
+    // Let first-frame layout settle so the dialog is not racing chrome paint.
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    if (!mounted) return;
+    try {
+      await maybeShowChangelogPrompt(context, widget.storage);
+    } catch (_) {
+      // Changelog is optional — never block the form on prompt errors.
+    }
   }
 
   /// Autocomplete uses Document Generator shared contacts (synced Windows/Android).
@@ -442,6 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _customerFocusNode.removeListener(_onCustomerFocusChanged);
     _customerFocusNode.dispose();
+    _mobileChromeCtrl.dispose();
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -2755,6 +2783,31 @@ class _HomeScreenState extends State<HomeScreen> {
         _bolLineCount = 1;
       }
     });
+    // Bulk pages are short — keep chrome fully expanded (no hide-on-scroll).
+    if (kind == LabelKind.bulk) {
+      _setMobileChromeExpanded(true);
+    }
+  }
+
+  /// Portrait Android only; disabled on Bulk. Smooth Chrome-like expand/collapse.
+  bool get _mobileChromeCollapseEnabled {
+    if (!mounted) return false;
+    if (_kind == LabelKind.bulk) return false;
+    return MediaQuery.orientationOf(context) == Orientation.portrait;
+  }
+
+  void _setMobileChromeExpanded(bool expanded) {
+    if (!_mobileChromeCollapseEnabled) {
+      if (_mobileChromeCtrl.value != 1) {
+        _mobileChromeCtrl.animateTo(1, curve: Curves.easeOutCubic);
+      }
+      return;
+    }
+    if (expanded) {
+      _mobileChromeCtrl.forward();
+    } else {
+      _mobileChromeCtrl.reverse();
+    }
   }
 
   bool get _boxSizedAllowed =>
@@ -3793,65 +3846,79 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMobileScaffold() {
-    final chrome = SwiftChromeColors.of(context);
     final portrait =
         MediaQuery.orientationOf(context) == Orientation.portrait;
-    // Landscape keeps the full chrome; portrait collapses on scroll-down.
-    final showFullChrome = !portrait || _mobileChromeExpanded;
+    if (!portrait) {
+      return _buildMobileLandscapeScaffold();
+    }
+    return _buildMobilePortraitScaffold();
+  }
+
+  /// Portrait: existing stacked form + Chrome-like collapsing header.
+  Widget _buildMobilePortraitScaffold() {
+    final chrome = SwiftChromeColors.of(context);
+
+    final expandedChrome = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        RepaintBoundary(
+          child: _Header(
+            busy: _busy,
+            isDark: _uiSettings.isDark,
+            kindTitle: _kindTitle,
+            onToggleDark: _toggleDarkMode,
+          ),
+        ),
+        Material(
+          color: chrome.surface,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildMobileKindSelector(),
+                const SizedBox(height: 8),
+                Text(
+                  _kindHint,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: chrome.muted,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: chrome.border),
+      ],
+    );
+
+    final collapsedChrome = _MobileChromeCollapsed(
+      kindTitle: _kindTitle,
+      isDark: _uiSettings.isDark,
+      onExpand: () => _setMobileChromeExpanded(true),
+    );
 
     return Scaffold(
       backgroundColor: chrome.bg,
       body: SafeArea(
         child: Column(
           children: [
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: showFullChrome
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RepaintBoundary(
-                          child: _Header(
-                            busy: _busy,
-                            isDark: _uiSettings.isDark,
-                            kindTitle: _kindTitle,
-                            onToggleDark: _toggleDarkMode,
-                          ),
-                        ),
-                        Material(
-                          color: chrome.surface,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildMobileKindSelector(),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _kindHint,
-                                  maxLines: portrait ? 4 : 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: chrome.muted,
-                                    fontSize: 13,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Divider(height: 1, color: chrome.border),
-                      ],
-                    )
-                  : _MobileChromeCollapsed(
-                      kindTitle: _kindTitle,
-                      isDark: _uiSettings.isDark,
-                      onExpand: () =>
-                          setState(() => _mobileChromeExpanded = true),
-                    ),
+            AnimatedBuilder(
+              animation: _mobileChromeT,
+              builder: (context, _) {
+                final t = _mobileChromeCollapseEnabled
+                    ? _mobileChromeT.value
+                    : 1.0;
+                return _MobileChromeTransition(
+                  progress: t,
+                  expanded: expandedChrome,
+                  collapsed: collapsedChrome,
+                );
+              },
             ),
             Expanded(
               child: NotificationListener<ScrollNotification>(
@@ -3896,36 +3963,205 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Landscape phones: Windows-like rail + form + side workspace / Generate.
+  Widget _buildMobileLandscapeScaffold() {
+    final chrome = SwiftChromeColors.of(context);
+    final width = MediaQuery.sizeOf(context).width;
+    // Side workspace when there is room (most landscape phones ~700+).
+    final showWorkspace = width >= 700;
+
+    final formList = ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+      children: [
+        if (!showWorkspace) ...[
+          if (_kind == LabelKind.bol) ...[
+            _buildBolCopiesCard(compact: true),
+            const SizedBox(height: 8),
+          ],
+          if (_kind != LabelKind.bulk) ...[
+            _buildPresetCard(dense: true),
+            _buildLogosCard(dense: true, stackActions: true),
+          ],
+        ],
+        ..._buildDocumentFormCards(dualColumn: width >= 900),
+        _buildUtilityActions(toolbarStyle: true),
+        if (!showWorkspace) ...[
+          const SizedBox(height: 10),
+          _buildGenerateControls(dense: true, stackVertically: false),
+        ],
+      ],
+    );
+
+    final workspacePane = Material(
+      color: chrome.panel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Text(
+              'Workspace',
+              style: TextStyle(
+                fontFamily: swiftUiFont(context),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                letterSpacing: 0.4,
+                color: chrome.ink,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              children: [
+                if (_kind != LabelKind.bulk) ...[
+                  _buildPresetCard(dense: true),
+                  _buildLogosCard(dense: true, stackActions: true),
+                ],
+                if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
+                if (_kind == LabelKind.bulk)
+                  Text(
+                    'Avery 5163 · Propak',
+                    style: TextStyle(
+                      fontFamily: swiftUiFont(context),
+                      fontSize: 12,
+                      color: chrome.muted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: _buildGenerateControls(
+              dense: true,
+              stackVertically: true,
+              buttonHeight: 40,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: chrome.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _MobileLandscapeToolbar(
+              busy: _busy,
+              isDark: _uiSettings.isDark,
+              kindTitle: _kindTitle,
+              onToggleDark: _toggleDarkMode,
+            ),
+            Divider(height: 1, color: chrome.border),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  NavigationRail(
+                    extended: false,
+                    minWidth: 64,
+                    backgroundColor: chrome.panel,
+                    selectedIndex: _kindRailIndex,
+                    labelType: NavigationRailLabelType.all,
+                    onDestinationSelected: (i) {
+                      _selectKind(switch (i) {
+                        1 => LabelKind.receiving,
+                        2 => LabelKind.bol,
+                        3 => LabelKind.bulk,
+                        _ => LabelKind.shipping,
+                      });
+                    },
+                    destinations: const [
+                      NavigationRailDestination(
+                        icon: Icon(Icons.local_shipping_outlined, size: 20),
+                        selectedIcon: Icon(Icons.local_shipping, size: 20),
+                        label: Text('Ship'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.inventory_2_outlined, size: 20),
+                        selectedIcon: Icon(Icons.inventory_2, size: 20),
+                        label: Text('Recv'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.receipt_long_outlined, size: 20),
+                        selectedIcon: Icon(Icons.receipt_long, size: 20),
+                        label: Text('BOL'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.grid_view_outlined, size: 20),
+                        selectedIcon: Icon(Icons.grid_view, size: 20),
+                        label: Text('Bulk'),
+                      ),
+                    ],
+                  ),
+                  VerticalDivider(width: 1, color: chrome.border),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+                          child: Text(
+                            _kindHint,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: chrome.muted,
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        Expanded(child: formList),
+                      ],
+                    ),
+                  ),
+                  if (showWorkspace) ...[
+                    VerticalDivider(width: 1, color: chrome.border),
+                    SizedBox(width: width >= 900 ? 280 : 240, child: workspacePane),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Collapse portrait chrome when the user scrolls down the form.
   /// Scrolling back up near the top (or settling at the top) restores it.
+  /// Disabled on Bulk (short page) and in landscape.
   bool _onMobileFormScroll(ScrollNotification notification) {
     if (Platform.isWindows) return false;
-    if (MediaQuery.orientationOf(context) != Orientation.portrait) {
-      if (!_mobileChromeExpanded) {
-        setState(() => _mobileChromeExpanded = true);
+    if (!_mobileChromeCollapseEnabled) {
+      if (_mobileChromeCtrl.value < 1) {
+        _setMobileChromeExpanded(true);
       }
       return false;
     }
     if (notification.metrics.axis != Axis.vertical) return false;
     final pixels = notification.metrics.pixels;
+    final expanded = _mobileChromeCtrl.value > 0.5;
 
     // Fling/settle at the absolute top should always restore chrome.
-    if (!_mobileChromeExpanded &&
+    if (!expanded &&
         notification is ScrollEndNotification &&
         pixels <= 24) {
-      setState(() => _mobileChromeExpanded = true);
+      _setMobileChromeExpanded(true);
       return false;
     }
 
     if (notification is! ScrollUpdateNotification) return false;
     final delta = notification.scrollDelta ?? 0;
-    if (delta > 6 && pixels > 28 && _mobileChromeExpanded) {
-      setState(() => _mobileChromeExpanded = false);
-    } else if (!_mobileChromeExpanded &&
-        delta < 0 &&
-        pixels <= 24) {
-      // Near the top while scrolling up — restore chrome automatically.
-      setState(() => _mobileChromeExpanded = true);
+    if (delta > 4 && pixels > 20 && expanded) {
+      _setMobileChromeExpanded(false);
+    } else if (!expanded && delta < -2) {
+      // Any upward scroll re-shows chrome (Chrome-like), not only near top.
+      _setMobileChromeExpanded(true);
     }
     return false;
   }
@@ -4044,6 +4280,168 @@ class _DesktopToolbar extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Continuous Chrome-like morph between full header and collapsed strip.
+/// [progress] 1 = fully expanded, 0 = fully collapsed.
+class _MobileChromeTransition extends StatelessWidget {
+  const _MobileChromeTransition({
+    required this.progress,
+    required this.expanded,
+    required this.collapsed,
+  });
+
+  final double progress;
+  final Widget expanded;
+  final Widget collapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = progress.clamp(0.0, 1.0);
+    // Soft fade so layers blend during the slide (not a hard cut).
+    final expandOpacity = Curves.easeOut.transform(t);
+    final collapseOpacity = Curves.easeIn.transform(1 - t);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: t,
+            child: Opacity(
+              opacity: expandOpacity,
+              child: Transform.translate(
+                offset: Offset(0, -18 * (1 - t)),
+                child: expanded,
+              ),
+            ),
+          ),
+        ),
+        ClipRect(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1 - t,
+            child: Opacity(
+              opacity: collapseOpacity,
+              child: Transform.translate(
+                offset: Offset(0, 10 * t),
+                child: collapsed,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact single-row toolbar for Android landscape (Windows-like density).
+class _MobileLandscapeToolbar extends StatelessWidget {
+  const _MobileLandscapeToolbar({
+    required this.busy,
+    required this.isDark,
+    required this.kindTitle,
+    required this.onToggleDark,
+  });
+
+  final bool busy;
+  final bool isDark;
+  final String kindTitle;
+  final VoidCallback onToggleDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
+    return Material(
+      color: chrome.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+        child: Row(
+          children: [
+            Container(
+              width: 3,
+              height: 22,
+              decoration: BoxDecoration(
+                color: SwiftColors.accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SwiftChromeLogo(height: 20, isDark: isDark),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Swift Document Generator',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: swiftUiFont(context),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: 0.2,
+                  color: chrome.ink,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: chrome.accentSoft,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: SwiftColors.accent.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Text(
+                kindTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily:
+                      Theme.of(context).textTheme.bodyMedium?.fontFamily,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  color: SwiftColors.accent,
+                ),
+              ),
+            ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else ...[
+              IconButton(
+                tooltip: isDark ? 'Light mode' : 'Dark mode',
+                onPressed: onToggleDark,
+                visualDensity: VisualDensity.compact,
+                iconSize: 20,
+                icon: Icon(
+                  isDark
+                      ? Icons.light_mode_outlined
+                      : Icons.dark_mode_outlined,
+                  color: chrome.ink,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Update',
+                onPressed: () => showUpdateFlow(context),
+                visualDensity: VisualDensity.compact,
+                iconSize: 20,
+                icon: Icon(Icons.system_update_alt, color: chrome.ink),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

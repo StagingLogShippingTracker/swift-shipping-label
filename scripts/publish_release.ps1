@@ -200,6 +200,9 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
+- **What's New prompt:** first 3 launches show a changelog covering v1.1.68–v1.1.70
+- **Android portrait:** smoother Chrome-like header hide/show; disabled on Bulk
+- **Android landscape:** Windows-style rail + form + workspace layout
 - **Customer templates:** prompt on Customer commit/Generate to apply Full, Core only, or Logos only
 - **Delivery Address book:** shared Shipping/BOL addresses with Address book picker; saved on generate
 - **BOL + Shipping Labels:** optional checkbox builds one PDF (BOL pages then shipping pages)
@@ -209,6 +212,7 @@ $notes = @"
 - **Contacts:** Document Generator shared contact memory (no SLST roster autocomplete)
 - **Chrome logo:** solid orange mark in app UI; documents keep orange document logo
 - **Android dark mode:** Update sheet no longer washed-out white-on-white
+- **Receiving Label (v1.1.68):** centered values, SO pill 60 pt, no PM break line
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

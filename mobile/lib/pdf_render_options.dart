@@ -103,12 +103,18 @@ enum PdfLogoPlacement {
 enum PdfBodyFont {
   brand,
   calibri,
-  oswald;
+  oswald,
+  /// PDF standard Helvetica for entry values (true Helvetica, not Arial).
+  helvetica,
+  /// Free geometric sans close to Proxima Nova (Google Fonts / OFL).
+  montserrat;
 
   String get label => switch (this) {
         PdfBodyFont.brand => 'Brand (Oswald + Calibri)',
         PdfBodyFont.calibri => 'Calibri only',
         PdfBodyFont.oswald => 'Oswald only',
+        PdfBodyFont.helvetica => 'Helvetica (entry fields)',
+        PdfBodyFont.montserrat => 'Montserrat (Proxima-like)',
       };
 
   static PdfBodyFont? tryParse(String raw) {

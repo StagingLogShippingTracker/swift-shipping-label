@@ -18,6 +18,8 @@ class ShippingLabelPdf {
     required this.oswaldBold,
     required this.calibri,
     required this.calibriBold,
+    required this.montserrat,
+    required this.montserratBold,
     required this.swiftLogoBytes,
   });
 
@@ -27,6 +29,8 @@ class ShippingLabelPdf {
   final pw.Font oswaldBold;
   final pw.Font calibri;
   final pw.Font calibriBold;
+  final pw.Font montserrat;
+  final pw.Font montserratBold;
   final Uint8List? swiftLogoBytes;
 
   static const swift = PdfColor.fromInt(0xFFCE4E30);
@@ -82,6 +86,8 @@ class ShippingLabelPdf {
       oswaldBold: await font('assets/fonts/Oswald-Bold.ttf'),
       calibri: await font('assets/fonts/Calibri.ttf'),
       calibriBold: await font('assets/fonts/Calibri-Bold.ttf'),
+      montserrat: await font('assets/fonts/Montserrat-Regular.ttf'),
+      montserratBold: await font('assets/fonts/Montserrat-Bold.ttf'),
       swiftLogoBytes: logoBytes,
     );
     return _instance!;
@@ -294,7 +300,21 @@ class ShippingLabelPdf {
               calibri: calibri.getFont(context),
               calibriBold: calibriBold.getFont(context),
             );
-            fonts = fonts.withBodyFont(options.bodyFont);
+            fonts = fonts.withBodyFont(
+              options.bodyFont,
+              helvetica: options.bodyFont == PdfBodyFont.helvetica
+                  ? pw.Font.helvetica().getFont(context)
+                  : null,
+              helveticaBold: options.bodyFont == PdfBodyFont.helvetica
+                  ? pw.Font.helveticaBold().getFont(context)
+                  : null,
+              montserrat: options.bodyFont == PdfBodyFont.montserrat
+                  ? montserrat.getFont(context)
+                  : null,
+              montserratBold: options.bodyFont == PdfBodyFont.montserrat
+                  ? montserratBold.getFont(context)
+                  : null,
+            );
 
             final customerLogos = <PdfImage>[];
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
@@ -1476,7 +1496,13 @@ class _ResolvedFonts {
   final PdfFont calibri;
   final PdfFont calibriBold;
 
-  _ResolvedFonts withBodyFont(PdfBodyFont body) {
+  _ResolvedFonts withBodyFont(
+    PdfBodyFont body, {
+    PdfFont? helvetica,
+    PdfFont? helveticaBold,
+    PdfFont? montserrat,
+    PdfFont? montserratBold,
+  }) {
     switch (body) {
       case PdfBodyFont.brand:
         return this;
@@ -1495,6 +1521,28 @@ class _ResolvedFonts {
           oswaldBold: oswaldBold,
           calibri: oswald,
           calibriBold: oswaldBold,
+        );
+      case PdfBodyFont.helvetica:
+        // Keep Oswald micro-labels; swap entry values to true PDF Helvetica.
+        final h = helvetica ?? calibri;
+        final hb = helveticaBold ?? calibriBold;
+        return _ResolvedFonts(
+          oswald: oswald,
+          oswaldMedium: oswaldMedium,
+          oswaldBold: oswaldBold,
+          calibri: h,
+          calibriBold: hb,
+        );
+      case PdfBodyFont.montserrat:
+        // Geometric sans close to Proxima Nova for entry values.
+        final m = montserrat ?? calibri;
+        final mb = montserratBold ?? calibriBold;
+        return _ResolvedFonts(
+          oswald: oswald,
+          oswaldMedium: oswaldMedium,
+          oswaldBold: oswaldBold,
+          calibri: m,
+          calibriBold: mb,
         );
     }
   }

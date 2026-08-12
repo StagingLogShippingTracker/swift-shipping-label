@@ -57,3 +57,8 @@ flutter:
         - asset: assets/fonts/Calibri.ttf
         - asset: assets/fonts/Calibri-Bold.ttf
           weight: 700
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700
