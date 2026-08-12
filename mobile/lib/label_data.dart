@@ -29,6 +29,15 @@ class BolFields {
     (freightCollect, 'Collect'),
     (freightThirdParty, 'Third Party'),
   ];
+
+  /// Human-readable freight term for Shipping/BOL PDFs.
+  static String freightChargesDisplay(String raw) {
+    final v = raw.trim();
+    for (final o in freightChargeOptions) {
+      if (o.$1 == v) return o.$2;
+    }
+    return v;
+  }
   static const packingList = 'packing_list';
   static const orderNum = 'order_num';
   static const totalPieces = 'total_pieces';
@@ -197,6 +206,8 @@ List<String> presetKeysFor(LabelKind kind) {
         LabelFields.location,
         LabelFields.attn,
         LabelFields.carrier,
+        BolFields.freightCharges,
+        BolFields.thirdPartyBilling,
         LabelFields.swiftContact,
         LabelFields.specialInstructions,
       ];
@@ -230,6 +241,44 @@ List<String> presetKeysFor(LabelKind kind) {
   }
 }
 
+/// Preset keys applied for “Core only” template mode (logos applied separately).
+List<String> corePresetKeysFor(LabelKind kind) {
+  switch (kind) {
+    case LabelKind.shipping:
+      return const [
+        LabelFields.shipTo,
+        LabelFields.location,
+        LabelFields.carrier,
+        BolFields.freightCharges,
+        BolFields.thirdPartyBilling,
+      ];
+    case LabelKind.receiving:
+      // Receiving has no ship-to / carrier block — logos only for core.
+      return const [];
+    case LabelKind.bol:
+      return const [
+        BolFields.consigneeName,
+        BolFields.consigneeAddress,
+        BolFields.consigneeContactName,
+        BolFields.consigneeContactNumber,
+        BolFields.driverCompany,
+        BolFields.freightCharges,
+        BolFields.thirdPartyBilling,
+      ];
+    case LabelKind.bulk:
+      return const [];
+  }
+}
+
+/// True when [customer] matches the preset display name or its customer field.
+bool presetMatchesCustomer(CustomerPreset preset, String customer) {
+  final needle = customer.trim().toLowerCase();
+  if (needle.isEmpty) return false;
+  if (preset.name.trim().toLowerCase() == needle) return true;
+  final field = (preset.fields[LabelFields.customer] ?? '').trim().toLowerCase();
+  return field == needle;
+}
+
 class ShippingLabelData {
   ShippingLabelData([Map<String, String>? values])
       : values = {
@@ -254,6 +303,8 @@ class ShippingLabelData {
     LabelFields.project:
         'B35 PIPE AND FITTINGS - NORTH PAD STAGING AND HOOKUP MATERIALS FOR WELLSITE PACKAGE',
     LabelFields.carrier: 'WILLYS',
+    BolFields.freightCharges: BolFields.freightPrepaid,
+    BolFields.thirdPartyBilling: 'Acct 44521',
     LabelFields.specialInstructions: 'Call before delivery. Staging bay 3.',
     LabelFields.attn: 'RICK SHUMAN / JEREMY PLATZ',
     LabelFields.palletNum: '1',

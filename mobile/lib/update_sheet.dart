@@ -160,7 +160,7 @@ Future<void> showUpdateFlow(BuildContext context) async {
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    backgroundColor: SwiftColors.surface,
+    backgroundColor: SwiftChromeColors.of(context).surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
@@ -283,6 +283,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = SwiftChromeColors.of(context);
     final installed = _info == null
         ? '…'
         : '${_info!.version}+${_info!.buildNumber}';
@@ -290,112 +291,121 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     final isAndroid = Platform.isAndroid;
     final asDialog = widget.asDialog;
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          asDialog ? 20 : 12,
-          20,
-          20 + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!asDialog) const SizedBox(height: 4),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Update',
-                    style: TextStyle(
-                      fontFamily: 'Oswald',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 18,
-                      color: SwiftColors.ink,
+    return Material(
+      color: chrome.surface,
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            asDialog ? 20 : 12,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!asDialog) const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Update',
+                      style: TextStyle(
+                        fontFamily: 'Oswald',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                        color: chrome.ink,
+                      ),
                     ),
                   ),
+                  if (asDialog)
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: Icon(Icons.close, color: chrome.muted),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Installed: $installed',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: chrome.ink,
                 ),
-                if (asDialog)
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isAndroid
+                    ? 'Checks GitHub Releases for a newer APK and installs it.'
+                    : 'Checks GitHub Releases for a newer Setup.exe and launches the installer.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: chrome.muted,
+                    ),
+              ),
+              if (_latest != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Latest: ${_latest!.name.isEmpty ? _latest!.tagName : _latest!.name}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: chrome.ink,
+                  ),
+                ),
+                if (_latest!.tagName.isNotEmpty)
+                  Text(
+                    'Tag ${_latest!.tagName}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: chrome.muted,
+                        ),
                   ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Installed: $installed',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              isAndroid
-                  ? 'Checks GitHub Releases for a newer APK and installs it.'
-                  : 'Checks GitHub Releases for a newer Setup.exe and launches the installer.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: SwiftColors.muted,
-                  ),
-            ),
-            if (_latest != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Latest: ${_latest!.name.isEmpty ? _latest!.tagName : _latest!.name}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              if (_latest!.tagName.isNotEmpty)
+              if (_status != null) ...[
+                const SizedBox(height: 10),
                 Text(
-                  'Tag ${_latest!.tagName}',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  _status!,
+                  style: const TextStyle(
+                    color: SwiftColors.accent,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
-            ],
-            if (_status != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _status!,
-                style: const TextStyle(
-                  color: SwiftColors.accent,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 13,
+                  ),
                 ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: busy ? null : _check,
+                icon: busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.system_update_alt, size: 18),
+                label: Text(_checking ? 'Checking…' : 'Check for updates'),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _openReleases,
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('View releases'),
               ),
             ],
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _error!,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: busy ? null : _check,
-              icon: busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.system_update_alt, size: 18),
-              label: Text(_checking ? 'Checking…' : 'Check for updates'),
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: _openReleases,
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('View releases'),
-            ),
-          ],
+          ),
         ),
       ),
     );

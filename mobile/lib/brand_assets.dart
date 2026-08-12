@@ -1,17 +1,58 @@
+import 'package:flutter/material.dart';
+
 /// Brand image paths used in app chrome (not PDF).
 class SwiftBrandAssets {
   SwiftBrandAssets._();
 
-  /// Light mode: orange mark with soft edge treatment.
+  /// Document / PDF logo: orange SWIFT + black SUPPLY + drop shadow.
   static const logoOrange = 'assets/images/swift_supply_logo_orange.png';
 
-  /// Dark mode: solid orange mark (no light halo) for dark chrome.
+  /// App chrome / side-menu logo: flat solid-orange lockup (no shadow).
   static const logoOrangeSolid =
       'assets/images/swift_supply_logo_orange_solid.png';
 
   /// White wordmark for legacy orange headers (light-only accents).
   static const headerWhite = 'assets/images/swift_supply_header_white.png';
 
-  /// Chrome logo — always the solid orange mark so light and dark match.
+  /// Chrome logo — flat solid orange for light and dark UI.
   static String chromeLogo({required bool dark}) => logoOrangeSolid;
+}
+
+/// DPI-aware Swift Supply mark for toolbars / headers / side chrome.
+///
+/// Always uses [SwiftBrandAssets.logoOrangeSolid] (flat solid orange). Generated
+/// documents use [SwiftBrandAssets.logoOrange] via the PDF pipeline instead.
+class SwiftChromeLogo extends StatelessWidget {
+  const SwiftChromeLogo({
+    super.key,
+    required this.height,
+    this.isDark = false,
+  });
+
+  final double height;
+
+  /// Reserved for future light/dark variants; chrome is solid orange either way.
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final width = MediaQuery.sizeOf(context).width;
+    var h = height;
+    if (width >= 1800) {
+      h = height + 6;
+    } else if (width >= 1440) {
+      h = height + 3;
+    }
+    // Decode above display pixels so large/high-DPI monitors stay sharp.
+    final cacheH = (h * dpr * 2).round().clamp(64, 910);
+    return Image.asset(
+      SwiftBrandAssets.logoOrangeSolid,
+      height: h,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      isAntiAlias: true,
+      cacheHeight: cacheH,
+    );
+  }
 }

@@ -101,6 +101,30 @@ class BolLabelPdf {
     List<String>? copies,
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
+    final doc = pw.Document(
+      title: 'Swift Oilfield Supply — Straight Bill of Lading',
+      author: 'Swift Oilfield Supply',
+    );
+    await appendPages(
+      doc,
+      data: data,
+      customerLogoBytes: customerLogoBytes,
+      shipperSignatureBytes: shipperSignatureBytes,
+      copies: copies,
+      options: options,
+    );
+    return doc.save();
+  }
+
+  /// Append BOL copy pages onto an existing document.
+  Future<void> appendPages(
+    pw.Document doc, {
+    required ShippingLabelData data,
+    List<Uint8List> customerLogoBytes = const [],
+    Uint8List? shipperSignatureBytes,
+    List<String>? copies,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
+  }) async {
     final selected = (copies == null || copies.isEmpty)
         ? List<String>.from(copyTypes)
         : [
@@ -111,10 +135,6 @@ class BolLabelPdf {
       throw ArgumentError('At least one BOL copy must be selected.');
     }
 
-    final doc = pw.Document(
-      title: 'Swift Oilfield Supply — Straight Bill of Lading',
-      author: 'Swift Oilfield Supply',
-    );
     // BOL layout is fixed to portrait Letter.
     final format = pageFormat;
 
@@ -177,6 +197,37 @@ class BolLabelPdf {
         ),
       );
     }
+  }
+
+  /// BOL pages first, then shipping label pages in one PDF.
+  Future<Uint8List> buildWithShippingLabels({
+    required ShippingLabelData bolData,
+    required ShippingLabelData shippingData,
+    required PieceCountPlan piecePlan,
+    List<Uint8List> customerLogoBytes = const [],
+    Uint8List? shipperSignatureBytes,
+    List<String>? copies,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
+  }) async {
+    final doc = pw.Document(
+      title: 'Swift Oilfield Supply — BOL + Shipping Labels',
+      author: 'Swift Oilfield Supply',
+    );
+    await appendPages(
+      doc,
+      data: bolData,
+      customerLogoBytes: customerLogoBytes,
+      shipperSignatureBytes: shipperSignatureBytes,
+      copies: copies,
+      options: options,
+    );
+    await shipping.appendPages(
+      doc,
+      data: shippingData,
+      customerLogoBytes: customerLogoBytes,
+      piecePlan: piecePlan,
+      options: options,
+    );
     return doc.save();
   }
 

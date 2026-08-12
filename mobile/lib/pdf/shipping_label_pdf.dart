@@ -194,6 +194,28 @@ class ShippingLabelPdf {
     PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
+    final doc = pw.Document(
+      title: 'Swift Oilfield Supply — Shipping Label',
+      author: 'Swift Oilfield Supply',
+    );
+    await appendPages(
+      doc,
+      data: data,
+      customerLogoBytes: customerLogoBytes,
+      piecePlan: piecePlan,
+      options: options,
+    );
+    return doc.save();
+  }
+
+  /// Append shipping pages onto an existing document (e.g. after BOL pages).
+  Future<void> appendPages(
+    pw.Document doc, {
+    required ShippingLabelData data,
+    List<Uint8List> customerLogoBytes = const [],
+    PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
+    PdfRenderOptions options = PdfRenderOptions.defaults,
+  }) async {
     final pages = <ShippingLabelData>[];
     for (var i = 1; i <= piecePlan.palletCrates; i++) {
       final page = data.copy();
@@ -214,8 +236,8 @@ class ShippingLabelPdf {
     if (pages.isEmpty) {
       pages.add(data.copy());
     }
-    return _buildDoc(
-      title: 'Swift Oilfield Supply — Shipping Label',
+    await _appendDocPages(
+      doc,
       pages: pages,
       customerLogoBytes: customerLogoBytes,
       painter: _drawPage,
@@ -228,17 +250,22 @@ class ShippingLabelPdf {
     List<Uint8List> customerLogoBytes = const [],
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
-    return _buildDoc(
+    final doc = pw.Document(
       title: 'Swift Oilfield Supply — Receiving Label',
+      author: 'Swift Oilfield Supply',
+    );
+    await _appendDocPages(
+      doc,
       pages: [data],
       customerLogoBytes: customerLogoBytes,
       painter: _drawReceivingPage,
       options: options,
     );
+    return doc.save();
   }
 
-  Future<Uint8List> _buildDoc({
-    required String title,
+  Future<void> _appendDocPages(
+    pw.Document doc, {
     required List<ShippingLabelData> pages,
     required List<Uint8List> customerLogoBytes,
     required void Function(
@@ -251,7 +278,6 @@ class ShippingLabelPdf {
     ) painter,
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
-    final doc = pw.Document(title: title, author: 'Swift Oilfield Supply');
     // Shipping / Receiving labels are designed for landscape Letter.
     final format = pageFormat;
 
@@ -314,8 +340,6 @@ class ShippingLabelPdf {
         ),
       );
     }
-
-    return doc.save();
   }
 
   void _fillRRect(
@@ -737,10 +761,11 @@ class ShippingLabelPdf {
     PdfColor? valueBgWhenNonEmpty,
     bool showRule = true,
     bool centered = false,
+    String? valueOverride,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
-    final val = sample.get(key);
+    final val = valueOverride ?? sample.get(key);
     final bold = fonts.calibriBold;
     late final double size;
     late final double vh;
@@ -1167,21 +1192,61 @@ class ShippingLabelPdf {
       multiline: true,
     );
 
-    // Attn sits under Project (left column); Special Instructions absorbs the
-    // remaining vertical room and shrinks when PO/Project grow.
+    // Carrier sits under Project (left); Attn opens the right meta stack.
+    // Freight + 3rd Party Billing share a half-row under Carrier.
     yL = _fieldRow(
       c,
       fonts,
       yL,
-      'Attn',
-      LabelFields.attn,
+      'Carrier',
+      LabelFields.carrier,
       lx,
       colW,
       sample,
     );
+    yL = _drawFreightBillingHalfRow(c, fonts, yL, lx, colW, sample);
 
     final yR = _drawHero(c, fonts, y, sample);
     return (yL, yR);
+  }
+
+  double _drawFreightBillingHalfRow(
+    PdfGraphics c,
+    _ResolvedFonts fonts,
+    double y,
+    double x,
+    double colWidth,
+    ShippingLabelData sample,
+  ) {
+    const gap = 10.0;
+    final half = (colWidth - gap) / 2;
+    final freight = BolFields.freightChargesDisplay(
+      sample.get(BolFields.freightCharges),
+    );
+    final billing = sample.get(BolFields.thirdPartyBilling);
+    final yLeft = _fieldRow(
+      c,
+      fonts,
+      y,
+      'Freight Charges',
+      BolFields.freightCharges,
+      x,
+      half,
+      sample,
+      valueOverride: freight,
+    );
+    final yRight = _fieldRow(
+      c,
+      fonts,
+      y,
+      '3rd Party Billing',
+      BolFields.thirdPartyBilling,
+      x + half + gap,
+      half,
+      sample,
+      valueOverride: billing,
+    );
+    return yLeft < yRight ? yLeft : yRight;
   }
 
   void _drawNotesAndMeta(
@@ -1197,9 +1262,9 @@ class ShippingLabelPdf {
 
     // Tight vertical stack (same gap as PO → Project). Artificial "slot floors"
     // used to open a large empty band under Carrier and shove Contact into the
-    // piece-count boxes — removed.
+    // piece-count boxes — removed. Attn leads the right stack (Carrier moved left).
     var y = yRight;
-    y = _fieldRow(c, fonts, y, 'Carrier', LabelFields.carrier, rx, colW, sample);
+    y = _fieldRow(c, fonts, y, 'Attn', LabelFields.attn, rx, colW, sample);
     y = _fieldRow(
       c,
       fonts,
@@ -1235,9 +1300,9 @@ class ShippingLabelPdf {
     _microLabel(c, fonts, lx, yLeft, 'Special Instructions');
     final notesTop = yLeft - 4;
     final notesFloor = bandBottom + 20;
-    // Shrinks when PO / Project / Attn push yLeft down — absorbs expansion
-    // without overflowing the piece band.
-    final notesH = (notesTop - notesFloor).clamp(36.0, 10000.0);
+    // Shrinks when PO / Project / Carrier / freight push yLeft down — absorbs
+    // expansion without overflowing the piece band.
+    final notesH = (notesTop - notesFloor).clamp(28.0, 10000.0);
     c.setFillColor(notesBg);
     _fillRect(c, lx, notesTop - notesH, colW, notesH);
     c.setFillColor(swift);

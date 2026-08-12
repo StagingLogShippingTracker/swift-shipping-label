@@ -9,14 +9,16 @@ import 'package:path/path.dart' as p;
 import 'app_snack.dart';
 import 'app_storage.dart';
 import 'app_theme_scope.dart';
+import 'address_book_sync.dart';
 import 'bol_document_number.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
 import 'bulk/bulk_label_models.dart';
 import 'bulk/order_ack_pdf_text.dart';
 import 'circle_selector.dart';
+import 'contact_sync.dart';
+import 'document_history_sync.dart';
 import 'employee_autocomplete_field.dart';
-import 'employee_directory.dart';
 import 'feedback_forms.dart';
 import 'form_scroll_text_field.dart';
 import 'label_data.dart';
@@ -62,10 +64,17 @@ const _shippingGroups = <(String title, String hint, List<String> keys)>[
     [LabelFields.shipTo, LabelFields.location],
   ),
   (
+    'Carrier & billing',
+    'Courier and freight terms (same as BOL)',
+    [
+      LabelFields.carrier,
+      BolFields.thirdPartyBilling,
+    ],
+  ),
+  (
     'Swift references',
     'Internal tracking',
     [
-      LabelFields.carrier,
       LabelFields.packingSlip,
       LabelFields.salesOrder,
       LabelFields.swiftContact,
@@ -189,10 +198,18 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _bolStoreCopy = true;
   bool _bolDriverCopy = true;
   bool _bolCustomerCopy = true;
+  /// When true, BOL generate also appends Shipping Label pages.
+  bool _bolAlsoShippingLabels = false;
   /// Visible BOL goods lines (1..7); start with line 1 only.
   int _bolLineCount = 1;
   late final PresetSync _presetSync;
   late final SignatureSync _signatureSync;
+  late final ContactSync _contactSync;
+  late final AddressBookSync _addressBookSync;
+  late final DocumentHistorySync _documentHistorySync;
+  /// Customer text for which the template prompt was already resolved this session.
+  String? _templatePromptResolvedForCustomer;
+  final FocusNode _customerFocusNode = FocusNode();
   Uint8List? _shipperSignatureBytes;
   SavedSignature? _selectedSavedSignature;
   AppUiSettings _uiSettings = AppUiSettings.defaults;
@@ -204,8 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
   OrderAckParseResult? _bulkParse;
   String? _bulkSourcePath;
   bool _bulkParsing = false;
-  final EmployeeDirectory _employeeDirectory = EmployeeDirectory();
-  List<String> _rosterNames = const [];
   List<String> _swiftContactNames = const [];
   bool _swiftContactsLoading = false;
   /// Focus nodes for employee-name autocomplete fields (one per key).
@@ -224,6 +239,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _presetSync = PresetSync(widget.storage);
     _signatureSync = SignatureSync(widget.storage);
+    _contactSync = ContactSync(widget.storage);
+    _addressBookSync = AddressBookSync();
+    _documentHistorySync = DocumentHistorySync(widget.storage);
+    _customerFocusNode.addListener(_onCustomerFocusChanged);
     _controllers = {
       for (final def in LabelFields.formDefs)
         def.$1: TextEditingController(),
@@ -233,28 +252,34 @@ class _HomeScreenState extends State<HomeScreen> {
     };
     _loadUiSettings();
     _syncPresetsOnLaunch();
-    _loadSwiftContacts();
+    _refreshContactSuggestions();
   }
 
+  /// Autocomplete uses Document Generator shared contacts (synced Windows/Android).
+  /// Not connected to the SLST `dropdown_roster` API.
   Future<void> _loadSwiftContacts({bool forceRefresh = false}) async {
     if (_swiftContactsLoading) return;
     setState(() => _swiftContactsLoading = true);
     try {
-      final roster =
-          await _employeeDirectory.fetchNames(forceRefresh: forceRefresh);
+      if (forceRefresh) {
+        await _contactSync.syncOnLaunch();
+      }
       if (!mounted) return;
       setState(() {
-        _rosterNames = roster;
-        _swiftContactNames = widget.storage.contactSuggestions(roster: roster);
+        _swiftContactNames = widget.storage.contactSuggestions();
         _swiftContactsLoading = false;
       });
-    } catch (e) {
-      debugPrint('[SwiftContact] load failed: $e');
+    } on ContactSyncException catch (e) {
       if (!mounted) return;
-      // Still surface locally remembered names when the roster is offline.
       setState(() {
-        _swiftContactNames =
-            widget.storage.contactSuggestions(roster: _rosterNames);
+        _swiftContactNames = widget.storage.contactSuggestions();
+        _swiftContactsLoading = false;
+      });
+      showAppSnack(context, 'Contact sync: ${e.message}');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _swiftContactNames = widget.storage.contactSuggestions();
         _swiftContactsLoading = false;
       });
     }
@@ -262,15 +287,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _refreshContactSuggestions() {
     setState(() {
-      _swiftContactNames =
-          widget.storage.contactSuggestions(roster: _rosterNames);
+      _swiftContactNames = widget.storage.contactSuggestions();
     });
   }
 
   Future<void> _rememberContactNames(Iterable<String> rawNames) async {
     var changed = false;
     for (final raw in rawNames) {
-      if (await widget.storage.rememberContact(raw)) changed = true;
+      final name = raw.trim();
+      if (name.isEmpty) continue;
+      try {
+        if (await _contactSync.remember(name)) changed = true;
+      } on ContactSyncException {
+        // Fall back to local-only remember if cloud is offline.
+        if (await widget.storage.rememberContact(name)) changed = true;
+      } catch (_) {
+        if (await widget.storage.rememberContact(name)) changed = true;
+      }
     }
     if (changed && mounted) _refreshContactSuggestions();
   }
@@ -333,6 +366,21 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     await _syncSignaturesQuietly();
+    await _syncContactsQuietly();
+    await _syncAddressBookQuietly();
+  }
+
+  Future<void> _syncAddressBookQuietly() async {
+    try {
+      await _addressBookSync.syncOnLaunch();
+      if (mounted) setState(() {});
+    } on AddressBookSyncException catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Address book: ${e.message}');
+      }
+    } catch (_) {
+      // Offline — address book still works after first successful sync.
+    }
   }
 
   Future<void> _syncSignaturesQuietly() async {
@@ -345,6 +393,20 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (_) {
       // Signatures are optional — ignore offline failures.
+    }
+  }
+
+  Future<void> _syncContactsQuietly() async {
+    try {
+      await _contactSync.syncOnLaunch();
+      if (!mounted) return;
+      _refreshContactSuggestions();
+    } on ContactSyncException catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Contact sync: ${e.message}');
+      }
+    } catch (_) {
+      // Contacts still work from local cache when offline.
     }
   }
 
@@ -378,6 +440,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _customerFocusNode.removeListener(_onCustomerFocusChanged);
+    _customerFocusNode.dispose();
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -386,7 +450,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _desktopFormScroll.dispose();
     _desktopWorkspaceScroll.dispose();
-    _employeeDirectory.dispose();
     super.dispose();
   }
 
@@ -491,6 +554,398 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     _presetName = displayName;
     if (notify) setState(() {});
+  }
+
+  void _applyPresetLogos(CustomerPreset preset) {
+    _logoPaths
+      ..clear()
+      ..addAll(
+        preset.logoFileNames
+            .map((n) => p.join(widget.storage.logosDir.path, n))
+            .where((path) => File(path).existsSync())
+            .take(maxCustomerLogos),
+      );
+  }
+
+  void _applyPresetCore(CustomerPreset preset) {
+    for (final key in corePresetKeysFor(_kind)) {
+      if (preset.fields.containsKey(key)) {
+        _setField(key, preset.fields[key] ?? '');
+      }
+    }
+    _applyPresetLogos(preset);
+    _presetName = preset.name;
+    setState(() {});
+  }
+
+  void _applyPresetLogosOnly(CustomerPreset preset) {
+    for (final key in presetKeysFor(_kind)) {
+      _setField(key, '');
+    }
+    _applyPresetLogos(preset);
+    _presetName = preset.name;
+    setState(() {});
+  }
+
+  List<CustomerPreset> _matchingTemplatesForCustomer(String customer) {
+    if (_kind == LabelKind.bulk) return const [];
+    final out = <CustomerPreset>[];
+    for (final name in widget.storage.presetDisplayNamesFor(_kind)) {
+      final preset = widget.storage.presetFor(_kind, name);
+      if (preset == null) continue;
+      if (presetMatchesCustomer(preset, customer)) out.add(preset);
+    }
+    return out;
+  }
+
+  void _onCustomerFocusChanged() {
+    if (_customerFocusNode.hasFocus) return;
+    // Debounce: fire after focus leaves Customer.
+    Future.microtask(() => _maybePromptCustomerTemplate());
+  }
+
+  Future<void> _maybePromptCustomerTemplate({bool force = false}) async {
+    if (!mounted) return;
+    if (_kind == LabelKind.bulk) return;
+    final customer = _controllers[LabelFields.customer]?.text.trim() ?? '';
+    if (customer.isEmpty) return;
+    final resolved = _templatePromptResolvedForCustomer?.trim().toLowerCase();
+    if (!force && resolved == customer.toLowerCase()) return;
+
+    final matches = _matchingTemplatesForCustomer(customer);
+    if (matches.isEmpty) {
+      _templatePromptResolvedForCustomer = customer;
+      return;
+    }
+
+    final picked = await showDialog<CustomerPreset?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Use a saved template?'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Saved templates match “$customer”.',
+                style: TextStyle(
+                  fontFamily: swiftUiFont(ctx),
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final m in matches)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(m.name),
+                  subtitle: Text(
+                    (m.fields[LabelFields.customer] ?? '').trim().isEmpty
+                        ? 'Template'
+                        : m.fields[LabelFields.customer]!,
+                  ),
+                  trailing: const Text('USE'),
+                  onTap: () => Navigator.pop(ctx, m),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Proceed anyway'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    _templatePromptResolvedForCustomer = customer;
+    if (picked == null) return;
+
+    final mode = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Apply “${picked.name}”'),
+        content: const Text(
+          'How much of this template should we load?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'full'),
+            child: const Text('Full last save'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'core'),
+            child: const Text('Core only'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'logos'),
+            child: const Text('Logos only'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || mode == null) return;
+    switch (mode) {
+      case 'full':
+        _applyPreset(picked.name);
+      case 'core':
+        _applyPresetCore(picked);
+      case 'logos':
+        _applyPresetLogosOnly(picked);
+    }
+  }
+
+  Future<void> _openAddressBook() async {
+    try {
+      await _addressBookSync.fetchAll();
+    } catch (_) {
+      // Use cached entries if offline.
+    }
+    if (!mounted) return;
+    final entries = List<DeliveryAddressEntry>.from(_addressBookSync.entries);
+    final picked = await showDialog<DeliveryAddressEntry>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Delivery Address book'),
+          content: SizedBox(
+            width: 480,
+            height: 420,
+            child: entries.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No saved addresses yet.\nThey are remembered when you Generate Shipping or BOL.',
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final e = entries[i];
+                      return ListTile(
+                        title: Text(
+                          e.shipToName.isEmpty ? '(No ship-to name)' : e.shipToName,
+                        ),
+                        subtitle: Text(
+                          [
+                            e.address,
+                            if (e.carrier.isNotEmpty) 'Carrier: ${e.carrier}',
+                            if (e.accountNumbers.isNotEmpty)
+                              'Acct: ${e.accountNumbers}',
+                          ].join('\n'),
+                        ),
+                        isThreeLine: true,
+                        trailing: TextButton(
+                          onPressed: () => Navigator.pop(ctx, e),
+                          child: const Text('USE'),
+                        ),
+                        onTap: () => Navigator.pop(ctx, e),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    _applyAddressBookEntry(picked);
+  }
+
+  void _applyAddressBookEntry(DeliveryAddressEntry e) {
+    if (_kind == LabelKind.shipping) {
+      _setField(LabelFields.shipTo, e.shipToName);
+      _setField(LabelFields.location, e.address);
+      _setField(LabelFields.carrier, e.carrier);
+      _setField(BolFields.thirdPartyBilling, e.accountNumbers);
+    } else if (_kind == LabelKind.bol) {
+      _setField(BolFields.consigneeName, e.shipToName);
+      _setField(BolFields.consigneeAddress, e.address);
+      _setField(BolFields.driverCompany, e.carrier);
+      _setField(BolFields.thirdPartyBilling, e.accountNumbers);
+    }
+    setState(() {});
+  }
+
+  Future<void> _rememberDeliveryAddress(ShippingLabelData data) async {
+    if (_kind != LabelKind.shipping && _kind != LabelKind.bol) return;
+    final shipTo = _kind == LabelKind.shipping
+        ? data.get(LabelFields.shipTo)
+        : data.get(BolFields.consigneeName);
+    final address = _kind == LabelKind.shipping
+        ? data.get(LabelFields.location)
+        : data.get(BolFields.consigneeAddress);
+    final carrier = _kind == LabelKind.shipping
+        ? data.get(LabelFields.carrier)
+        : data.get(BolFields.driverCompany);
+    final accounts = data.get(BolFields.thirdPartyBilling);
+    if (address.trim().isEmpty) return;
+    try {
+      await _addressBookSync.remember(
+        shipToName: shipTo,
+        address: address,
+        carrier: carrier,
+        accountNumbers: accounts,
+      );
+      if (mounted) setState(() {});
+    } on AddressBookSyncException catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Address book save: ${e.message}');
+      }
+    } catch (_) {
+      // Non-fatal — PDF already generated.
+    }
+  }
+
+  ShippingLabelData _shippingDataFromBol(ShippingLabelData bol) {
+    final s = bol.copy();
+    if (s.get(LabelFields.shipTo).isEmpty) {
+      s.set(LabelFields.shipTo, bol.get(BolFields.consigneeName));
+    }
+    if (s.get(LabelFields.location).isEmpty) {
+      s.set(LabelFields.location, bol.get(BolFields.consigneeAddress));
+    }
+    if (s.get(LabelFields.carrier).isEmpty) {
+      s.set(LabelFields.carrier, bol.get(BolFields.driverCompany));
+    }
+    if (s.get(LabelFields.packingSlip).isEmpty) {
+      s.set(LabelFields.packingSlip, bol.get(BolFields.packingList));
+    }
+    if (s.get(LabelFields.attn).isEmpty) {
+      s.set(LabelFields.attn, bol.get(BolFields.consigneeContactName));
+    }
+    if (s.get(BolFields.freightCharges).isEmpty) {
+      s.set(BolFields.freightCharges, BolFields.freightPrepaid);
+    }
+    return s;
+  }
+
+  Future<void> _openHistory() async {
+    if (_kind == LabelKind.bulk) {
+      showAppSnack(context, 'History for Bulk Labels is not available yet.');
+      return;
+    }
+    List<GeneratedDocumentRecord> docs;
+    try {
+      docs = await _documentHistorySync.listForKind(_kind);
+    } on DocumentHistorySyncException catch (e) {
+      if (!mounted) return;
+      showAppSnack(context, 'History: ${e.message}');
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      showAppSnack(context, 'History failed: $e');
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            switch (_kind) {
+              LabelKind.shipping => 'Shipping history',
+              LabelKind.receiving => 'Receiving history',
+              LabelKind.bol => 'BOL history',
+              LabelKind.bulk => 'History',
+            },
+          ),
+          content: SizedBox(
+            width: 520,
+            height: 440,
+            child: docs.isEmpty
+                ? const Center(child: Text('No generated documents yet.'))
+                : ListView.separated(
+                    itemCount: docs.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final d = docs[i];
+                      final when = d.createdAt.toLocal().toString().split('.').first;
+                      return ListTile(
+                        title: Text(
+                          d.title.isEmpty ? d.fileName : d.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          [
+                            if (d.customer.isNotEmpty) d.customer,
+                            if (d.salesOrder.isNotEmpty) d.salesOrder,
+                            when,
+                          ].join(' · '),
+                        ),
+                        trailing: const Icon(Icons.open_in_new, size: 18),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await _openHistoryDocument(d);
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openHistoryDocument(GeneratedDocumentRecord doc) async {
+    try {
+      final file = await _documentHistorySync.downloadToCache(doc);
+      await shareOrOpenFile(file: file);
+    } on DocumentHistorySyncException catch (e) {
+      if (mounted) showAppSnack(context, 'Open failed: ${e.message}');
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'Open failed: $e');
+    }
+  }
+
+  Future<void> _uploadGeneratedPdf({
+    required LabelKind kind,
+    required String fileName,
+    required Uint8List bytes,
+    required ShippingLabelData data,
+  }) async {
+    try {
+      await _documentHistorySync.upload(
+        kind: kind,
+        fileName: fileName,
+        bytes: bytes,
+        customer: data.get(LabelFields.customer).isNotEmpty
+            ? data.get(LabelFields.customer)
+            : data.get(BolFields.consigneeName),
+        salesOrder: data.get(LabelFields.salesOrder).isNotEmpty
+            ? data.get(LabelFields.salesOrder)
+            : data.get(BolFields.orderNum),
+        title: fileName,
+      );
+    } on DocumentHistorySyncException catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Cloud archive: ${e.message}');
+      }
+    } catch (_) {
+      if (mounted) {
+        showAppSnack(context, 'Cloud archive failed — PDF saved locally.');
+      }
+    }
   }
 
   Future<void> _savePreset() async {
@@ -1201,9 +1656,19 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             FilledButton(
               onPressed: () {
-                final pallets = int.tryParse(palletCtrl.text.trim()) ?? -1;
-                final boxes = int.tryParse(boxCtrl.text.trim()) ?? -1;
-                if (pallets < 0 || boxes < 0 || pallets + boxes <= 0) {
+                int parseCount(String raw) {
+                  final t = raw.trim();
+                  if (t.isEmpty) return 0;
+                  return int.tryParse(t) ?? -1;
+                }
+
+                final pallets = parseCount(palletCtrl.text);
+                final boxes = parseCount(boxCtrl.text);
+                if (pallets < 0 || boxes < 0) {
+                  setLocal(() => error = 'Enter whole numbers only.');
+                  return;
+                }
+                if (pallets + boxes <= 0) {
                   setLocal(
                     () => error = 'Enter at least one pallet/crate or box.',
                   );
@@ -1451,6 +1916,8 @@ class _HomeScreenState extends State<HomeScreen> {
           LabelFields.boxNum,
           LabelFields.boxOf,
           LabelFields.specialInstructions,
+          BolFields.freightCharges,
+          BolFields.thirdPartyBilling,
         },
       LabelKind.bulk => <String>{},
     };
@@ -1459,6 +1926,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (_kind == LabelKind.bol) {
       _bolLineCount = 1;
+      _setField(BolFields.freightCharges, BolFields.freightPrepaid);
+    }
+    if (_kind == LabelKind.shipping) {
       _setField(BolFields.freightCharges, BolFields.freightPrepaid);
     }
     if (_kind == LabelKind.bulk) {
@@ -1480,6 +1950,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _setField(BolFields.freightCharges, BolFields.freightPrepaid);
     _bulkParse = null;
     _bulkSourcePath = null;
+    _templatePromptResolvedForCustomer = null;
     setState(() {});
   }
 
@@ -1491,8 +1962,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // Template prompt again on Generate if customer changed without a choice.
+    await _maybePromptCustomerTemplate();
+    if (!mounted) return;
+
     PieceCountPlan? piecePlan;
-    if (_kind == LabelKind.shipping) {
+    if (_kind == LabelKind.shipping ||
+        (_kind == LabelKind.bol && _bolAlsoShippingLabels)) {
       piecePlan = await _askPieceCounts();
       if (piecePlan == null || piecePlan.isEmpty) return;
     }
@@ -1550,7 +2026,13 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      if (_kind == LabelKind.shipping &&
+          data.get(BolFields.freightCharges).isEmpty) {
+        data.set(BolFields.freightCharges, BolFields.freightPrepaid);
+      }
+
       final Uint8List bytes;
+      final alsoShipping = _kind == LabelKind.bol && _bolAlsoShippingLabels;
       switch (_kind) {
         case LabelKind.receiving:
           bytes = await widget.pdf.buildReceiving(
@@ -1559,13 +2041,26 @@ class _HomeScreenState extends State<HomeScreen> {
             options: _pdfOptionsForGenerate,
           );
         case LabelKind.bol:
-          bytes = await BolLabelPdf(widget.pdf).build(
-            data: data,
-            customerLogoBytes: logoBytes,
-            shipperSignatureBytes: _shipperSignatureBytes,
-            copies: bolCopies,
-            options: _pdfOptionsForGenerate,
-          );
+          if (alsoShipping) {
+            final shipData = _shippingDataFromBol(data);
+            bytes = await BolLabelPdf(widget.pdf).buildWithShippingLabels(
+              bolData: data,
+              shippingData: shipData,
+              piecePlan: piecePlan!,
+              customerLogoBytes: logoBytes,
+              shipperSignatureBytes: _shipperSignatureBytes,
+              copies: bolCopies,
+              options: _pdfOptionsForGenerate,
+            );
+          } else {
+            bytes = await BolLabelPdf(widget.pdf).build(
+              data: data,
+              customerLogoBytes: logoBytes,
+              shipperSignatureBytes: _shipperSignatureBytes,
+              copies: bolCopies,
+              options: _pdfOptionsForGenerate,
+            );
+          }
         case LabelKind.shipping:
           bytes = await widget.pdf.build(
             data: data,
@@ -1586,6 +2081,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ? data.get(LabelFields.customer)
             : data.get(BolFields.consigneeName),
         salesOrder: so,
+        prefixOverride: alsoShipping ? 'BOL-SL-' : null,
+      );
+
+      // Cloud is source of truth; local filled/ is a cache for fast open.
+      await _uploadGeneratedPdf(
+        kind: _kind,
+        fileName: name,
+        bytes: bytes,
+        data: data,
       );
 
       final file = await widget.storage.writePdf(
@@ -1593,6 +2097,11 @@ class _HomeScreenState extends State<HomeScreen> {
         bytes,
         outputDir: widget.storage.pdfOutputDir(_uiSettings),
       );
+      // Keep filled/ cache even when the user picked a custom output folder.
+      final filled = widget.storage.filledDir;
+      if (p.normalize(file.parent.path) != p.normalize(filled.path)) {
+        await widget.storage.writePdf(name, bytes, outputDir: filled);
+      }
 
       // Local contact memory — free-text names used on generate stick for autocomplete.
       await _rememberContactNames([
@@ -1600,6 +2109,7 @@ class _HomeScreenState extends State<HomeScreen> {
         data.get(LabelFields.receivedBy),
         data.get(BolFields.shipperCertName),
       ]);
+      await _rememberDeliveryAddress(data);
 
       if (_uiSettings.autoOpenPdf) {
         await shareOrOpenFile(file: file);
@@ -1608,8 +2118,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         final pages = switch (_kind) {
           LabelKind.shipping => ' (${piecePlan!.totalPages} pages)',
-          LabelKind.bol =>
-            ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
+          LabelKind.bol => alsoShipping
+              ? ' (${bolCopies.length} BOL + ${piecePlan!.totalPages} shipping · ${data.get(BolFields.documentNumber)})'
+              : ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
           LabelKind.bulk => '',
         };
@@ -1995,17 +2506,18 @@ class _HomeScreenState extends State<HomeScreen> {
         key == BolFields.shipperCertName) {
       return _buildEmployeeNameField(key);
     }
+    if (key == LabelFields.customer && _kind != LabelKind.bulk) {
+      return _buildCustomerField();
+    }
+    if (key == LabelFields.location || key == BolFields.consigneeAddress) {
+      return _buildDeliveryAddressField(key);
+    }
     final m = _meta(key);
-    final isDeliveryAddress = key == LabelFields.location ||
-        key == BolFields.consigneeAddress;
     final lines = !m.$3
         ? 1
-        : isDeliveryAddress
-            ? 3 // Shipping + BOL delivery address entry height.
-            : key == LabelFields.specialInstructions
-                ? 2 // Shorter SI entry; PDF band absorbs PO/Project growth.
-                : 3;
-    final minLines = isDeliveryAddress ? 3 : (lines <= 1 ? 1 : 1);
+        : key == LabelFields.specialInstructions
+            ? 2 // Shorter SI entry; PDF band absorbs PO/Project growth.
+            : 3;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: lines <= 1
@@ -2018,12 +2530,68 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : FormScrollTextField(
               controller: _controllers[key]!,
-              minLines: minLines,
+              minLines: 1,
               maxLines: lines,
               decoration: InputDecoration(
                 labelText: m.$2.toUpperCase(),
               ),
             ),
+    );
+  }
+
+  Widget _buildCustomerField() {
+    final m = _meta(LabelFields.customer);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: TextField(
+        controller: _controllers[LabelFields.customer],
+        focusNode: _customerFocusNode,
+        maxLines: 1,
+        textInputAction: TextInputAction.done,
+        onEditingComplete: () {
+          _customerFocusNode.unfocus();
+          _maybePromptCustomerTemplate();
+        },
+        onChanged: (v) {
+          final resolved = _templatePromptResolvedForCustomer;
+          if (resolved != null &&
+              resolved.trim().toLowerCase() != v.trim().toLowerCase()) {
+            _templatePromptResolvedForCustomer = null;
+          }
+        },
+        decoration: InputDecoration(
+          labelText: m.$2.toUpperCase(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryAddressField(String key) {
+    final m = _meta(key);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FormScrollTextField(
+            controller: _controllers[key]!,
+            minLines: 2,
+            maxLines: 2,
+            decoration: InputDecoration(
+              labelText: m.$2.toUpperCase(),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openAddressBook,
+              icon: const Icon(Icons.menu_book_outlined, size: 18),
+              label: const Text('Address book'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2040,11 +2608,12 @@ class _HomeScreenState extends State<HomeScreen> {
         : meta.$2.toUpperCase();
     final hint = switch (key) {
       LabelFields.swiftContact when _kind == LabelKind.receiving =>
-        'Type PM name or pick from directory',
-      LabelFields.swiftContact => 'Type a name or pick from directory',
-      LabelFields.receivedBy => 'Type who received or pick from directory',
-      BolFields.shipperCertName => 'Type shipper name or pick from directory',
-      _ => 'Type a name or pick from directory',
+        'Type PM name or pick from shared memory',
+      LabelFields.swiftContact => 'Type a name or pick from shared memory',
+      LabelFields.receivedBy => 'Type who received or pick from shared memory',
+      BolFields.shipperCertName =>
+        'Type shipper name or pick from shared memory',
+      _ => 'Type a name or pick from shared memory',
     };
     final remembered = {
       for (final n in widget.storage.rememberedContacts) n.toLowerCase(),
@@ -2064,10 +2633,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _forgetRememberedContact(String name) async {
-    final removed = await widget.storage.forgetContact(name);
+    var removed = false;
+    try {
+      removed = await _contactSync.forget(name);
+    } on ContactSyncException catch (e) {
+      removed = await widget.storage.forgetContact(name);
+      if (mounted) {
+        showAppSnack(context, 'Removed locally; cloud sync failed: ${e.message}');
+      }
+      if (removed && mounted) _refreshContactSuggestions();
+      return;
+    } catch (_) {
+      removed = await widget.storage.forgetContact(name);
+    }
     if (!removed || !mounted) return;
     _refreshContactSuggestions();
-    showAppSnack(context, 'Removed “$name” from saved memory.');
+    showAppSnack(context, 'Removed “$name” from shared memory.');
   }
 
   /// On Windows, pair single-line fields into two columns for denser forms.
@@ -2161,6 +2742,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _kind = kind;
       _presetName = null;
+      _templatePromptResolvedForCustomer = null;
       if (_kind == LabelKind.bol) {
         _bolLineCount = _detectBolLineCount();
         _syncSignaturesQuietly();
@@ -2382,6 +2964,13 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Customer Copy',
             value: _bolCustomerCopy,
             onChanged: (v) => setState(() => _bolCustomerCopy = v ?? false),
+          ),
+          SwiftCircleCheckbox(
+            dense: compact,
+            label: 'Shipping Labels',
+            value: _bolAlsoShippingLabels,
+            onChanged: (v) =>
+                setState(() => _bolAlsoShippingLabels = v ?? false),
           ),
         ],
       ),
@@ -2761,9 +3350,16 @@ class _HomeScreenState extends State<HomeScreen> {
           dense: dualColumn,
           child: Column(
             children: [
-              _buildFieldsBlock(group.$3, dualColumn: dualColumn),
-              if (_kind == LabelKind.bol && group.$1 == 'Billing & freight')
+              if (_kind == LabelKind.shipping &&
+                  group.$1 == 'Carrier & billing') ...[
+                _buildFormField(LabelFields.carrier),
                 _buildFreightChargesSelector(),
+                _buildFormField(BolFields.thirdPartyBilling),
+              ] else ...[
+                _buildFieldsBlock(group.$3, dualColumn: dualColumn),
+                if (_kind == LabelKind.bol && group.$1 == 'Billing & freight')
+                  _buildFreightChargesSelector(),
+              ],
             ],
           ),
         ),
@@ -2838,6 +3434,12 @@ class _HomeScreenState extends State<HomeScreen> {
         spacing: 4,
         runSpacing: 4,
         children: [
+          if (_kind != LabelKind.bulk)
+            TextButton.icon(
+              onPressed: _openHistory,
+              icon: const Icon(Icons.history, size: 16),
+              label: const Text('History'),
+            ),
           TextButton.icon(
             onPressed: _loadSample,
             icon: const Icon(Icons.science_outlined, size: 16),
@@ -2860,6 +3462,8 @@ class _HomeScreenState extends State<HomeScreen> {
       spacing: 8,
       runSpacing: 8,
       children: [
+        if (_kind != LabelKind.bulk)
+          TextButton(onPressed: _openHistory, child: const Text('History')),
         TextButton(onPressed: _loadSample, child: const Text('Load sample')),
         TextButton(
           onPressed: _clearShipment,
@@ -3371,12 +3975,7 @@ class _DesktopToolbar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Image.asset(
-            SwiftBrandAssets.chromeLogo(dark: isDark),
-            height: 26,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-          ),
+          SwiftChromeLogo(height: 26, isDark: isDark),
           const SizedBox(width: 12),
           Text(
             'Swift Document Generator',
@@ -3486,12 +4085,7 @@ class _MobileChromeCollapsed extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Image.asset(
-                    SwiftBrandAssets.chromeLogo(dark: isDark),
-                    height: 18,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
+                  SwiftChromeLogo(height: 18, isDark: isDark),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -3563,12 +4157,7 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Image.asset(
-                  SwiftBrandAssets.chromeLogo(dark: isDark),
-                  height: 30,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                ),
+                SwiftChromeLogo(height: 30, isDark: isDark),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(

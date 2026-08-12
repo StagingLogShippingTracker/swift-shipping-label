@@ -3,13 +3,14 @@ import 'package:flutter/scheduler.dart';
 
 import 'employee_directory.dart';
 
-/// Free-text employee name field with roster autocomplete.
+/// Free-text employee name field with shared-memory autocomplete.
 ///
-/// Suggestions come from [names] (Supabase `dropdown_roster` / person_by +
-/// local remembered contacts). The user may always type a custom name.
+/// Suggestions come from [names] (Document Generator shared contacts, cached
+/// locally and synced across Windows/Android). The user may always type a
+/// custom name.
 ///
-/// Remembered names (in [rememberedNames]) show a delete control so the user
-/// can remove them from local memory without touching the shared directory.
+/// Names in [rememberedNames] show a delete control so the user can remove
+/// them from shared memory.
 class EmployeeAutocompleteField extends StatefulWidget {
   const EmployeeAutocompleteField({
     super.key,
@@ -18,7 +19,7 @@ class EmployeeAutocompleteField extends StatefulWidget {
     required this.names,
     this.rememberedNames = const {},
     this.labelText = 'SWIFT CONTACT',
-    this.hintText = 'Type a name or pick from directory',
+    this.hintText = 'Type a name or pick from shared memory',
     this.loading = false,
     this.onRequestRefresh,
     this.onNameCommitted,
@@ -177,14 +178,14 @@ class _EmployeeAutocompleteFieldState extends State<EmployeeAutocompleteField> {
                       title: Text(name),
                       subtitle: remembered
                           ? const Text(
-                              'Saved on this device',
+                              'Shared across devices',
                               style: TextStyle(fontSize: 11),
                             )
                           : null,
                       onTap: () => onSelected(name),
                       trailing: remembered && widget.onForgetRemembered != null
                           ? IconButton(
-                              tooltip: 'Remove from saved memory',
+                              tooltip: 'Remove from shared memory',
                               icon: const Icon(Icons.close, size: 18),
                               onPressed: () =>
                                   widget.onForgetRemembered!(name),

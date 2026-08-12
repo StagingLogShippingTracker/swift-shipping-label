@@ -200,8 +200,15 @@ $notes = @"
 ## Swift Document Generator $Version
 
 ### What's new
-- **Receiving Label:** centered field values, Sales Order pill at 60 pt (centered), and no break line under PM
-- Shipping Label unchanged
+- **Customer templates:** prompt on Customer commit/Generate to apply Full, Core only, or Logos only
+- **Delivery Address book:** shared Shipping/BOL addresses with Address book picker; saved on generate
+- **BOL + Shipping Labels:** optional checkbox builds one PDF (BOL pages then shipping pages)
+- **Shipping freight:** shared Prepaid/Collect/3rd Party + billing fields; PDF Carrier/ATTN swap with freight half-row
+- **Piece counts:** blank fields count as 0
+- **History:** per-kind cloud PDF history (Supabase) with local filled/ cache
+- **Contacts:** Document Generator shared contact memory (no SLST roster autocomplete)
+- **Chrome logo:** solid orange mark in app UI; documents keep orange document logo
+- **Android dark mode:** Update sheet no longer washed-out white-on-white
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

@@ -46,20 +46,22 @@ class AppStorage {
   File get signaturesFile => File(p.join(root.path, 'signatures.json'));
   File get updateScheduleFile => File(p.join(root.path, 'update_schedule.json'));
   File get settingsFile => File(p.join(root.path, 'settings.json'));
-  /// Local memory of contact names used in autocomplete fields (most recent first).
+  /// Local cache of contact names used in autocomplete (most recent first).
+  /// Synced across devices via [ContactSync] / `shared_contacts` — not SLST roster.
   File get rememberedContactsFile =>
       File(p.join(root.path, 'remembered_contacts.json'));
 
   Map<String, CustomerPreset> presets = {};
   List<SavedSignature> signatures = [];
-  /// Most-recently-used contact / employee names (local only).
+  /// Most-recently-used contact names (local cache of shared_contacts).
   List<String> rememberedContacts = [];
 
   static const maxRememberedContacts = 60;
 
   /// Bump to force every install to wipe local user data once (presets, logos,
   /// signatures, remembered contacts, filled PDFs, settings). Prevents devices
-  /// from re-uploading stale data after a cloud reset. Does not touch roster.
+  /// from re-uploading stale data after a cloud reset. Does not wipe shared
+  /// cloud contacts (`shared_contacts`).
   static const localDataEpoch = 2;
 
   File get dataEpochFile => File(p.join(root.path, 'data_epoch.json'));
@@ -608,7 +610,7 @@ class AppStorage {
     );
   }
 
-  /// Remember a typed / selected contact name (most-recent first, local only).
+  /// Remember a typed / selected contact name (most-recent first, local cache).
   /// Returns true when the in-memory list changed.
   Future<bool> rememberContact(String raw) async {
     final name = raw.trim();
@@ -628,7 +630,7 @@ class AppStorage {
     return true;
   }
 
-  /// Wipe a single remembered contact name (local memory only).
+  /// Wipe a single remembered contact name from the local cache.
   /// Returns true when the list changed.
   Future<bool> forgetContact(String raw) async {
     final name = raw.trim();
@@ -642,7 +644,7 @@ class AppStorage {
     return true;
   }
 
-  /// Wipe local remembered contact names (does not touch Supabase roster).
+  /// Wipe local remembered contact cache (does not touch shared cloud store).
   Future<void> clearRememberedContacts() async {
     rememberedContacts = [];
     await saveRememberedContacts();
@@ -691,18 +693,20 @@ class AppStorage {
     await saveUiSettings(settings.copyWith(logoSearchEngine: engineId));
   }
 
-  /// e.g. `SL-StrikeSO1223344.pdf`, `RL-…`, or `BOL-…`
+  /// e.g. `SL-StrikeSO1223344.pdf`, `RL-…`, `BOL-…`, or `BOL-SL-…`
   String labelPdfBaseName({
     required LabelKind kind,
     required String customer,
     required String salesOrder,
+    String? prefixOverride,
   }) {
-    final prefix = switch (kind) {
-      LabelKind.receiving => 'RL-',
-      LabelKind.bol => 'BOL-',
-      LabelKind.bulk => 'BL-',
-      LabelKind.shipping => 'SL-',
-    };
+    final prefix = prefixOverride ??
+        switch (kind) {
+          LabelKind.receiving => 'RL-',
+          LabelKind.bol => 'BOL-',
+          LabelKind.bulk => 'BL-',
+          LabelKind.shipping => 'SL-',
+        };
     final cust = compactFileToken(customer);
     final so = compactFileToken(salesOrder);
     final body = '$cust$so';

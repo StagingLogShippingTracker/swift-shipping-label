@@ -671,25 +671,14 @@ def draw_hero(c: canvas.Canvas, form, y: float, sample: dict) -> float:
     if loc:
         draw_value(c, loc, rx, y - loc_h, COL_W, loc_h, loc_size, ENTRY_BOLD, multiline=True)
     hairline(c, rx, y - loc_h - 1, COL_W)
-    y -= loc_h + 12
-
-    attn = sample.get("attn", "")
-    attn_size = fit_single_line_size(attn, COL_W - 4, ENTRY_SIZE)
-    attn_h = max(attn_size + 10, 26)
-    micro_label(c, rx, y, "Attn")
-    y -= 3
-    put_field(form, "attn", rx, y - attn_h, COL_W, attn_h, "", attn_size, font_name="Helvetica-Bold")
-    if attn:
-        draw_value(c, attn, rx, y - attn_h, COL_W, attn_h, attn_size, ENTRY_BOLD)
-    hairline(c, rx, y - attn_h - 1, COL_W)
-    return y - attn_h - 12
+    return y - loc_h - 12
 
 
 def draw_identity_pair(c: canvas.Canvas, form, y: float, sample: dict) -> tuple[float, float]:
     """
-    Left: Customer / PO / Project — PO & Project wrap up to WRAP_MAX_LINES and
-    push Special Instructions down. Shrink type only after wrap limit is hit.
-    Right: Ship-to hero / Location / Attn
+    Left: Customer / PO / Project / Carrier / Freight|3rd Party — PO & Project wrap
+    up to WRAP_MAX_LINES and push Special Instructions down.
+    Right: Ship-to hero / Location (Attn opens the right meta stack).
     """
     lx = MX
 
@@ -709,8 +698,45 @@ def draw_identity_pair(c: canvas.Canvas, form, y: float, sample: dict) -> tuple[
         c, form, y_l, "Project", "project", lx, COL_W, sample, proj_h, proj_size, multiline=True
     )
 
+    y_l = field_row(c, form, y_l, "Carrier", "carrier", lx, COL_W, sample)
+    y_l = draw_freight_billing_half_row(c, form, y_l, lx, COL_W, sample)
+
     y_r = draw_hero(c, form, y, sample)
     return y_l, y_r
+
+
+FREIGHT_LABELS = {
+    "prepaid": "Prepaid",
+    "collect": "Collect",
+    "third_party": "Third Party",
+}
+
+
+def draw_freight_billing_half_row(
+    c: canvas.Canvas, form, y: float, x: float, col_w: float, sample: dict
+) -> float:
+    gap = 10.0
+    half = (col_w - gap) / 2
+    raw = (sample.get("freight_charges") or "").strip()
+    freight = FREIGHT_LABELS.get(raw, raw)
+    billing = sample.get("third_party_billing", "")
+    # Temporarily inject display values for field_row lookups.
+    sample_left = {**sample, "freight_charges": freight}
+    sample_right = {**sample, "third_party_billing": billing}
+    y_left = field_row(
+        c, form, y, "Freight Charges", "freight_charges", x, half, sample_left
+    )
+    y_right = field_row(
+        c,
+        form,
+        y,
+        "3rd Party Billing",
+        "third_party_billing",
+        x + half + gap,
+        half,
+        sample_right,
+    )
+    return min(y_left, y_right)
 
 
 def draw_notes_and_meta(
@@ -718,23 +744,22 @@ def draw_notes_and_meta(
 ) -> float:
     """
     Left notes + right meta share the band down to band_bottom (piece-count ceiling).
-    Carrier → Packing Slip → Sales Order → Contact stack with standard field gaps
-    (no artificial slot floors that opened a void under Carrier).
+    Attn → Packing Slip → Sales Order → Contact stack (Carrier moved under Project).
     """
     lx = MX
     rx = MX + COL_W + GUTTER
 
     y = y_right
-    y = field_row(c, form, y, "Carrier", "carrier", rx, COL_W, sample)
+    y = field_row(c, form, y, "Attn", "attn", rx, COL_W, sample)
     y = field_row(c, form, y, "Swift Packing Slip No.", "packing_slip", rx, COL_W, sample)
     y = draw_sales_order_row(c, form, y, rx, COL_W, sample)
     field_row(c, form, y, "Swift Contact", "swift_contact", rx, COL_W, sample)
 
-    # Notes fill leftover left band after PO/Project wrap pushed y_left down
+    # Notes fill leftover left band after Carrier/freight pushed y_left down
     micro_label(c, lx, y_left, "Special Instructions")
     notes_top = y_left - 4
     notes_floor = band_bottom + 20
-    notes_h = max(notes_top - notes_floor, 48)
+    notes_h = max(notes_top - notes_floor, 28)
     c.setFillColor(NOTES_BG)
     c.rect(lx, notes_top - notes_h, COL_W, notes_h, stroke=0, fill=1)
     c.setFillColor(SWIFT)
@@ -959,6 +984,8 @@ SAMPLE = {
     "location": "12341 271 RD, FORT ST. JOHN, BC",
     "project": "B35 PIPE AND FITTINGS - NORTH PAD STAGING AND HOOKUP MATERIALS FOR WELLSITE PACKAGE",
     "carrier": "WILLYS",
+    "freight_charges": "prepaid",
+    "third_party_billing": "Acct 44521",
     "special_instructions": "Call before delivery. Staging bay 3.",
     "attn": "RICK SHUMAN / JEREMY PLATZ",
     "pallet_num": "1",

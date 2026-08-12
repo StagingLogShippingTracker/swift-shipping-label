@@ -5,9 +5,11 @@ import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 
-/// Employee / person names from the SLST Supabase roster used by staging-tracker
-/// (`dropdown_roster` where `roster_type = person_by`). Values are full-name
-/// strings only — the same source as legacy `employees.js` person_by options.
+/// Employee / person name helpers.
+///
+/// Historical note: [fetchNames] used to read SLST `dropdown_roster`
+/// (`person_by`). Document Generator contact memory now uses [ContactSync]
+/// / `shared_contacts` instead. [filter] remains for autocomplete typeahead.
 class EmployeeDirectory {
   EmployeeDirectory({http.Client? client}) : _client = client ?? http.Client();
 
@@ -27,7 +29,9 @@ class EmployeeDirectory {
         'Accept-Profile': 'public',
       };
 
-  /// Full names only, sorted A→Z. Cached briefly so autocomplete stays snappy.
+  /// Legacy SLST roster fetch — retained for tests/tools only. App UI uses
+  /// [ContactSync] and should not call this for autocomplete.
+  @Deprecated('Use ContactSync / shared_contacts for Document Generator names')
   Future<List<String>> fetchNames({bool forceRefresh = false}) async {
     final now = DateTime.now();
     if (!forceRefresh &&
