@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brice — Swift Supply Apps Portfolio</title>
+  <meta name="description" content="Interactive browser demos of Swift Document Generator and SLST (staging-tracker)." />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #151b22;
+      --text: #eef2f6;
+      --muted: #9aa7b5;
+      --orange: #ce4e30;
+      --accent: #ff8a3d;
+      --line: #243041;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #2a1812 0%, transparent 50%),
+                  radial-gradient(900px 500px at 90% 0%, #132033 0%, transparent 45%),
+                  var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+    header { margin-bottom: 36px; }
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 12px; }
+    .lead { color: var(--muted); max-width: 720px; font-size: 1.05rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chip {
+      border: 1px solid var(--line);
+      background: #0f1520;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+      margin-top: 28px;
+    }
+    .card {
+      background: linear-gradient(180deg, #1a222c, #121820);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1.35rem; }
+    .card p { color: var(--muted); flex: 1; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 16px;
+      text-decoration: none;
+      background: var(--orange);
+      color: white;
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 12px 16px;
+      border: none;
+      cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.secondary { background: transparent; border: 1px solid var(--line); color: var(--text); }
+    .note {
+      margin-top: 28px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #111821;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">Portfolio · Interactive demos</p>
+      <h1>Swift Supply field ops apps</h1>
+      <p class="lead">
+        Browser launchables for two production Flutter apps I built and ship for
+        oilfield logistics: document generation (Shipping / Receiving / BOL) and
+        warehouse staging &amp; shipping tracking (SLST / staging-tracker).
+        Click launch — no installers, no APK/EXE downloads.
+      </p>
+      <div class="chips">
+        <span class="chip">Flutter</span>
+        <span class="chip">Windows + Android</span>
+        <span class="chip">PDF generation</span>
+        <span class="chip">Supabase</span>
+        <span class="chip">GitHub Releases</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Swift Document Generator</h2>
+        <p>
+          Windows-style rail + workspace chrome (and Android-style compact layout on
+          narrow screens). Same production PDF engines for Shipping, Receiving,
+          and BOL — edit fields, generate, preview in a new tab.
+        </p>
+        <a class="btn" href="demos/sdg/">Launch interactive demo</a>
+      </article>
+
+      <article class="card">
+        <h2>SLST · staging-tracker</h2>
+        <p>
+          Industrial command-center shell matching SLST: left rail, section header,
+          F-key command dock, dashboard KPIs, staging log + inspector, shipped
+          history, reports, and contacts — seeded sample yard data.
+        </p>
+        <a class="btn" href="demos/slst/">Launch interactive demo</a>
+      </article>
+    </section>
+
+    <div class="note">
+      These are <strong>portfolio sandbox demos</strong> (sample data, no production
+      cloud writes). The shipped products run as Flutter Windows and Android apps
+      with sync, updates, and device integrations.
+    </div>
+
+    <footer>
+      Source: <a href="https://github.com/StagingLogShippingTracker/portfolio">StagingLogShippingTracker/portfolio</a>
+      · Related:
+      <a href="https://github.com/StagingLogShippingTracker/swift-shipping-label">swift-shipping-label</a>,
+      <a href="https://github.com/StagingLogShippingTracker/staging-tracker">staging-tracker</a>
+    </footer>
+  </div>
+</body>
+</html>
