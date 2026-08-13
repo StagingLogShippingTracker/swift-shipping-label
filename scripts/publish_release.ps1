@@ -199,20 +199,16 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
-### What's new
-- **What's New prompt:** first 3 launches show a changelog covering v1.1.68–v1.1.70
-- **Android portrait:** smoother Chrome-like header hide/show; disabled on Bulk
-- **Android landscape:** Windows-style rail + form + workspace layout
-- **Customer templates:** prompt on Customer commit/Generate to apply Full, Core only, or Logos only
-- **Delivery Address book:** shared Shipping/BOL addresses with Address book picker; saved on generate
-- **BOL + Shipping Labels:** optional checkbox builds one PDF (BOL pages then shipping pages)
-- **Shipping freight:** shared Prepaid/Collect/3rd Party + billing fields; PDF Carrier/ATTN swap with freight half-row
-- **Piece counts:** blank fields count as 0
-- **History:** per-kind cloud PDF history (Supabase) with local filled/ cache
-- **Contacts:** Document Generator shared contact memory (no SLST roster autocomplete)
-- **Chrome logo:** solid orange mark in app UI; documents keep orange document logo
-- **Android dark mode:** Update sheet no longer washed-out white-on-white
-- **Receiving Label (v1.1.68):** centered values, SO pill 60 pt, no PM break line
+### What's new (v1.1.71)
+- **Bulk OA:** detect “CPO LINE …” notes and loose “part # …” identities; fall back to under-CPO note when PART/TAG missing
+- **Templates:** prompt when leaving Customer on Shipping/Receiving; looser Arc / Rite-Way name matching
+- **Android:** denser landscape layout; Edit logo crop options no longer wrap vertically
+- **What's New prompt:** first 3 launches cover v1.1.68–v1.1.71
+
+### Also in recent releases
+- Android portrait Chrome-like header hide/show; landscape Windows-style rail layout
+- Customer templates (Full / Core / Logos), Delivery Address book, BOL+Shipping PDF
+- Shipping freight / 3rd-party billing, History, shared contacts, Receiving Label polish
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.
