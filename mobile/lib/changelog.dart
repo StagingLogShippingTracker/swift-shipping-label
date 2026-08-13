@@ -10,18 +10,27 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through the upcoming
-/// v1.1.70 release (local Android layout work included).
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.71.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_70';
+  static const campaignId = 'whats_new_1_1_71';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.70)";
+  static const title = "What's new (v1.1.68 – v1.1.71)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.71',
+      bullets: [
+        'Bulk OA: detect “CPO LINE …” notes and loose “part # …” identities',
+        'Bulk OA: if PART#/TAG# missing, use the note line under CPO',
+        'Shipping/Receiving: template prompt when leaving the Customer field',
+        'Looser customer-name matching for templates (Arc / Rite-Way variants)',
+        'Android: denser landscape layout; Edit logo crop options no longer wrap vertically',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.70',
       bullets: [

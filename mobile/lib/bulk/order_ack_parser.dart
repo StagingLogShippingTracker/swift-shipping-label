@@ -5,9 +5,13 @@ import 'bulk_label_models.dart';
 /// Identity field comes from OA line notes:
 /// - `Order Line Notes: TAG# …` → valve sticker prints **TAG#**
 /// - `Order Line Notes: PART# …` → non-valve sticker prints **PART#**
-/// Only one of the two appears per line.
+/// - Loose `part # 050211` / `TAG# …` on the line after CPO (common Propak layout)
+/// - If still missing: use the first non-empty line under the CPO note as PART#
 ///
-/// Lines with CPO but no TAG#/PART# are collected in
+/// CPO detection accepts both legacy `CPO #4` and current `CPO LINE 1` /
+/// `CPO LINE 8, 9` forms.
+///
+/// Lines with CPO but no usable identity are collected in
 /// [OrderAckParseResult.incompleteLines] so the UI can prompt
 /// Proceed / Skip / Cancel.
 class OrderAckParser {
@@ -29,13 +33,23 @@ class OrderAckParser {
 
     final lines = <BulkLabelLine>[];
     final incomplete = <BulkIncompleteLine>[];
+
+    // Legacy: "Order Line Notes: CPO #4"
+    // Current: "Order Line Notes: CPO LINE 1" / "CPO LINE 8, 9"
     final cpoRe = RegExp(
-      r'Order\s+Line\s+Notes:\s*CPO\s*#\s*(\d+)',
+      r'Order\s+Line\s+Notes:\s*CPO\s*(?:LINE\s*)?#?\s*'
+      r'([0-9]+(?:\s*,\s*[0-9]+)*)',
       caseSensitive: false,
     );
-    // TAG# or PART# (Propak PMs use one or the other per line).
-    final idRe = RegExp(
+    // Classic identity note on its own Order Line Notes row.
+    final idNoteRe = RegExp(
       r'Order\s+Line\s+Notes:\s*(TAG|PART)\s*#\s*(.+)$',
+      caseSensitive: false,
+      multiLine: true,
+    );
+    // Loose "part # 050211" / "TAG# abc" (often directly under CPO LINE).
+    final idLooseRe = RegExp(
+      r'^\s*(TAG|PART)\s*#\s*(.+?)\s*$',
       caseSensitive: false,
       multiLine: true,
     );
@@ -53,28 +67,25 @@ class OrderAckParser {
     final cpoMatches = cpoRe.allMatches(text).toList();
     if (cpoMatches.isEmpty) {
       warnings.add(
-        'No CPO line notes found (expected “Order Line Notes: CPO #…” ).',
+        'No CPO line notes found (expected “Order Line Notes: CPO LINE …” '
+        'or “Order Line Notes: CPO #…” ).',
       );
     }
 
     for (var i = 0; i < cpoMatches.length; i++) {
       final m = cpoMatches[i];
-      final cpo = m.group(1)!.trim();
-      final lineNo = int.tryParse(cpo) ?? (i + 1);
+      final cpoNums = m
+          .group(1)!
+          .split(RegExp(r'\s*,\s*'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (cpoNums.isEmpty) continue;
 
       final blockStart = m.end;
       final blockEnd =
           i + 1 < cpoMatches.length ? cpoMatches[i + 1].start : text.length;
       final after = text.substring(blockStart, blockEnd);
-
-      var idMatch = idRe.firstMatch(after);
-      // Id note may appear before CPO on a rare page-break layout.
-      if (idMatch == null) {
-        final lookBackStart = (m.start - 400).clamp(0, text.length);
-        final around = text.substring(lookBackStart, blockEnd);
-        final anyId = idRe.allMatches(around).toList();
-        if (anyId.isNotEmpty) idMatch = anyId.last;
-      }
 
       // Quantity + description from text before this CPO note.
       final before = text.substring(0, m.start);
@@ -92,7 +103,9 @@ class OrderAckParser {
           if (qty < 1) qty = 1;
         }
       } else {
-        warnings.add('Line CPO #$cpo has no quantity — defaulting to 1 label.');
+        warnings.add(
+          'Line CPO #${cpoNums.join(",")} has no quantity — defaulting to 1 label.',
+        );
       }
 
       var description = '';
@@ -110,46 +123,54 @@ class OrderAckParser {
             : linesSlice;
       }
 
-      if (idMatch == null) {
-        incomplete.add(
-          BulkIncompleteLine(
-            lineNo: lineNo,
-            cpo: cpo,
-            quantity: qty,
-            description: description,
-            reason: 'Missing TAG# / PART#',
-          ),
-        );
-        continue;
-      }
-
-      final kindRaw = idMatch.group(1)!.toUpperCase();
-      final idKind =
-          kindRaw.startsWith('PART') ? BulkIdKind.part : BulkIdKind.tag;
-      var identity = idMatch.group(2)!.replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (identity.isEmpty) {
-        incomplete.add(
-          BulkIncompleteLine(
-            lineNo: lineNo,
-            cpo: cpo,
-            quantity: qty,
-            description: description,
-            reason: 'Empty ${idKind.fieldLabel}',
-          ),
-        );
-        continue;
-      }
-
-      lines.add(
-        BulkLabelLine(
-          lineNo: lineNo,
-          cpo: cpo,
-          tagOrPart: identity,
-          idKind: idKind,
-          quantity: qty,
-          description: description,
-        ),
+      final identity = _resolveIdentity(
+        after: after,
+        lookBackStart: (m.start - 400).clamp(0, text.length),
+        around: text.substring((m.start - 400).clamp(0, text.length), blockEnd),
+        idNoteRe: idNoteRe,
+        idLooseRe: idLooseRe,
       );
+
+      for (final cpo in cpoNums) {
+        final lineNo = int.tryParse(cpo) ?? (i + 1);
+        if (identity == null) {
+          incomplete.add(
+            BulkIncompleteLine(
+              lineNo: lineNo,
+              cpo: cpo,
+              quantity: qty,
+              description: description,
+              reason: 'Missing TAG# / PART#',
+            ),
+          );
+          continue;
+        }
+
+        final (idKind, idValue) = identity;
+        if (idValue.isEmpty) {
+          incomplete.add(
+            BulkIncompleteLine(
+              lineNo: lineNo,
+              cpo: cpo,
+              quantity: qty,
+              description: description,
+              reason: 'Empty ${idKind.fieldLabel}',
+            ),
+          );
+          continue;
+        }
+
+        lines.add(
+          BulkLabelLine(
+            lineNo: lineNo,
+            cpo: cpo,
+            tagOrPart: idValue,
+            idKind: idKind,
+            quantity: qty,
+            description: description,
+          ),
+        );
+      }
     }
 
     // Deduplicate by CPO if page headers re-emit the same note.
@@ -192,6 +213,71 @@ class OrderAckParser {
     );
   }
 
+  /// Resolve TAG#/PART# from notes after (or near) a CPO block.
+  ///
+  /// Fallback: first meaningful line under the CPO note becomes PART#.
+  static (BulkIdKind, String)? _resolveIdentity({
+    required String after,
+    required int lookBackStart,
+    required String around,
+    required RegExp idNoteRe,
+    required RegExp idLooseRe,
+  }) {
+    var idMatch = idNoteRe.firstMatch(after);
+    if (idMatch == null) {
+      final anyId = idNoteRe.allMatches(around).toList();
+      if (anyId.isNotEmpty) idMatch = anyId.last;
+    }
+    if (idMatch != null) {
+      final kindRaw = idMatch.group(1)!.toUpperCase();
+      final idKind =
+          kindRaw.startsWith('PART') ? BulkIdKind.part : BulkIdKind.tag;
+      final identity =
+          idMatch.group(2)!.replaceAll(RegExp(r'\s+'), ' ').trim();
+      return (idKind, identity);
+    }
+
+    final loose = idLooseRe.firstMatch(after);
+    if (loose != null) {
+      final kindRaw = loose.group(1)!.toUpperCase();
+      final idKind =
+          kindRaw.startsWith('PART') ? BulkIdKind.part : BulkIdKind.tag;
+      final identity = loose.group(2)!.replaceAll(RegExp(r'\s+'), ' ').trim();
+      // Truncate if trailing OA mash leaked onto the same line.
+      final cut = identity.split(RegExp(r'\s{2,}|\bEA\b')).first.trim();
+      return (idKind, cut.isEmpty ? identity : cut);
+    }
+
+    // Fallback: the first non-empty line directly under the CPO note.
+    // If that line is a catalog/price row, treat identity as missing (do not
+    // scrape following description wrap lines).
+    for (final rawLine in after.split('\n')) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      if (RegExp(r'^Order\s+Line\s+Notes:', caseSensitive: false)
+          .hasMatch(line)) {
+        return null;
+      }
+      if (RegExp(r'^Rev\b|^Page\b|^Subtotal\b|^GST\b|^Total\b',
+              caseSensitive: false)
+          .hasMatch(line)) {
+        return null;
+      }
+      if (RegExp(r'^\d{1,3}$').hasMatch(line)) {
+        return null;
+      }
+      // Catalog/qty rows are not identities.
+      if (RegExp(r'\d\s*EA\s*\d|\dEA\d|\bEA\b', caseSensitive: false)
+          .hasMatch(line)) {
+        return null;
+      }
+      final identity = line.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (identity.isEmpty) return null;
+      return (BulkIdKind.part, identity);
+    }
+    return null;
+  }
+
   static String? _extractPo(String text) {
     final m = RegExp(
       r'PO\s*Number\s*(P?\d{4,})',
@@ -205,8 +291,15 @@ class OrderAckParser {
     ).firstMatch(text);
     if (m2 != null) return m2.group(1)!.trim();
 
-    final m3 = RegExp(r'\b(P\d{5,})\b').firstMatch(text);
-    return m3?.group(1);
+    // "ProjectLocationPO Number\nP613120" mashed headers.
+    final m3 = RegExp(
+      r'PO\s*Number[\s\S]{0,40}?\b(P\d{5,})\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (m3 != null) return m3.group(1);
+
+    final m4 = RegExp(r'\b(P\d{5,})\b').firstMatch(text);
+    return m4?.group(1);
   }
 
   static String? _extractOrderNumber(String text) {

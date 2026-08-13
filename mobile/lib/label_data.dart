@@ -270,13 +270,39 @@ List<String> corePresetKeysFor(LabelKind kind) {
   }
 }
 
-/// True when [customer] matches the preset display name or its customer field.
+/// Normalize customer names for loose template matching.
+///
+/// Strips punctuation/hyphens/spaces so `Rite-Way`, `Rite Way`, and `Riteway`
+/// compare equal, and lowercases for case-insensitive matching.
+String normalizeCustomerKey(String value) {
+  final lower = value.trim().toLowerCase();
+  if (lower.isEmpty) return '';
+  return lower.replaceAll(RegExp(r'[^a-z0-9]+'), '');
+}
+
+/// True when [customer] loosely matches the preset display name or customer field.
+///
+/// Accepts prefixes / contained tokens so typing `Arc` or `Arc Resources`
+/// still matches a saved `Arc Resources Inc` template (and hyphen variants).
 bool presetMatchesCustomer(CustomerPreset preset, String customer) {
-  final needle = customer.trim().toLowerCase();
+  final needle = normalizeCustomerKey(customer);
   if (needle.isEmpty) return false;
-  if (preset.name.trim().toLowerCase() == needle) return true;
-  final field = (preset.fields[LabelFields.customer] ?? '').trim().toLowerCase();
-  return field == needle;
+  final name = normalizeCustomerKey(preset.name);
+  final field =
+      normalizeCustomerKey(preset.fields[LabelFields.customer] ?? '');
+  return _looseCustomerKeyMatch(needle, name) ||
+      _looseCustomerKeyMatch(needle, field);
+}
+
+bool _looseCustomerKeyMatch(String a, String b) {
+  if (a.isEmpty || b.isEmpty) return false;
+  if (a == b) return true;
+  // Require a meaningful stem so 1–2 letter typos do not match everything.
+  if (a.length < 3 && b.length < 3) return false;
+  final short = a.length <= b.length ? a : b;
+  final long = a.length <= b.length ? b : a;
+  if (short.length < 3) return false;
+  return long.startsWith(short);
 }
 
 class ShippingLabelData {

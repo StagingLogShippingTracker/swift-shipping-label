@@ -97,10 +97,11 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
   @override
   Widget build(BuildContext context) {
     final title = widget.recreate ? 'Prepare for Recreate' : 'Edit logo';
+    final maxW = MediaQuery.sizeOf(context).width;
     return AlertDialog(
       title: Text(title),
       content: SizedBox(
-        width: 480,
+        width: maxW < 520 ? maxW - 48 : 480,
         child: Scrollbar(
           thumbVisibility: true,
           interactive: true,
@@ -159,21 +160,98 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                 ),
               ),
               const SizedBox(height: 6),
-              SegmentedButton<LogoCropMode>(
-                segments: [
-                  for (final mode in LogoCropMode.values)
-                    ButtonSegment(value: mode, label: Text(mode.label)),
-                ],
-                selected: {_cropMode},
-                onSelectionChanged: (s) {
-                  final mode = s.first;
-                  setState(() {
-                    _cropMode = mode;
-                    // "No crop" means keep the file untouched — also skip BG strip.
-                    if (mode == LogoCropMode.none) {
-                      _removeBg = false;
-                    }
-                  });
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 360;
+                  if (narrow) {
+                    // Portrait phone dialogs: SegmentedButton wraps letter-by-letter.
+                    return Column(
+                      children: [
+                        for (final mode in LogoCropMode.values)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Material(
+                              color: _cropMode == mode
+                                  ? SwiftColors.accentSoft
+                                  : SwiftColors.panel,
+                              borderRadius: BorderRadius.circular(8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () {
+                                  setState(() {
+                                    _cropMode = mode;
+                                    if (mode == LogoCropMode.none) {
+                                      _removeBg = false;
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: _cropMode == mode
+                                          ? SwiftColors.accent
+                                          : SwiftColors.border,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _cropMode == mode
+                                            ? Icons.check_circle
+                                            : Icons.circle_outlined,
+                                        size: 18,
+                                        color: _cropMode == mode
+                                            ? SwiftColors.accent
+                                            : SwiftColors.muted,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        mode.label,
+                                        style: TextStyle(
+                                          fontWeight: _cropMode == mode
+                                              ? FontWeight.w600
+                                              : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }
+                  return SegmentedButton<LogoCropMode>(
+                    showSelectedIcon: false,
+                    segments: [
+                      for (final mode in LogoCropMode.values)
+                        ButtonSegment(
+                          value: mode,
+                          label: Text(
+                            mode.label,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    selected: {_cropMode},
+                    onSelectionChanged: (s) {
+                      final mode = s.first;
+                      setState(() {
+                        _cropMode = mode;
+                        if (mode == LogoCropMode.none) {
+                          _removeBg = false;
+                        }
+                      });
+                    },
+                  );
                 },
               ),
               if (_cropMode == LogoCropMode.none && !widget.recreate)
