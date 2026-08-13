@@ -616,29 +616,47 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   List<CustomerPreset> _matchingTemplatesForCustomer(String customer) {
-    if (_kind == LabelKind.bulk) return const [];
+    if (_kind != LabelKind.shipping && _kind != LabelKind.receiving) {
+      return const [];
+    }
     final out = <CustomerPreset>[];
     for (final name in widget.storage.presetDisplayNamesFor(_kind)) {
       final preset = widget.storage.presetFor(_kind, name);
       if (preset == null) continue;
       if (presetMatchesCustomer(preset, customer)) out.add(preset);
     }
+    // Prefer longer/more specific names first when multiple fuzzy matches.
+    out.sort((a, b) {
+      final an = normalizeCustomerKey(a.name).length;
+      final bn = normalizeCustomerKey(b.name).length;
+      return bn.compareTo(an);
+    });
     return out;
   }
 
   void _onCustomerFocusChanged() {
     if (_customerFocusNode.hasFocus) return;
-    // Debounce: fire after focus leaves Customer.
-    Future.microtask(() => _maybePromptCustomerTemplate());
+    // Debounce: fire after focus leaves Customer (tap another field / Done).
+    Future<void>.delayed(const Duration(milliseconds: 80), () {
+      if (!mounted) return;
+      if (_customerFocusNode.hasFocus) return;
+      _maybePromptCustomerTemplate();
+    });
   }
 
   Future<void> _maybePromptCustomerTemplate({bool force = false}) async {
     if (!mounted) return;
-    if (_kind == LabelKind.bulk) return;
+    if (_kind != LabelKind.shipping && _kind != LabelKind.receiving) return;
     final customer = _controllers[LabelFields.customer]?.text.trim() ?? '';
     if (customer.isEmpty) return;
-    final resolved = _templatePromptResolvedForCustomer?.trim().toLowerCase();
-    if (!force && resolved == customer.toLowerCase()) return;
+    final resolvedKey =
+        normalizeCustomerKey(_templatePromptResolvedForCustomer ?? '');
+    final customerKey = normalizeCustomerKey(customer);
+    if (!force &&
+        resolvedKey.isNotEmpty &&
+        resolvedKey == customerKey) {
+      return;
+    }
 
     final matches = _matchingTemplatesForCustomer(customer);
     if (matches.isEmpty) {
@@ -2575,15 +2593,23 @@ class _HomeScreenState extends State<HomeScreen>
         controller: _controllers[LabelFields.customer],
         focusNode: _customerFocusNode,
         maxLines: 1,
-        textInputAction: TextInputAction.done,
+        textInputAction: TextInputAction.next,
         onEditingComplete: () {
+          _customerFocusNode.unfocus();
+          _maybePromptCustomerTemplate();
+        },
+        onTapOutside: (_) {
+          _customerFocusNode.unfocus();
+          _maybePromptCustomerTemplate();
+        },
+        onSubmitted: (_) {
           _customerFocusNode.unfocus();
           _maybePromptCustomerTemplate();
         },
         onChanged: (v) {
           final resolved = _templatePromptResolvedForCustomer;
           if (resolved != null &&
-              resolved.trim().toLowerCase() != v.trim().toLowerCase()) {
+              normalizeCustomerKey(resolved) != normalizeCustomerKey(v)) {
             _templatePromptResolvedForCustomer = null;
           }
         },
@@ -2908,7 +2934,7 @@ class _HomeScreenState extends State<HomeScreen>
         LabelKind.shipping =>
           'Pre-fill the label → Generate PDF. You’ll be asked how many pallet/crate and box labels to print.',
         LabelKind.bulk =>
-          'Upload a Swift Order Acknowledgement PDF. Avery 5163 Propak stickers are built from PO#, CPO LINE #, and TAG# or PART# (whichever the OA line notes use). Quantity = label count. Outputs Word + PDF.',
+          'Upload a Swift Order Acknowledgement PDF. Avery 5163 Propak stickers are built from PO#, CPO LINE #, and TAG# / PART# (or the note line under CPO when part# is missing). Quantity = label count. Outputs Word + PDF.',
       };
 
   List<(String, String, List<String>)> get _activeGroups => switch (_kind) {
@@ -3967,28 +3993,34 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildMobileLandscapeScaffold() {
     final chrome = SwiftChromeColors.of(context);
     final width = MediaQuery.sizeOf(context).width;
-    // Side workspace when there is room (most landscape phones ~700+).
-    final showWorkspace = width >= 700;
+    final height = MediaQuery.sizeOf(context).height;
+    final short = height < 420;
+    // Side workspace only when both wide enough and tall enough to not crush.
+    final showWorkspace = width >= 780 && height >= 400;
 
     final formList = ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+      padding: EdgeInsets.fromLTRB(12, short ? 4 : 6, 12, 12),
       children: [
         if (!showWorkspace) ...[
           if (_kind == LabelKind.bol) ...[
             _buildBolCopiesCard(compact: true),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
           if (_kind != LabelKind.bulk) ...[
             _buildPresetCard(dense: true),
             _buildLogosCard(dense: true, stackActions: true),
           ],
         ],
-        ..._buildDocumentFormCards(dualColumn: width >= 900),
+        ..._buildDocumentFormCards(dualColumn: width >= 980),
         _buildUtilityActions(toolbarStyle: true),
         if (!showWorkspace) ...[
-          const SizedBox(height: 10),
-          _buildGenerateControls(dense: true, stackVertically: false),
+          const SizedBox(height: 8),
+          _buildGenerateControls(
+            dense: true,
+            stackVertically: short,
+            buttonHeight: short ? 36 : 40,
+          ),
         ],
       ],
     );
@@ -3999,13 +4031,13 @@ class _HomeScreenState extends State<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
             child: Text(
               'Workspace',
               style: TextStyle(
                 fontFamily: swiftUiFont(context),
                 fontWeight: FontWeight.w600,
-                fontSize: 13,
+                fontSize: 12,
                 letterSpacing: 0.4,
                 color: chrome.ink,
               ),
@@ -4013,7 +4045,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
               children: [
                 if (_kind != LabelKind.bulk) ...[
                   _buildPresetCard(dense: true),
@@ -4033,11 +4065,11 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: _buildGenerateControls(
               dense: true,
               stackVertically: true,
-              buttonHeight: 40,
+              buttonHeight: short ? 36 : 40,
             ),
           ),
         ],
@@ -4054,6 +4086,7 @@ class _HomeScreenState extends State<HomeScreen>
               isDark: _uiSettings.isDark,
               kindTitle: _kindTitle,
               onToggleDark: _toggleDarkMode,
+              compact: short,
             ),
             Divider(height: 1, color: chrome.border),
             Expanded(
@@ -4062,10 +4095,14 @@ class _HomeScreenState extends State<HomeScreen>
                 children: [
                   NavigationRail(
                     extended: false,
-                    minWidth: 64,
+                    minWidth: short ? 56 : 64,
                     backgroundColor: chrome.panel,
                     selectedIndex: _kindRailIndex,
-                    labelType: NavigationRailLabelType.all,
+                    // Labels eat vertical space on short landscape phones.
+                    labelType: short
+                        ? NavigationRailLabelType.selected
+                        : NavigationRailLabelType.all,
+                    groupAlignment: short ? 0 : -0.85,
                     onDestinationSelected: (i) {
                       _selectKind(switch (i) {
                         1 => LabelKind.receiving,
@@ -4074,26 +4111,34 @@ class _HomeScreenState extends State<HomeScreen>
                         _ => LabelKind.shipping,
                       });
                     },
-                    destinations: const [
+                    destinations: [
                       NavigationRailDestination(
-                        icon: Icon(Icons.local_shipping_outlined, size: 20),
-                        selectedIcon: Icon(Icons.local_shipping, size: 20),
-                        label: Text('Ship'),
+                        icon: Icon(Icons.local_shipping_outlined,
+                            size: short ? 18 : 20),
+                        selectedIcon:
+                            Icon(Icons.local_shipping, size: short ? 18 : 20),
+                        label: const Text('Ship'),
                       ),
                       NavigationRailDestination(
-                        icon: Icon(Icons.inventory_2_outlined, size: 20),
-                        selectedIcon: Icon(Icons.inventory_2, size: 20),
-                        label: Text('Recv'),
+                        icon: Icon(Icons.inventory_2_outlined,
+                            size: short ? 18 : 20),
+                        selectedIcon:
+                            Icon(Icons.inventory_2, size: short ? 18 : 20),
+                        label: const Text('Recv'),
                       ),
                       NavigationRailDestination(
-                        icon: Icon(Icons.receipt_long_outlined, size: 20),
-                        selectedIcon: Icon(Icons.receipt_long, size: 20),
-                        label: Text('BOL'),
+                        icon: Icon(Icons.receipt_long_outlined,
+                            size: short ? 18 : 20),
+                        selectedIcon:
+                            Icon(Icons.receipt_long, size: short ? 18 : 20),
+                        label: const Text('BOL'),
                       ),
                       NavigationRailDestination(
-                        icon: Icon(Icons.grid_view_outlined, size: 20),
-                        selectedIcon: Icon(Icons.grid_view, size: 20),
-                        label: Text('Bulk'),
+                        icon: Icon(Icons.grid_view_outlined,
+                            size: short ? 18 : 20),
+                        selectedIcon:
+                            Icon(Icons.grid_view, size: short ? 18 : 20),
+                        label: const Text('Bulk'),
                       ),
                     ],
                   ),
@@ -4102,26 +4147,30 @@ class _HomeScreenState extends State<HomeScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
-                          child: Text(
-                            _kindHint,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: chrome.muted,
-                              fontSize: 12,
-                              height: 1.3,
+                        if (!short)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                            child: Text(
+                              _kindHint,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: chrome.muted,
+                                fontSize: 11,
+                                height: 1.2,
+                              ),
                             ),
                           ),
-                        ),
                         Expanded(child: formList),
                       ],
                     ),
                   ),
                   if (showWorkspace) ...[
                     VerticalDivider(width: 1, color: chrome.border),
-                    SizedBox(width: width >= 900 ? 280 : 240, child: workspacePane),
+                    SizedBox(
+                      width: width >= 980 ? 260 : 220,
+                      child: workspacePane,
+                    ),
                   ],
                 ],
               ),
@@ -4346,12 +4395,14 @@ class _MobileLandscapeToolbar extends StatelessWidget {
     required this.isDark,
     required this.kindTitle,
     required this.onToggleDark,
+    this.compact = false,
   });
 
   final bool busy;
   final bool isDark;
   final String kindTitle;
   final VoidCallback onToggleDark;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -4359,57 +4410,59 @@ class _MobileLandscapeToolbar extends StatelessWidget {
     return Material(
       color: chrome.surface,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+        padding: EdgeInsets.fromLTRB(10, compact ? 2 : 4, 6, compact ? 2 : 4),
         child: Row(
           children: [
             Container(
               width: 3,
-              height: 22,
+              height: compact ? 18 : 22,
               decoration: BoxDecoration(
                 color: SwiftColors.accent,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(width: 8),
-            SwiftChromeLogo(height: 20, isDark: isDark),
+            SwiftChromeLogo(height: compact ? 16 : 20, isDark: isDark),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                'Swift Document Generator',
+                compact ? kindTitle : 'Swift Document Generator',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: swiftUiFont(context),
                   fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                  fontSize: compact ? 12 : 13,
                   letterSpacing: 0.2,
                   color: chrome.ink,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: chrome.accentSoft,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: SwiftColors.accent.withValues(alpha: 0.18),
+            if (!compact) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: chrome.accentSoft,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: SwiftColors.accent.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  kindTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily:
+                        Theme.of(context).textTheme.bodyMedium?.fontFamily,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                    color: SwiftColors.accent,
+                  ),
                 ),
               ),
-              child: Text(
-                kindTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily:
-                      Theme.of(context).textTheme.bodyMedium?.fontFamily,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  color: SwiftColors.accent,
-                ),
-              ),
-            ),
+            ],
             if (busy)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
@@ -4424,7 +4477,7 @@ class _MobileLandscapeToolbar extends StatelessWidget {
                 tooltip: isDark ? 'Light mode' : 'Dark mode',
                 onPressed: onToggleDark,
                 visualDensity: VisualDensity.compact,
-                iconSize: 20,
+                iconSize: compact ? 18 : 20,
                 icon: Icon(
                   isDark
                       ? Icons.light_mode_outlined
@@ -4432,13 +4485,14 @@ class _MobileLandscapeToolbar extends StatelessWidget {
                   color: chrome.ink,
                 ),
               ),
-              IconButton(
-                tooltip: 'Update',
-                onPressed: () => showUpdateFlow(context),
-                visualDensity: VisualDensity.compact,
-                iconSize: 20,
-                icon: Icon(Icons.system_update_alt, color: chrome.ink),
-              ),
+              if (!compact)
+                IconButton(
+                  tooltip: 'Update',
+                  onPressed: () => showUpdateFlow(context),
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 20,
+                  icon: Icon(Icons.system_update_alt, color: chrome.ink),
+                ),
             ],
           ],
         ),

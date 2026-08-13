@@ -60,6 +60,34 @@ Order Line Notes: TAG# 1/2"BA-A-20AT
       expect(result.lines.firstWhere((l) => l.cpo == '8').quantity, 12);
     });
 
+    test('parses CPO LINE + loose part # and under-CPO fallback (1425965)', () {
+      final text =
+          File('test/fixtures/propak_oa_1425965.txt').readAsStringSync();
+      final result = const OrderAckParser().parseText(text);
+      expect(result.poNumber, 'P613120');
+      expect(result.orderNumber, '1425965');
+      expect(result.lines, isNotEmpty);
+
+      // CPO LINE 1 has no part # — use the "Used by …" line under CPO.
+      final line1 = result.lines.firstWhere((l) => l.cpo == '1');
+      expect(line1.idKind, BulkIdKind.part);
+      expect(line1.tagOrPart.toLowerCase(), contains('used by'));
+      expect(line1.quantity, 1);
+
+      // Explicit loose part # under CPO LINE.
+      final line5 = result.lines.firstWhere((l) => l.cpo == '5');
+      expect(line5.tagOrPart, '050211');
+      expect(line5.idKind, BulkIdKind.part);
+
+      // Multi CPO on one note expands to separate stickers.
+      expect(result.lines.any((l) => l.cpo == '8'), isTrue);
+      expect(result.lines.any((l) => l.cpo == '9'), isTrue);
+      final line8 = result.lines.firstWhere((l) => l.cpo == '8');
+      final line9 = result.lines.firstWhere((l) => l.cpo == '9');
+      expect(line8.tagOrPart, '055329');
+      expect(line9.tagOrPart, '055329');
+    });
+
     test('uses PART# when OA has no TAG#', () {
       const text = '''
 ORDER ACKNOWLEDGEMENT
