@@ -10,17 +10,25 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.71.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.72.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_71';
+  static const campaignId = 'whats_new_1_1_72';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.71)";
+  static const title = "What's new (v1.1.68 – v1.1.72)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.72',
+      bullets: [
+        'Customer logos: RealESRGAN restore to 3000px+ PNG (Windows local, Android via Fly.io)',
+        'Removed Recreate / vectorizer (no SVG tracing). Low-res logos upscale automatically',
+        'Logo restore spinner while Fly.io processes the image',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.71',
       bullets: [

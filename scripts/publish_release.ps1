@@ -199,16 +199,16 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
-### What's new (v1.1.71)
-- **Bulk OA:** detect “CPO LINE …” notes and loose “part # …” identities; fall back to under-CPO note when PART/TAG missing
-- **Templates:** prompt when leaving Customer on Shipping/Receiving; looser Arc / Rite-Way name matching
-- **Android:** denser landscape layout; Edit logo crop options no longer wrap vertically
-- **What's New prompt:** first 3 launches cover v1.1.68–v1.1.71
+### What's new (v1.1.72)
+- **Logo restore:** low-res customer logos upscale to 3000px+ PNG via RealESRGAN (Windows local Python; Android/Fly.io)
+- **Recreate removed:** no more vectorizer / SVG tracing; logos stay raster
+- **Cache:** restored files live in customer_logos/ so later generates skip the upscale
+- **UI:** spinner while Fly.io restore runs
 
 ### Also in recent releases
-- Android portrait Chrome-like header hide/show; landscape Windows-style rail layout
-- Customer templates (Full / Core / Logos), Delivery Address book, BOL+Shipping PDF
-- Shipping freight / 3rd-party billing, History, shared contacts, Receiving Label polish
+- Bulk OA CPO LINE parsing, template blur prompt, looser customer-name matching
+- Android portrait Chrome-like header; landscape Windows-style rail layout
+- Customer templates, Delivery Address book, BOL+Shipping PDF, Receiving Label polish
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.
