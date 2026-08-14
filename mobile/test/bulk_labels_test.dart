@@ -150,6 +150,63 @@ Order Line Notes: TAG# 2"GL-A-03AR
         isTrue,
       );
     });
+
+    test('header: Bill To customer + Delivery Instructions ship-to (1425965)', () {
+      final text =
+          File('test/fixtures/propak_oa_1425965.txt').readAsStringSync();
+      final result = const OrderAckParser().parseText(text);
+      expect(result.customerName, 'PROPAK SYSTEMS LTD.');
+      expect(result.orderNumber, '1425965');
+      expect(result.projectNumber, 'P613120');
+      expect(result.poNumber, 'P613120');
+      expect(result.hasDeliveryShipTo, isTrue);
+      expect(result.deliveryShipToName.toLowerCase(), contains('propak'));
+      expect(result.deliveryShipToAddress.toLowerCase(), contains('veterans'));
+      expect(result.deliveryCarrier.toUpperCase(), contains('ROSENAU'));
+      expect(result.headerShipToName, 'PROPAK SYSTEMS LTD.');
+    });
+
+    test('header: Delivery Instructions name when freight is on the last line', () {
+      final text =
+          File('test/fixtures/propak_order_ack_sample.txt').readAsStringSync();
+      final result = const OrderAckParser().parseText(text);
+      expect(result.customerName, 'PROPAK SYSTEMS LTD.');
+      expect(result.hasDeliveryShipTo, isTrue);
+      expect(result.deliveryShipToName.toLowerCase(), contains('propak'));
+      expect(result.deliveryShipToAddress.toLowerCase(), contains('east lake'));
+      expect(result.deliveryCarrier.toLowerCase(), contains('rosenau'));
+    });
+
+    test('header: missing Delivery Instructions is flagged', () {
+      const text = '''
+ORDER ACKNOWLEDGEMENT
+1420001
+Bill To: 11693 Ship To:
+ACME LTD.
+1 MAIN ST
+NISKU, AB T9E 1C6
+CA
+780-000-0000
+ACME LTD.
+1 MAIN ST
+NISKU, AB T9E 1C6
+CA
+Ordered By: JANE
+ProjectLocationPO Number
+P111111
+AFE # GL Code
+Item DescriptionQuantityNo. UOM Unit Price Extended Price
+1.00EA1.00 1.00WIDGET
+1
+Order Line Notes: CPO LINE 1
+part # 1
+''';
+      final result = const OrderAckParser().parseText(text);
+      expect(result.hasDeliveryShipTo, isFalse);
+      expect(result.customerName, 'ACME LTD.');
+      expect(result.headerShipToName, 'ACME LTD.');
+      expect(result.headerShipToAddress.toLowerCase(), contains('main'));
+    });
   });
 
   group('Avery 5163 tiling', () {

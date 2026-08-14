@@ -10,17 +10,24 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.74.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.75.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_74';
+  static const campaignId = 'whats_new_1_1_75';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.74)";
+  static const title = "What's new (v1.1.68 – v1.1.75)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.75',
+      bullets: [
+        'Shipping, Receiving, and BOL: upload an Order Acknowledgement under Customer preset to fill sales order, PO, project, customer, and ship-to',
+        'Ship-to prefers Delivery Instructions; if missing, choose OA Ship To or enter manually',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.74',
       bullets: [

@@ -225,6 +225,9 @@ class _HomeScreenState extends State<HomeScreen>
   OrderAckParseResult? _bulkParse;
   String? _bulkSourcePath;
   bool _bulkParsing = false;
+  /// OA PDF used to fill Shipping / Receiving / BOL fields.
+  String? _oaFillSourceName;
+  bool _oaFilling = false;
   List<String> _swiftContactNames = const [];
   bool _swiftContactsLoading = false;
   /// Focus nodes for employee-name autocomplete fields (one per key).
@@ -1921,6 +1924,235 @@ class _HomeScreenState extends State<HomeScreen>
       });
       showAppSnack(context, 'Could not read Order Acknowledgement: $e');
     }
+  }
+
+  Future<void> _pickOrderAckForForm() async {
+    final path = await pickPdfPath();
+    if (path == null) return;
+    await _fillFormFromOrderAck(path);
+  }
+
+  Future<void> _fillFormFromOrderAck(String path) async {
+    setState(() => _oaFilling = true);
+    try {
+      final bytes = await File(path).readAsBytes();
+      final parsed = await parseOrderAckPdf(
+        Uint8List.fromList(bytes),
+        sourceFileName: p.basename(path),
+      );
+      if (!mounted) return;
+      await _applyOrderAckToForm(parsed, p.basename(path));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _oaFilling = false);
+      showAppSnack(context, 'Could not read Order Acknowledgement: $e');
+    }
+  }
+
+  Future<void> _applyOrderAckToForm(
+    OrderAckParseResult parsed,
+    String sourceName,
+  ) async {
+    if (parsed.customerName.isNotEmpty) {
+      _setField(LabelFields.customer, parsed.customerName);
+    }
+    if (parsed.orderNumber.isNotEmpty) {
+      _setField(LabelFields.salesOrder, parsed.orderNumber);
+      _setField(BolFields.orderNum, parsed.orderNumber);
+    }
+    if (parsed.projectNumber.isNotEmpty) {
+      _setField(LabelFields.project, parsed.projectNumber);
+    }
+    if (parsed.poNumber.isNotEmpty) {
+      _setField(LabelFields.poNum, parsed.poNumber);
+    }
+    if (parsed.deliveryCarrier.isNotEmpty && _kind == LabelKind.shipping) {
+      _setField(
+        LabelFields.carrier,
+        _carrierFromDeliveryLine(parsed.deliveryCarrier),
+      );
+      final lower = parsed.deliveryCarrier.toLowerCase();
+      if (lower.contains('collect')) {
+        _setField(BolFields.freightCharges, BolFields.freightCollect);
+      } else if (lower.contains('prepaid')) {
+        _setField(BolFields.freightCharges, BolFields.freightPrepaid);
+      }
+    }
+
+    var shipName = parsed.deliveryShipToName;
+    var shipAddr = parsed.deliveryShipToAddress;
+    final wantsShipTo =
+        _kind == LabelKind.shipping || _kind == LabelKind.bol;
+    if (wantsShipTo && !parsed.hasDeliveryShipTo) {
+      setState(() => _oaFilling = false);
+      final choice = await _promptMissingDeliveryInstructions(parsed);
+      if (!mounted) return;
+      if (choice == _OaShipToChoice.useHeader) {
+        shipName = parsed.headerShipToName;
+        shipAddr = parsed.headerShipToAddress;
+      } else {
+        shipName = '';
+        shipAddr = '';
+      }
+    }
+
+    if (wantsShipTo && (shipName.isNotEmpty || shipAddr.isNotEmpty)) {
+      if (_kind == LabelKind.shipping) {
+        if (shipName.isNotEmpty) _setField(LabelFields.shipTo, shipName);
+        if (shipAddr.isNotEmpty) _setField(LabelFields.location, shipAddr);
+      } else if (_kind == LabelKind.bol) {
+        if (shipName.isNotEmpty) {
+          _setField(BolFields.consigneeName, shipName);
+        }
+        if (shipAddr.isNotEmpty) {
+          _setField(BolFields.consigneeAddress, shipAddr);
+        }
+      }
+    }
+
+    setState(() {
+      _oaFillSourceName = sourceName;
+      _oaFilling = false;
+    });
+    if (!mounted) return;
+    showAppSnack(
+      context,
+      parsed.hasDeliveryShipTo
+          ? 'Filled from Order Acknowledgement (Delivery Instructions).'
+          : 'Filled from Order Acknowledgement.',
+    );
+  }
+
+  String _carrierFromDeliveryLine(String raw) {
+    var s = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    s = s.replaceAll(
+      RegExp(r'^ship\s+via\s+', caseSensitive: false),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\s*[-–]\s*(collect|prepaid)\b', caseSensitive: false),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\b(collect|prepaid)\b', caseSensitive: false),
+      '',
+    );
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s.isEmpty ? raw.trim() : s;
+  }
+
+  Future<_OaShipToChoice?> _promptMissingDeliveryInstructions(
+    OrderAckParseResult parsed,
+  ) {
+    final preview = [
+      if (parsed.headerShipToName.isNotEmpty) parsed.headerShipToName,
+      if (parsed.headerShipToAddress.isNotEmpty) parsed.headerShipToAddress,
+    ].join('\n');
+    return showDialog<_OaShipToChoice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('No Delivery Instructions'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'This Order Acknowledgement has no Delivery Instructions '
+                  'block (the c/o / actual ship-to). The printed Ship To is '
+                  'often the billing address without c/o.',
+                ),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'OA Ship To:\n$preview',
+                    style: const TextStyle(height: 1.35),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, _OaShipToChoice.manual),
+              child: const Text('Enter manually'),
+            ),
+            FilledButton(
+              onPressed: preview.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, _OaShipToChoice.useHeader),
+              child: const Text('Use OA Ship To'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _clearOrderAckFill() {
+    setState(() => _oaFillSourceName = null);
+  }
+
+  Widget _buildOrderAckFillCard({bool dense = false}) {
+    return _Card(
+      title: 'Order Acknowledgement',
+      hint: dense
+          ? 'Fill sales order, PO, project, customer, and ship-to from a Swift OA PDF'
+          : 'Upload a Swift OA PDF. Packing list is not on the OA — enter it yourself. '
+              'Ship To comes from Delivery Instructions when present.',
+      dense: dense,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _busy || _oaFilling ? null : _pickOrderAckForForm,
+                icon: _oaFilling
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                label: Text(_oaFilling ? 'Reading…' : 'Upload OA PDF'),
+              ),
+              if (_oaFillSourceName != null)
+                TextButton(
+                  onPressed: _busy ? null : _clearOrderAckFill,
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+          if (_oaFillSourceName != null) ...[
+            SizedBox(height: dense ? 6 : 8),
+            Text(
+              _oaFillSourceName!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _presetOaLogoCards({
+    bool dense = false,
+    bool stackLogoActions = true,
+  }) {
+    if (_kind == LabelKind.bulk) return const [];
+    return [
+      _buildPresetCard(dense: dense),
+      _buildOrderAckFillCard(dense: dense),
+      _buildLogosCard(dense: dense, stackActions: stackLogoActions),
+    ];
   }
 
   /// Ask what to do with OA lines that have CPO but no TAG# / PART#.
@@ -3692,10 +3924,7 @@ class _HomeScreenState extends State<HomeScreen>
             _buildBolCopiesCard(compact: true),
             const SizedBox(height: 4),
           ],
-          if (_kind != LabelKind.bulk) ...[
-            _buildPresetCard(dense: true),
-            _buildLogosCard(dense: true, stackActions: true),
-          ],
+          if (_kind != LabelKind.bulk) ..._presetOaLogoCards(dense: true),
         ],
         ..._buildDocumentFormCards(dualColumn: dualColumn),
         const SizedBox(height: 4),
@@ -3737,10 +3966,8 @@ class _HomeScreenState extends State<HomeScreen>
                 primary: false,
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 children: [
-                  if (_kind != LabelKind.bulk) ...[
-                    _buildPresetCard(dense: true),
-                    _buildLogosCard(dense: true, stackActions: true),
-                  ],
+                  if (_kind != LabelKind.bulk)
+                    ..._presetOaLogoCards(dense: true),
                   if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
                   if (_kind == LabelKind.bulk)
                     Text(
@@ -4042,10 +4269,7 @@ class _HomeScreenState extends State<HomeScreen>
                       _buildBolCopiesCard(),
                       const SizedBox(height: 10),
                     ],
-                    if (_kind != LabelKind.bulk) ...[
-                      _buildPresetCard(),
-                      _buildLogosCard(stackActions: true),
-                    ],
+                    if (_kind != LabelKind.bulk) ..._presetOaLogoCards(),
                     ..._buildDocumentFormCards(dualColumn: false),
                     _buildUtilityActions(),
                   ],
@@ -4091,10 +4315,7 @@ class _HomeScreenState extends State<HomeScreen>
             _buildBolCopiesCard(compact: true),
             const SizedBox(height: 6),
           ],
-          if (_kind != LabelKind.bulk) ...[
-            _buildPresetCard(dense: true),
-            _buildLogosCard(dense: true, stackActions: true),
-          ],
+          if (_kind != LabelKind.bulk) ..._presetOaLogoCards(dense: true),
         ],
         ..._buildDocumentFormCards(dualColumn: width >= 980),
         _buildUtilityActions(toolbarStyle: true),
@@ -4131,10 +4352,8 @@ class _HomeScreenState extends State<HomeScreen>
             child: ListView(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
               children: [
-                if (_kind != LabelKind.bulk) ...[
-                  _buildPresetCard(dense: true),
-                  _buildLogosCard(dense: true, stackActions: true),
-                ],
+                if (_kind != LabelKind.bulk)
+                  ..._presetOaLogoCards(dense: true),
                 if (_kind == LabelKind.bol) _buildBolCopiesCard(compact: true),
                 if (_kind == LabelKind.bulk)
                   Text(
@@ -4996,3 +5215,5 @@ class _Card extends StatelessWidget {
     );
   }
 }
+
+enum _OaShipToChoice { useHeader, manual }

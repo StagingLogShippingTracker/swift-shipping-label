@@ -112,6 +112,14 @@ class OrderAckParseResult {
     required this.warnings,
     this.incompleteLines = const [],
     this.sourceFileName = '',
+    this.customerName = '',
+    this.projectNumber = '',
+    this.deliveryShipToName = '',
+    this.deliveryShipToAddress = '',
+    this.headerShipToName = '',
+    this.headerShipToAddress = '',
+    this.deliveryCarrier = '',
+    this.hasDeliveryShipTo = false,
   });
 
   final String poNumber;
@@ -122,6 +130,24 @@ class OrderAckParseResult {
   /// Lines with CPO but no TAG#/PART# — awaiting Proceed / Skip / Cancel.
   final List<BulkIncompleteLine> incompleteLines;
   final String sourceFileName;
+
+  /// Bill To company name (not the Ship To header).
+  final String customerName;
+
+  /// Project column (often a P-number). May match [poNumber] when the OA
+  /// only prints one value under Project / Location / PO Number.
+  final String projectNumber;
+
+  final String deliveryShipToName;
+  final String deliveryShipToAddress;
+  final String headerShipToName;
+  final String headerShipToAddress;
+
+  /// Freight line from Delivery Instructions (e.g. ROSENAU COLLECT).
+  final String deliveryCarrier;
+
+  /// True when Delivery Instructions include a usable name and/or street.
+  final bool hasDeliveryShipTo;
 
   bool get hasIncompleteLines => incompleteLines.isNotEmpty;
 
@@ -141,6 +167,14 @@ class OrderAckParseResult {
     List<String>? warnings,
     List<BulkIncompleteLine>? incompleteLines,
     String? sourceFileName,
+    String? customerName,
+    String? projectNumber,
+    String? deliveryShipToName,
+    String? deliveryShipToAddress,
+    String? headerShipToName,
+    String? headerShipToAddress,
+    String? deliveryCarrier,
+    bool? hasDeliveryShipTo,
   }) {
     return OrderAckParseResult(
       poNumber: poNumber ?? this.poNumber,
@@ -149,6 +183,15 @@ class OrderAckParseResult {
       warnings: warnings ?? this.warnings,
       incompleteLines: incompleteLines ?? this.incompleteLines,
       sourceFileName: sourceFileName ?? this.sourceFileName,
+      customerName: customerName ?? this.customerName,
+      projectNumber: projectNumber ?? this.projectNumber,
+      deliveryShipToName: deliveryShipToName ?? this.deliveryShipToName,
+      deliveryShipToAddress:
+          deliveryShipToAddress ?? this.deliveryShipToAddress,
+      headerShipToName: headerShipToName ?? this.headerShipToName,
+      headerShipToAddress: headerShipToAddress ?? this.headerShipToAddress,
+      deliveryCarrier: deliveryCarrier ?? this.deliveryCarrier,
+      hasDeliveryShipTo: hasDeliveryShipTo ?? this.hasDeliveryShipTo,
     );
   }
 

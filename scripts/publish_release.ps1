@@ -204,6 +204,11 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.75)
+- **OA fill:** Shipping, Receiving, and BOL can upload a Swift Order Acknowledgement under Customer preset
+- **Fields:** sales order, customer PO / project, Bill To customer; packing list stays blank
+- **Ship-to:** Delivery Instructions when present; otherwise Use OA Ship To or enter manually
+
 ### What's new (v1.1.74)
 - **Address book:** lists Z–A by Ship To Name; duplicate places merge in the cloud
 - **History logos:** each saved version opens the PDF (and logo) that was actually generated

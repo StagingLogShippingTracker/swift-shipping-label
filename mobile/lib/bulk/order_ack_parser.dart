@@ -30,6 +30,7 @@ class OrderAckParser {
     }
 
     final orderNumber = _extractOrderNumber(text) ?? '';
+    final header = OrderAckHeader.parse(text);
 
     final lines = <BulkLabelLine>[];
     final incomplete = <BulkIncompleteLine>[];
@@ -210,6 +211,16 @@ class OrderAckParser {
       warnings: warnings,
       incompleteLines: dedupedIncomplete,
       sourceFileName: sourceFileName,
+      customerName: header.customerName,
+      projectNumber: header.projectNumber.isNotEmpty
+          ? header.projectNumber
+          : (poNumber ?? ''),
+      deliveryShipToName: header.deliveryShipToName,
+      deliveryShipToAddress: header.deliveryShipToAddress,
+      headerShipToName: header.headerShipToName,
+      headerShipToAddress: header.headerShipToAddress,
+      deliveryCarrier: header.deliveryCarrier,
+      hasDeliveryShipTo: header.hasDeliveryShipTo,
     );
   }
 
@@ -315,3 +326,204 @@ class OrderAckParser {
     return m2?.group(1);
   }
 }
+
+/// Bill To / Ship To / Delivery Instructions header from a Swift OA.
+class OrderAckHeader {
+  const OrderAckHeader({
+    this.customerName = '',
+    this.projectNumber = '',
+    this.deliveryShipToName = '',
+    this.deliveryShipToAddress = '',
+    this.headerShipToName = '',
+    this.headerShipToAddress = '',
+    this.deliveryCarrier = '',
+    this.hasDeliveryShipTo = false,
+  });
+
+  final String customerName;
+  final String projectNumber;
+  final String deliveryShipToName;
+  final String deliveryShipToAddress;
+  final String headerShipToName;
+  final String headerShipToAddress;
+  final String deliveryCarrier;
+  final bool hasDeliveryShipTo;
+
+  static final _itemRow = RegExp(
+    r'\d[\d,]*\.\d{2}\s*EA|\bEA\s*\d|\bOrder\s+Line\s+Notes:|\bItem\s+Description\b|\bRev\s+20|\bSubtotal:',
+    caseSensitive: false,
+  );
+  static final _freightLine = RegExp(
+    r'^(ship\s+via\b)|(\bcollect\b)|(\bprepaid\b)|'
+    r'^(rosenau|dunrite|murray|murrays|mel martins|highway|cole)\b',
+    caseSensitive: false,
+  );
+  static final _phone = RegExp(r'^\d{3}[-.\s]\d{3}[-.\s]\d{4}');
+  static final _country = RegExp(r'^(CA|US|USA|CANADA)$', caseSensitive: false);
+  static final _accountOnly = RegExp(r'^\d{4,}$');
+
+  static OrderAckHeader parse(String raw) {
+    final text = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final parties = _parseBillAndShip(text);
+    final project = _extractProject(text);
+    final delivery = _parseDeliveryInstructions(text);
+    return OrderAckHeader(
+      customerName: parties.billName,
+      projectNumber: project,
+      deliveryShipToName: delivery.name,
+      deliveryShipToAddress: delivery.address,
+      headerShipToName: parties.shipName,
+      headerShipToAddress: parties.shipAddress,
+      deliveryCarrier: delivery.carrier,
+      hasDeliveryShipTo:
+          delivery.name.isNotEmpty || delivery.address.isNotEmpty,
+    );
+  }
+
+  static String _extractProject(String text) {
+    final mashed = RegExp(
+      r'Project\s*Location\s*PO\s*Number\s*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (mashed != null) {
+      final line = mashed.group(1)!.trim();
+      if (RegExp(r'^AFE\b', caseSensitive: false).hasMatch(line)) {
+        return '';
+      }
+      final pNum = RegExp(r'\bP\d{5,}\b', caseSensitive: false).firstMatch(line);
+      if (pNum != null) return pNum.group(0)!.toUpperCase();
+      final parts = line.split(RegExp(r'\s{2,}|\t')).map((s) => s.trim()).where(
+            (s) => s.isNotEmpty && !RegExp(r'^AFE\b', caseSensitive: false).hasMatch(s),
+          );
+      if (parts.isNotEmpty) return parts.first;
+    }
+    final tabbed = RegExp(
+      r'Project[ \t]+Location[ \t]+PO\s*Number\s*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (tabbed != null) {
+      final cols = tabbed.group(1)!.split(RegExp(r'\t+|\s{2,}'));
+      if (cols.isNotEmpty && cols.first.trim().isNotEmpty) {
+        return cols.first.trim();
+      }
+    }
+    return '';
+  }
+
+  static ({String billName, String shipName, String shipAddress})
+      _parseBillAndShip(String text) {
+    final start = RegExp(r'Bill\s*To:', caseSensitive: false).firstMatch(text);
+    if (start == null) {
+      return (billName: '', shipName: '', shipAddress: '');
+    }
+    final rest = text.substring(start.end);
+    final end = RegExp(
+      r'Ordered\s+By:|Project\s*Location|Project\t',
+      caseSensitive: false,
+    ).firstMatch(rest);
+    final block = (end == null ? rest : rest.substring(0, end.start));
+    final lines = [
+      for (final raw in block.split('\n'))
+        raw.replaceAll('\t', ' ').trim(),
+    ].where((l) => l.isNotEmpty && l.toLowerCase() != 'ship to:').toList();
+
+    // Drop "11693 Ship To:" leftovers on the Bill To line.
+    final cleaned = <String>[];
+    for (var l in lines) {
+      l = l.replaceAll(RegExp(r'^Ship\s*To:\s*', caseSensitive: false), '');
+      l = l.replaceAll(RegExp(r'\s+Ship\s*To:\s*$', caseSensitive: false), '');
+      if (l.isEmpty || _accountOnly.hasMatch(l)) continue;
+      cleaned.add(l);
+    }
+
+    String takeAddress(List<String> src, int from) {
+      final parts = <String>[];
+      for (var i = from; i < src.length; i++) {
+        final l = src[i];
+        if (_country.hasMatch(l) || _phone.hasMatch(l)) break;
+        if (i > from && _looksLikeCompany(l) && parts.isNotEmpty) break;
+        parts.add(l);
+      }
+      return parts.join('\n').trim();
+    }
+
+    if (cleaned.isEmpty) {
+      return (billName: '', shipName: '', shipAddress: '');
+    }
+    final billName = cleaned.first;
+    var i = 1;
+    while (i < cleaned.length &&
+        !_country.hasMatch(cleaned[i]) &&
+        !_phone.hasMatch(cleaned[i])) {
+      i++;
+    }
+    while (i < cleaned.length &&
+        (_country.hasMatch(cleaned[i]) || _phone.hasMatch(cleaned[i]))) {
+      i++;
+    }
+    if (i >= cleaned.length) {
+      return (billName: billName, shipName: '', shipAddress: '');
+    }
+    final shipName = cleaned[i];
+    final shipAddress = takeAddress(cleaned, i + 1);
+    return (billName: billName, shipName: shipName, shipAddress: shipAddress);
+  }
+
+  static bool _looksLikeCompany(String line) {
+    return RegExp(
+      r'\b(ltd|inc|corp|llc|llp|lp|co\.|systems|energy|services)\b',
+      caseSensitive: false,
+    ).hasMatch(line);
+  }
+
+  static ({String name, String address, String carrier})
+      _parseDeliveryInstructions(String text) {
+    final m = RegExp(
+      r'Delivery\s+Instructions\s*:\s*',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (m == null) {
+      return (name: '', address: '', carrier: '');
+    }
+    final rest = text.substring(m.end);
+    final lines = <String>[];
+    for (final raw in rest.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) {
+        if (lines.isNotEmpty) break;
+        continue;
+      }
+      if (_itemRow.hasMatch(line)) break;
+      if (RegExp(r'^AFE\b', caseSensitive: false).hasMatch(line)) continue;
+      lines.add(line);
+      if (lines.length >= 8) break;
+    }
+    if (lines.isEmpty) {
+      return (name: '', address: '', carrier: '');
+    }
+
+    var carrier = '';
+    final body = <String>[];
+    for (final line in lines) {
+      if (body.isEmpty && _freightLine.hasMatch(line)) {
+        carrier = line.replaceAll(RegExp(r'\s+'), ' ').trim();
+        continue;
+      }
+      body.add(line);
+    }
+    // Trailing "Ship via …" after the address.
+    if (body.isNotEmpty && _freightLine.hasMatch(body.last)) {
+      if (carrier.isEmpty) {
+        carrier = body.last.replaceAll(RegExp(r'\s+'), ' ').trim();
+      }
+      body.removeLast();
+    }
+    if (body.isEmpty) {
+      return (name: '', address: '', carrier: carrier);
+    }
+    final name = body.first.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final address = body.skip(1).join('\n').trim();
+    return (name: name, address: address, carrier: carrier);
+  }
+}
+
