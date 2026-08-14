@@ -15,18 +15,13 @@ void main() {
       // Network blocks must not throw or fail-closed the whole All Sources call.
     }, timeout: const Timeout(Duration(seconds: 60)));
 
-    test('Google-only and Bing-only each isolate failures', () async {
+    test('Serper-only isolates failures (including missing API key)', () async {
       final finder = LogoFinder();
-      final google = await finder.findDownloadedCandidates(
+      final serper = await finder.findDownloadedCandidates(
         companyName: 'Keyera',
-        engine: LogoSearchEngine.google,
+        engine: LogoSearchEngine.serper,
       );
-      final bing = await finder.findDownloadedCandidates(
-        companyName: 'Keyera',
-        engine: LogoSearchEngine.bing,
-      );
-      expect(google, isA<List<LogoDownloadedCandidate>>());
-      expect(bing, isA<List<LogoDownloadedCandidate>>());
+      expect(serper, isA<List<LogoDownloadedCandidate>>());
     }, timeout: const Timeout(Duration(seconds: 60)));
   });
 }

@@ -75,6 +75,14 @@ class GeminiClient {
         : AppConfig.geminiModel.trim();
   }
 
+  /// Process env, then gitignored `.env` overlay.
+  static String envValue(String key) {
+    _ensureEnvLoaded();
+    final fromProcess = (Platform.environment[key] ?? '').trim();
+    if (fromProcess.isNotEmpty) return fromProcess;
+    return (_envOverlay[key] ?? '').trim();
+  }
+
   static void _ensureEnvLoaded() {
     if (_envLoaded) return;
     _envLoaded = true;

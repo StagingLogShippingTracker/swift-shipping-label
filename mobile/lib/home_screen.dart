@@ -267,6 +267,7 @@ class _HomeScreenState extends State<HomeScreen>
     _loadUiSettings();
     _syncPresetsOnLaunch();
     _refreshContactSuggestions();
+    unawaited(_documentHistorySync.purgeExpired());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowChangelogPrompt();
     });
@@ -346,8 +347,15 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _applyUiSettings(AppUiSettings s) {
+    final turningOnRestore =
+        s.restoreLowResLogos && !_uiSettings.restoreLowResLogos;
     setState(() => _uiSettings = s);
     _syncAppTheme(s);
+    if (turningOnRestore) {
+      for (final path in List<String>.from(_logoPaths)) {
+        unawaited(_prefetchLogoRestore(path));
+      }
+    }
   }
 
   void _syncAppTheme(AppUiSettings s) {
@@ -368,6 +376,12 @@ class _HomeScreenState extends State<HomeScreen>
           ? 'unknown'
           : '${info.version}+${info.buildNumber}',
     );
+  }
+
+  Future<void> _setRestoreLowResLogos(bool value) async {
+    final next = _uiSettings.copyWith(restoreLowResLogos: value);
+    await widget.storage.saveUiSettings(next);
+    _applyUiSettings(next);
   }
 
   Future<void> _toggleDarkMode() async {
@@ -582,6 +596,7 @@ class _HomeScreenState extends State<HomeScreen>
             .take(maxCustomerLogos),
       );
     _presetName = displayName;
+    _markTemplatePromptResolved();
     if (notify) setState(() {});
     for (final path in List<String>.from(_logoPaths)) {
       unawaited(_prefetchLogoRestore(path));
@@ -610,6 +625,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _applyPresetLogos(preset);
     _presetName = preset.name;
+    _markTemplatePromptResolved();
     setState(() {});
   }
 
@@ -619,6 +635,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _applyPresetLogos(preset);
     _presetName = preset.name;
+    _markTemplatePromptResolved();
     setState(() {});
   }
 
@@ -641,6 +658,11 @@ class _HomeScreenState extends State<HomeScreen>
     return out;
   }
 
+  void _markTemplatePromptResolved() {
+    _templatePromptResolvedForCustomer =
+        _controllers[LabelFields.customer]?.text.trim();
+  }
+
   void _onCustomerFocusChanged() {
     if (_customerFocusNode.hasFocus) return;
     // Debounce: fire after focus leaves Customer (tap another field / Done).
@@ -651,17 +673,20 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  Future<void> _maybePromptCustomerTemplate({bool force = false}) async {
+  Future<void> _maybePromptCustomerTemplate() async {
     if (!mounted) return;
     if (_kind != LabelKind.shipping && _kind != LabelKind.receiving) return;
     final customer = _controllers[LabelFields.customer]?.text.trim() ?? '';
     if (customer.isEmpty) return;
+    // Already building from a chosen preset — do not ask again.
+    if (_presetName != null) {
+      _markTemplatePromptResolved();
+      return;
+    }
     final resolvedKey =
         normalizeCustomerKey(_templatePromptResolvedForCustomer ?? '');
     final customerKey = normalizeCustomerKey(customer);
-    if (!force &&
-        resolvedKey.isNotEmpty &&
-        resolvedKey == customerKey) {
+    if (resolvedKey.isNotEmpty && resolvedKey == customerKey) {
       return;
     }
 
@@ -1108,8 +1133,13 @@ class _HomeScreenState extends State<HomeScreen>
     final options = await showLogoImportEditDialog(
       context,
       previewBytes: bytes,
+      initialRestoreHighRes: _uiSettings.restoreLowResLogos,
     );
     if (options == null || !mounted) return;
+
+    if (options.restoreHighRes != _uiSettings.restoreLowResLogos) {
+      await _setRestoreLowResLogos(options.restoreHighRes);
+    }
 
     try {
       final result = await widget.storage.importLogoBytes(
@@ -1130,7 +1160,9 @@ class _HomeScreenState extends State<HomeScreen>
           }
         });
       }
-      unawaited(_prefetchLogoRestore(file.path));
+      if (options.restoreHighRes) {
+        unawaited(_prefetchLogoRestore(file.path));
+      }
     } catch (e) {
       if (mounted) showAppSnack(context, 'Logo import failed: $e');
     }
@@ -1400,8 +1432,8 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'Search Google, Bing, Clearbit, Brands of the World, and other '
-                            'sources. A website domain improves accuracy.',
+                            'Search Clearbit, Brandfetch, and Serper image results. '
+                            'A website domain improves accuracy.',
                             style: TextStyle(
                               fontSize: 13,
                               color: SwiftColors.muted,
@@ -1476,7 +1508,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       if (candidates.isEmpty) {
         showAppSnack(context, 
-              'No logo found across Google, Bing, Brands of the World, and other sources. '
+              'No logo found from Clearbit, Brandfetch, or Serper. '
               'Try a website domain or upload manually.',
             );
         setState(() => _findingLogo = false);
@@ -1623,6 +1655,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _prefetchLogoRestore(String path) async {
+    if (!_uiSettings.restoreLowResLogos) return;
     try {
       final restored = await _ensureRestoredLogo(File(path));
       if (!mounted) return;
@@ -1636,6 +1669,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<File> _ensureRestoredLogo(File source) async {
+    if (!_uiSettings.restoreLowResLogos) return source;
     if (!await source.exists()) return source;
     if (LogoRestorer.longestEdgeOfBytes(await source.readAsBytes()) >=
         LogoRestorer.minDimension) {
@@ -2054,10 +2088,6 @@ class _HomeScreenState extends State<HomeScreen>
       await _generateBulkLabels();
       return;
     }
-
-    // Template prompt again on Generate if customer changed without a choice.
-    await _maybePromptCustomerTemplate();
-    if (!mounted) return;
 
     PieceCountPlan? piecePlan;
     if (_kind == LabelKind.shipping ||
@@ -3297,6 +3327,18 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ],
           if (_logoPaths.isNotEmpty) SizedBox(height: dense ? 10 : 12),
+          SwiftCircleCheckbox(
+            value: _uiSettings.restoreLowResLogos,
+            dense: dense,
+            enabled: !_restoringLogo,
+            label: 'Convert low-resolution photo to high-resolution',
+            subtitle: _restoringLogo
+                ? 'Enhancing logo…'
+                : 'Upscale small or blurry logos to 3000px+ (replaces Recreate)',
+            onChanged: _restoringLogo
+                ? null
+                : (v) => _setRestoreLowResLogos(v ?? false),
+          ),
           SizedBox(height: dense ? 6 : 8),
           logoButtons,
         ],

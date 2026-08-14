@@ -168,8 +168,13 @@ if (-not $SkipAndroid) {
 
     Push-Location $mobileRoot
     try {
+        . (Join-Path $root "scripts\flutter_dart_defines.ps1")
+        $dartDefines = Get-FlutterDartDefines -RepoRoot $root
+        if ($dartDefines.Count -gt 0) {
+            Write-Host "Including $($dartDefines.Count) dart-define(s) from .env"
+        }
         Invoke-Flutter $flutter @("pub", "get")
-        Invoke-Flutter $flutter @("build", "apk", "--release")
+        Invoke-Flutter $flutter (@("build", "apk", "--release") + $dartDefines)
         $apkSrc = Join-Path $mobileRoot "build\app\outputs\flutter-apk\app-release.apk"
         if (-not (Test-Path $apkSrc)) {
             $apkSrc = Join-Path $mobileRoot "build\app\outputs\flutter-apk\app-debug.apk"
@@ -199,16 +204,16 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
-### What's new (v1.1.72)
-- **Logo restore:** low-res customer logos upscale to 3000px+ PNG via RealESRGAN (Windows local Python; Android/Fly.io)
-- **Recreate removed:** no more vectorizer / SVG tracing; logos stay raster
-- **Cache:** restored files live in customer_logos/ so later generates skip the upscale
-- **UI:** spinner while Fly.io restore runs
+### What's new (v1.1.73)
+- **Logo search:** Serper.dev image API (no Google/Bing HTML scraping); Clearbit/Brandfetch still run in parallel
+- **High-res logos:** checkbox to convert a low-res customer photo to 3000px+ (replaces Recreate)
+- **Templates:** Shipping/Receiving no longer re-prompt on Generate; prompt stays after entering the customer name
+- **History:** generated PDFs older than 90 days are deleted from the app cache and Supabase
 
 ### Also in recent releases
-- Bulk OA CPO LINE parsing, template blur prompt, looser customer-name matching
+- RealESRGAN logo restore (Windows local / Android Fly.io); Recreate/vectorizer removed
+- Bulk OA CPO LINE parsing, looser customer-name matching
 - Android portrait Chrome-like header; landscape Windows-style rail layout
-- Customer templates, Delivery Address book, BOL+Shipping PDF, Receiving Label polish
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

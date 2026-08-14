@@ -26,21 +26,26 @@ class LogoImportOptions {
     required this.removeBackground,
     required this.cropMode,
     this.manualCropRect,
+    this.restoreHighRes = true,
   });
 
   factory LogoImportOptions.standard({
     bool removeBackground = true,
     LogoCropMode cropMode = LogoCropMode.auto,
     Rect? manualCropRect,
+    bool restoreHighRes = true,
   }) =>
       LogoImportOptions(
         removeBackground: removeBackground,
         cropMode: cropMode,
         manualCropRect: manualCropRect,
+        restoreHighRes: restoreHighRes,
       );
 
   final bool removeBackground;
   final LogoCropMode cropMode;
+  /// RealESRGAN upscale (replaces the old Recreate / vectorizer).
+  final bool restoreHighRes;
 
   /// Normalized crop rect (0–1) relative to image bounds; used when
   /// [cropMode] is [LogoCropMode.manual].
@@ -51,11 +56,13 @@ class LogoImportOptions {
 Future<LogoImportOptions?> showLogoImportEditDialog(
   BuildContext context, {
   required Uint8List previewBytes,
+  bool initialRestoreHighRes = true,
 }) {
   return showDialog<LogoImportOptions>(
     context: context,
     builder: (ctx) => _LogoImportEditDialog(
       previewBytes: previewBytes,
+      initialRestoreHighRes: initialRestoreHighRes,
     ),
   );
 }
@@ -63,9 +70,11 @@ Future<LogoImportOptions?> showLogoImportEditDialog(
 class _LogoImportEditDialog extends StatefulWidget {
   const _LogoImportEditDialog({
     required this.previewBytes,
+    this.initialRestoreHighRes = true,
   });
 
   final Uint8List previewBytes;
+  final bool initialRestoreHighRes;
 
   @override
   State<_LogoImportEditDialog> createState() => _LogoImportEditDialogState();
@@ -74,7 +83,14 @@ class _LogoImportEditDialog extends StatefulWidget {
 class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
   var _removeBg = true;
   var _cropMode = LogoCropMode.auto;
+  late bool _restoreHighRes;
   Rect? _manualCrop;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreHighRes = widget.initialRestoreHighRes;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -241,6 +257,18 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
               ],
+              const SizedBox(height: 6),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _restoreHighRes,
+                onChanged: (v) => setState(() => _restoreHighRes = v ?? false),
+                title: const Text('Convert low-resolution photo to high-resolution'),
+                subtitle: const Text(
+                  'Upscale small or blurry logos to 3000px+ (replaces Recreate)',
+                  style: TextStyle(fontSize: 12, color: SwiftColors.muted),
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
             ],
             ),
           ),
@@ -265,6 +293,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                     _cropMode == LogoCropMode.none ? false : _removeBg,
                 cropMode: _cropMode,
                 manualCropRect: _manualCrop,
+                restoreHighRes: _restoreHighRes,
               ),
             );
           },

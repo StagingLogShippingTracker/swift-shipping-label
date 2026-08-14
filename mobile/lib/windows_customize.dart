@@ -130,6 +130,20 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
+                          value: _draft.restoreLowResLogos,
+                          onChanged: (v) => _set(
+                            _draft.copyWith(restoreLowResLogos: v ?? true),
+                          ),
+                          title: const Text(
+                            'Convert low-resolution photo to high-resolution',
+                          ),
+                          subtitle: const Text(
+                            'Upscale small or blurry customer logos to 3000px+ (replaces Recreate).',
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
                           value: _draft.denseForms,
                           onChanged: (v) =>
                               _set(_draft.copyWith(denseForms: v ?? false)),

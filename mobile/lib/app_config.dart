@@ -32,6 +32,13 @@ class AppConfig {
     defaultValue: '',
   );
 
+  /// Serper.dev Images API (`POST https://google.serper.dev/images`).
+  /// Prefer runtime env / gitignored `.env` (`SERPER_API_KEY`).
+  static const serperApiKeyDefine = String.fromEnvironment(
+    'SERPER_API_KEY',
+    defaultValue: '',
+  );
+
   /// Google Gemini API key for logo validation + recreate assist.
   /// Prefer runtime env / gitignored `.env` — do not commit secrets.
   /// Build-time: `--dart-define=GEMINI_API_KEY=...`

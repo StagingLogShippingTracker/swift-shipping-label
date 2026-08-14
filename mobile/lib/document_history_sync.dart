@@ -109,10 +109,13 @@ class DocumentHistorySync {
     LabelKind kind, {
     int limit = 60,
   }) async {
+    await purgeExpired();
     final kindEnc = Uri.encodeComponent(kind.name);
+    final cutoff = Uri.encodeComponent(_retentionCutoff().toIso8601String());
     final uri = Uri.parse(
       '${AppConfig.supabaseUrl}/rest/v1/generated_documents'
       '?kind=eq.$kindEnc'
+      '&created_at=gte.$cutoff'
       '&select=id,kind,title,customer,sales_order,file_name,storage_path,byte_size,created_at'
       '&order=created_at.desc'
       '&limit=$limit',
@@ -182,6 +185,80 @@ class DocumentHistorySync {
     }
     await dest.writeAsBytes(res.bodyBytes, flush: true);
     return dest;
+  }
+
+  /// Drop history older than 90 days from Supabase (rows + PDFs) and local cache.
+  Future<void> purgeExpired() async {
+    final cutoff = _retentionCutoff();
+    try {
+      await _purgeExpiredRemote(cutoff);
+    } catch (_) {}
+    try {
+      await _purgeExpiredLocalCache(cutoff);
+    } catch (_) {}
+  }
+
+  static DateTime _retentionCutoff() =>
+      DateTime.now().toUtc().subtract(retention);
+
+  static const retention = Duration(days: 90);
+
+  Future<void> _purgeExpiredRemote(DateTime cutoff) async {
+    final cutoffEnc = Uri.encodeComponent(cutoff.toIso8601String());
+    final uri = Uri.parse(
+      '${AppConfig.supabaseUrl}/rest/v1/generated_documents'
+      '?created_at=lt.$cutoffEnc'
+      '&select=id,storage_path,file_name',
+    );
+    final res = await http.get(uri, headers: _headers).timeout(_timeout);
+    if (res.statusCode < 200 || res.statusCode >= 300) return;
+    final body = jsonDecode(res.body);
+    if (body is! List) return;
+    for (final row in body) {
+      if (row is! Map) continue;
+      final path = '${row['storage_path'] ?? ''}'.trim();
+      final id = '${row['id'] ?? ''}'.trim();
+      if (path.isNotEmpty) {
+        await _deleteStorageObject(path);
+      }
+      if (id.isEmpty) continue;
+      final del = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/generated_documents?id=eq.${Uri.encodeComponent(id)}',
+      );
+      await http
+          .delete(del, headers: _headers)
+          .timeout(const Duration(seconds: 20));
+    }
+  }
+
+  Future<void> _deleteStorageObject(String storagePath) async {
+    final uri = Uri.parse(
+      '${AppConfig.supabaseUrl}/storage/v1/object/$bucket/${storagePath.split('/').map(Uri.encodeComponent).join('/')}',
+    );
+    await http
+        .delete(
+          uri,
+          headers: {
+            'apikey': AppConfig.supabaseAnonKey,
+            'Authorization': 'Bearer ${AppConfig.supabaseAnonKey}',
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+  }
+
+  Future<void> _purgeExpiredLocalCache(DateTime cutoff) async {
+    final dir = storage.filledDir;
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      if (p.extension(entity.path).toLowerCase() != '.pdf') continue;
+      try {
+        final stat = await entity.stat();
+        if (stat.modified.toUtc().isBefore(cutoff)) {
+          await entity.delete();
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _uploadBytes(String storagePath, Uint8List bytes) async {

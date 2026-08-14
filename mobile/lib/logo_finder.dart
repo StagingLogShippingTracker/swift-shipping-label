@@ -1,17 +1,18 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import 'app_config.dart';
 import 'gemini_client.dart';
-import 'logo_crawler_client.dart';
 
 /// Which web source(s) to query when finding a customer logo.
 enum LogoSearchEngine {
   all,
+  serper,
+  /// Deprecated alias for [serper] (saved settings / old tests).
   google,
+  /// Deprecated alias for [serper] (saved settings / old tests).
   bing,
   clearbit,
   brandsOfTheWorld,
@@ -27,8 +28,9 @@ enum LogoSearchEngine {
 
   String get label => switch (this) {
         LogoSearchEngine.all => 'All sources',
-        LogoSearchEngine.google => 'Google',
-        LogoSearchEngine.bing => 'Bing',
+        LogoSearchEngine.serper => 'Web search (Serper)',
+        LogoSearchEngine.google => 'Web search (Serper)',
+        LogoSearchEngine.bing => 'Web search (Serper)',
         LogoSearchEngine.clearbit => 'Clearbit',
         LogoSearchEngine.brandsOfTheWorld => 'Brands of the World',
         LogoSearchEngine.logoDev => 'Logo.dev',
@@ -40,24 +42,21 @@ enum LogoSearchEngine {
 
   static LogoSearchEngine? tryParse(String? raw) {
     if (raw == null || raw.isEmpty) return null;
+    if (raw == 'google' || raw == 'bing') return LogoSearchEngine.serper;
     for (final e in LogoSearchEngine.values) {
       if (e.id == raw) return e;
     }
     return null;
   }
 
-  /// UI order: Google & Bing first, then the rest; Retool last when configured.
+  /// UI order: All + Serper + domain APIs; Retool last when configured.
   static List<LogoSearchEngine> pickerOptions({required bool retoolConfigured}) {
     final out = <LogoSearchEngine>[
       LogoSearchEngine.all,
-      LogoSearchEngine.google,
-      LogoSearchEngine.bing,
+      LogoSearchEngine.serper,
       LogoSearchEngine.clearbit,
-      LogoSearchEngine.brandsOfTheWorld,
-      LogoSearchEngine.logoDev,
       LogoSearchEngine.brandfetch,
-      LogoSearchEngine.tineye,
-      LogoSearchEngine.wikipediaDuckDuckGo,
+      LogoSearchEngine.logoDev,
     ];
     if (retoolConfigured) out.add(LogoSearchEngine.retoolClearbit);
     return out;
@@ -162,8 +161,8 @@ class _RelevanceContext {
   }
 }
 
-/// Multi-source logo lookup: Clearbit, image search (Google, Bing), logo libraries
-/// (Brands of the World, Logo.dev, Brandfetch), Wikipedia / DuckDuckGo fallbacks.
+/// Multi-source logo lookup: Clearbit / Brandfetch domain APIs plus Serper.dev
+/// Google Images search (no HTML scraping).
 class LogoFinder {
   LogoFinder({http.Client? client}) : _client = client ?? http.Client();
 
@@ -179,15 +178,8 @@ class LogoFinder {
   static const _pickerMinScore = 18;
   /// Per-request timeout so one blocked engine cannot stall All Sources.
   static const _requestTimeout = Duration(seconds: 5);
-  /// Whole-engine budget (multiple queries / fallbacks inside one source).
-  /// Keep tight so a blocked Google HTML shell cannot burn ~45s before fallbacks.
-  static const _engineTimeout = Duration(seconds: 18);
-  /// Headless Google Images (Playwright) needs a longer budget than HTTP scrapes.
-  static const _googleCrawlerTimeout = Duration(seconds: 42);
   /// Stop downloading once the picker can fill with strong candidates.
   static const _strongPickerScore = 36;
-  static const _ua =
-      'SwiftShippingLabel/1.0 (+https://github.com/StagingLogShippingTracker/swift-shipping-label)';
 
   /// Rotating desktop Chrome profiles (User-Agent + matching Sec-Ch-Ua).
   static const _chromeProfiles = <({String ua, String secChUa, String version})>[
@@ -236,34 +228,6 @@ class LogoFinder {
     return profile;
   }
 
-  /// Desktop Chrome-like headers for HTML scrapers (Google / Bing / DDG / BOTW).
-  static Map<String, String> _browserHeadersRotating({String? referer}) {
-    final p = _nextChromeProfile();
-    final headers = <String, String>{
-      'User-Agent': p.ua,
-      'Accept':
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-      'Sec-Ch-Ua': p.secChUa,
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': p.ua.contains('Macintosh') ? '"macOS"' : '"Windows"',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': referer == null ? 'none' : 'same-origin',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-    };
-    if (referer != null && referer.isNotEmpty) {
-      headers['Referer'] = referer;
-    }
-    return headers;
-  }
-
-  static Map<String, String> _browserHeadersFor(Uri uri) =>
-      _browserHeadersRotating(referer: '${uri.scheme}://${uri.host}/');
-
   static Map<String, String> _imageDownloadHeaders(Uri uri) {
     final p = _nextChromeProfile();
     return {
@@ -307,16 +271,6 @@ class LogoFinder {
     return out;
   }
 
-  /// Test hooks for HTML/JSON crawler parsers (no network).
-  static Set<String> debugParseBingPayload(String body) =>
-      _parseBingImagePayload(body).toSet();
-
-  static Set<String> debugParseGoogleHtml(String html) {
-    final urls = <String>{};
-    _extractGoogleImageUrls(html, urls);
-    return urls;
-  }
-
   static List<String> debugPrimaryQueries(String companyName, {String domain = ''}) {
     final domains = domain.trim().isEmpty ? <String>[] : [domain.trim()];
     return _primaryLogoQueries(_RelevanceContext.from(companyName, domains));
@@ -327,7 +281,57 @@ class LogoFinder {
     return _expandedLogoQueries(_RelevanceContext.from(companyName, domains));
   }
 
-  /// Test hook: score a URL the same way live ranking does.
+  static List<String> _primaryLogoQueries(_RelevanceContext ctx) {
+    final name = ctx.companyName.trim();
+    if (name.isEmpty) {
+      if (ctx.domains.isEmpty) return const ['logo png'];
+      final d = ctx.domains.first;
+      return ['$d logo png', '${d.split('.').first} logo png', d];
+    }
+    // Bare company name first — Google/Bing Images find brand marks that
+    // "{name} logo png" often misses (e.g. MasTec Purnell maple-leaf MP).
+    return <String>[
+      name,
+      '$name logo',
+      '$name logo png',
+      if (ctx.domains.isNotEmpty) '${ctx.domains.first} logo',
+    ];
+  }
+
+  /// Smart synonyms used when the primary `{name} logo png` search is empty.
+  static List<String> _expandedLogoQueries(_RelevanceContext ctx) {
+    final name = ctx.companyName.trim();
+    if (name.isEmpty) {
+      if (ctx.domains.isEmpty) return const ['brand vector logo'];
+      final d = ctx.domains.first;
+      final stem = d.split('.').first;
+      return [
+        '$stem brand vector logo',
+        '$stem corporate logo transparent background',
+        '$stem official website logo',
+        'site:$d logo',
+      ];
+    }
+    final out = <String>{
+      '$name brand vector logo',
+      '$name corporate logo transparent background',
+      '$name official website logo',
+      '$name company logo',
+      '$name brand logo',
+      '$name official logo',
+      '"$name" logo png',
+      '"$name" logo',
+      '$name Canada logo',
+      '$name Alberta logo',
+    };
+    for (final d in ctx.domains.take(4)) {
+      out.add('site:$d logo');
+      out.add('$name logo site:$d');
+      out.add('${d.split('.').first} logo');
+    }
+    return out.toList();
+  }
+
   static int debugScoreUrl(
     String url,
     String source,
@@ -386,10 +390,15 @@ class LogoFinder {
       extraQueries: extraQueries,
       alternateNames: plan?.alternateNames ?? const [],
     );
-    final useAll = engine == LogoSearchEngine.all;
-    bool use(LogoSearchEngine e) => useAll || engine == e;
+    final resolved = switch (engine) {
+      LogoSearchEngine.google || LogoSearchEngine.bing => LogoSearchEngine.serper,
+      _ => engine,
+    };
+    final useAll = resolved == LogoSearchEngine.all;
+    bool use(LogoSearchEngine e) => useAll || resolved == e;
 
-    // Each source is independently trapped — one failure must not zero out All Sources.
+    // Domain APIs + Serper in parallel. Each source is isolated — one failure
+    // must not zero out All Sources.
     final futures = <Future<List<LogoCandidate>>>[];
     if (use(LogoSearchEngine.clearbit)) {
       futures.add(
@@ -411,60 +420,12 @@ class LogoFinder {
         _safeSource(() async => _brandfetchCandidates(domainList, ctx)),
       );
     }
-    if (use(LogoSearchEngine.bing)) {
-      futures.add(_safeSource(() => _bingImageSearch(ctx)));
-    }
-    if (use(LogoSearchEngine.google)) {
+    if (use(LogoSearchEngine.serper) && name.isNotEmpty) {
       futures.add(
         _safeSource(
-          () => _googleImageSearch(ctx, gemini: gemini),
-          timeout: _googleCrawlerTimeout,
+          () => _serperImageSearch(ctx),
+          timeout: const Duration(seconds: 16),
         ),
-      );
-      // CDN / known-brand safety net — independent of crawler timeouts.
-      futures.add(
-        _safeSource(() async => _googleBlockedFallbackCandidates(ctx)),
-      );
-    }
-    if (use(LogoSearchEngine.brandsOfTheWorld) && name.isNotEmpty) {
-      futures.add(
-        _safeSource(() => _brandsOfTheWorldSearch(name, ctx)),
-      );
-    }
-    if (use(LogoSearchEngine.tineye)) {
-      futures.add(_safeSource(() => _tineyeSearch(ctx)));
-    }
-    if (use(LogoSearchEngine.wikipediaDuckDuckGo) && name.isNotEmpty) {
-      futures.add(_safeSource(() => _wikipediaCandidates(name, ctx)));
-      futures.add(
-        _safeSource(() => _duckDuckGoCandidates(ctx)),
-      );
-      futures.add(
-        _safeSource(() => _duckDuckGoImageSearch(ctx)),
-      );
-      futures.add(
-        _safeSource(() => _wikimediaCommonsLogoSearch(name, ctx)),
-      );
-    }
-
-    // Public CDN logo endpoints (no API key) — helps fill the picker toward 30.
-    if (useAll ||
-        use(LogoSearchEngine.clearbit) ||
-        use(LogoSearchEngine.google) ||
-        use(LogoSearchEngine.bing)) {
-      futures.add(
-        _safeSource(() async => _publicCdnLogoCandidates(domainList, ctx)),
-      );
-    }
-
-    // Scrape official sites for /logo assets when we have domains.
-    if (useAll ||
-        use(LogoSearchEngine.google) ||
-        use(LogoSearchEngine.clearbit) ||
-        use(LogoSearchEngine.bing)) {
-      futures.add(_safeSource(() => _scrapeSiteLogoCandidates(domainList, ctx)));
-      futures.add(
-        _safeSource(() async => _knownLogoUrlCandidates(name, ctx)),
       );
     }
 
@@ -489,7 +450,7 @@ class LogoFinder {
     }
 
     // Always include Google Favicon as a last-resort URL candidate when we have domains.
-    if (useAll || use(LogoSearchEngine.google) || use(LogoSearchEngine.clearbit)) {
+    if (useAll || use(LogoSearchEngine.clearbit)) {
       for (final d in domainList.take(3)) {
         merged.add(
           LogoCandidate(
@@ -515,68 +476,23 @@ class LogoFinder {
       stopAtStrongCount: pickerMaxResults,
     );
 
-    // Sparse rescue: only when well under the picker target.
+    // Sparse rescue: extra Serper queries only when well under the picker target.
     if (downloaded.length < (pickerMaxResults * 2 ~/ 3) &&
-        (use(LogoSearchEngine.google) || use(LogoSearchEngine.bing))) {
+        use(LogoSearchEngine.serper) &&
+        name.isNotEmpty) {
       try {
-        final rescueQueries = <String>[
-          if (plan != null) ...plan.searchQueries,
-          if (plan != null)
-            for (final alt in plan.alternateNames.take(3))
-              '$alt official logo png',
-          if (name.isNotEmpty) ...[
-            '$name logo png',
-            '$name logo transparent',
-            '$name brand logo high resolution',
-            '$name company logo filetype:png',
-            '$name official logo -favicon',
-          ],
-          for (final d in domainList.take(3)) '$d logo',
-        ];
-        final rescueCtx = ctx.withExtras(extraQueries: rescueQueries);
-        final rescueFutures = <Future<List<LogoCandidate>>>[];
-        if (use(LogoSearchEngine.google)) {
-          rescueFutures.add(
-            _safeSource(
-              () => _googleImageSearch(
-                rescueCtx,
-                forceExpanded: true,
-                gemini: gemini,
-              ),
-              timeout: _googleCrawlerTimeout,
-            ),
-          );
-        }
-        if (use(LogoSearchEngine.bing)) {
-          rescueFutures.add(
-            _safeSource(() => _bingImageSearch(rescueCtx, forceExpanded: true)),
-          );
-        }
-        rescueFutures.add(
-          _safeSource(() => _duckDuckGoImageSearch(rescueCtx)),
+        final moreUrls = await _safeSource(
+          () => _serperImageSearch(ctx, extraQueries: [
+            if (plan != null) ...plan.searchQueries.take(3),
+            '$name official logo png',
+          ]),
+          timeout: const Duration(seconds: 16),
         );
-        if (name.isNotEmpty) {
-          rescueFutures.add(
-            _safeSource(() => _wikimediaCommonsLogoSearch(name, rescueCtx)),
-          );
-        }
-        final rescueLists = await Future.wait(
-          rescueFutures.map(
-            (f) => f.catchError((Object _, StackTrace __) => <LogoCandidate>[]),
-          ),
-        );
-        final rescueMerged = <LogoCandidate>[
-          ...merged,
-          ..._publicCdnLogoCandidates(domainList, rescueCtx),
-        ];
-        for (final list in rescueLists) {
-          rescueMerged.addAll(list);
-        }
-        ranked = _rankAndDedupe(rescueMerged, rescueCtx);
+        ranked = _rankAndDedupe([...merged, ...moreUrls], ctx);
         toTry = ranked.take(_maxCandidatesToDownload).toList();
         final more = await _downloadCandidatesParallel(
           toTry,
-          rescueCtx,
+          ctx,
           gemini: null,
           stopAtStrongCount: pickerMaxResults,
         );
@@ -708,7 +624,7 @@ class LogoFinder {
   }) async {
     try {
       return await run().timeout(
-        timeout ?? _engineTimeout,
+        timeout ?? _requestTimeout,
         onTimeout: () => <LogoCandidate>[],
       );
     } catch (_) {
@@ -851,7 +767,7 @@ class LogoFinder {
       return LogoFindResult.fail(
         name.isEmpty
             ? 'No logo found for that domain. Try another domain or upload manually.'
-            : 'No usable logo found for “$name”. Searched Google, Bing, Clearbit, Brands of the World, and other sources — try a website domain or upload manually.',
+            : 'No usable logo found for “$name”. Searched Clearbit, Brandfetch, and Serper — try a website domain or upload manually.',
       );
     }
 
@@ -881,113 +797,6 @@ class LogoFinder {
   }
 
   /// Keyless CDN / icon endpoints that often still resolve when scrapers stall.
-  List<LogoCandidate> _publicCdnLogoCandidates(
-    List<String> domains,
-    _RelevanceContext ctx,
-  ) {
-    final out = <LogoCandidate>[];
-    for (final d in domains.take(8)) {
-      out.addAll([
-        LogoCandidate(
-          url: 'https://logo.clearbit.com/$d',
-          source: 'Clearbit CDN ($d)',
-          score: _scoreDomainApi(d, 'Clearbit', ctx) - 2,
-        ),
-        LogoCandidate(
-          url: 'https://logo.clearbit.com/$d?size=512',
-          source: 'Clearbit CDN ($d)',
-          score: _scoreDomainApi(d, 'Clearbit', ctx) - 3,
-        ),
-        LogoCandidate(
-          url: 'https://icons.duckduckgo.com/ip3/$d.ico',
-          source: 'DuckDuckGo Icon ($d)',
-          score: 34 + _domainMatchBonus(d, ctx),
-        ),
-        LogoCandidate(
-          url: 'https://www.google.com/s2/favicons?sz=128&domain_url=$d',
-          source: 'Google Favicon ($d)',
-          score: 30 + _domainMatchBonus(d, ctx),
-        ),
-        LogoCandidate(
-          url: 'https://www.google.com/s2/favicons?sz=256&domain=$d',
-          source: 'Google Favicon ($d)',
-          score: 31 + _domainMatchBonus(d, ctx),
-        ),
-        LogoCandidate(
-          url: 'https://www.google.com/s2/favicons?sz=256&domain_url=https://$d',
-          source: 'Google Favicon ($d)',
-          score: 31 + _domainMatchBonus(d, ctx),
-        ),
-      ]);
-    }
-    return out;
-  }
-
-  Future<List<LogoCandidate>> _wikimediaCommonsLogoSearch(
-    String name,
-    _RelevanceContext ctx,
-  ) async {
-    try {
-      final terms = <String>{
-        '$name logo',
-        '$name company logo',
-        '${ctx.tokens.take(2).join(' ')} logo',
-      };
-      final urls = <String>{};
-      for (final term in terms) {
-        if (term.trim().length < 3) continue;
-        final uri = Uri.https('commons.wikimedia.org', '/w/api.php', {
-          'action': 'query',
-          'format': 'json',
-          'origin': '*',
-          'generator': 'search',
-          'gsrsearch': 'File:$term',
-          'gsrlimit': '20',
-          'gsrnamespace': '6',
-          'prop': 'imageinfo',
-          'iiprop': 'url|mime|size',
-          'iiurlwidth': '800',
-        });
-        final res = await _client
-            .get(
-              uri,
-              headers: {'User-Agent': _ua, 'Accept': 'application/json'},
-            )
-            .timeout(_requestTimeout);
-        if (res.statusCode != 200) continue;
-        final body = jsonDecode(res.body);
-        final pages = body is Map ? (body as Map)['query'] : null;
-        final pageMap = pages is Map ? pages['pages'] : null;
-        if (pageMap is! Map) continue;
-        for (final page in pageMap.values) {
-          if (page is! Map) continue;
-          final pageData = Map<Object?, Object?>.from(page);
-          final infos = pageData['imageinfo'];
-          if (infos is! List || infos.isEmpty) continue;
-          final first = infos.first;
-          if (first is! Map) continue;
-          final info = Map<Object?, Object?>.from(first);
-          final mime = '${info['mime'] ?? ''}'.toLowerCase();
-          final thumb = '${info['thumburl'] ?? ''}';
-          final full = '${info['url'] ?? ''}';
-          // Prefer raster thumbnails (Commons often stores SVG masters).
-          final pick = thumb.startsWith('http')
-              ? thumb
-              : (mime.contains('svg') ? '' : full);
-          if (pick.startsWith('http')) urls.add(pick);
-        }
-      }
-      return _urlCandidatesFromSet(
-        urls,
-        source: 'Wikimedia Commons',
-        ctx: ctx,
-        sourceBonus: 4,
-      );
-    } catch (_) {
-      return const [];
-    }
-  }
-
   Future<List<LogoCandidate>> _retoolClearbitCandidates(
     List<String> domains,
     _RelevanceContext ctx,
@@ -1050,1449 +859,108 @@ class LogoFinder {
   }
 
   static String _optionalEnv(String key) {
-    try {
-      return Platform.environment[key] ??
-          String.fromEnvironment(key, defaultValue: '');
-    } catch (_) {
-      return String.fromEnvironment(key, defaultValue: '');
+    final fromGemini = GeminiClient.envValue(key);
+    if (fromGemini.isNotEmpty) return fromGemini;
+    if (key == 'SERPER_API_KEY') {
+      return AppConfig.serperApiKeyDefine.trim();
     }
-  }
-
-  Future<List<LogoCandidate>> _bingImageSearch(
-    _RelevanceContext ctx, {
-    bool forceExpanded = false,
-  }) async {
-    try {
-      final urls = <String>{};
-      // Primary query first; expand only when empty / sparse (or Gemini rescue).
-      final primary = forceExpanded
-          ? _queriesForSearch(ctx, expanded: true)
-          : _queriesForSearch(ctx, expanded: false, includePrimary: true);
-      final expanded = _queriesForSearch(ctx, expanded: true);
-
-      Future<void> runQueries(List<String> queries) async {
-        for (final q in queries) {
-          if (urls.length >= 90) break;
-          try {
-            final encoded = Uri.encodeQueryComponent(q);
-            final referer = 'https://www.bing.com/images/search?q=$encoded';
-            final headers = _browserHeadersRotating(referer: referer)
-              ..['Sec-Fetch-Site'] = 'same-origin';
-
-            // Page through Bing in parallel; avoid photo-only filter so
-            // transparent PNG logos / clipart-style results are included.
-            final bodies = await Future.wait(
-              [0, 35, 70].map((first) async {
-                try {
-                  final asyncUri = Uri.parse(
-                    'https://www.bing.com/images/async?q=$encoded&first=$first&count=35&relp=35&tsc=ImageBasicHover',
-                  );
-                  final asyncRes = await _client
-                      .get(asyncUri, headers: headers)
-                      .timeout(_requestTimeout);
-                  if (asyncRes.statusCode == 200) return asyncRes.body;
-                } catch (_) {}
+    if (key == 'RETOOL_CLEARBIT_LOGO_URL') {
+      return AppConfig.retoolClearbitLogoUrl.trim();
+    }
                 return '';
-              }),
-            );
-            for (final body in bodies) {
-              if (body.isNotEmpty) {
-                urls.addAll(_parseBingImagePayload(body));
-              }
-            }
-
-            if (urls.length < 12) {
-              final pageUri = Uri.parse(
-                'https://www.bing.com/images/search?q=$encoded&form=HDRSC2&first=1&tsc=ImageBasicHover',
-              );
-              final pageRes = await _client
-                  .get(pageUri, headers: headers)
-                  .timeout(_requestTimeout);
-              if (pageRes.statusCode == 200) {
-                urls.addAll(_parseBingImagePayload(pageRes.body));
-              }
-            }
-          } catch (_) {
-            continue;
-          }
-        }
-      }
-
-      await runQueries(primary);
-      if (urls.length < 20 || forceExpanded) {
-        await runQueries(expanded.take(forceExpanded ? 8 : 6).toList());
-      }
-
-      return _urlCandidatesFromSet(
-        urls,
-        source: 'Bing Images',
-        // Image-search hits are already query-scoped; do not demote them
-        // relative to domain APIs (old sourceBonus: -2 + harsh score gate
-        // left the picker with only a handful of results).
-        ctx: ctx,
-        sourceBonus: 4,
-        minScore: 16,
-      );
-    } catch (_) {
-      return const [];
-    }
   }
 
-  /// Extract high-res Bing media URLs (`murl` / `mediaurl`) from HTML or JSON.
-  static Iterable<String> _parseBingImagePayload(String body) sync* {
-    final seen = <String>{};
-
-    // Prefer structured `m="{...}"` / `m='{...}'` containers (Bing iusc cards).
-    for (final m in RegExp(
-      r'''\bm=["'](\{.*?\})["']''',
-      dotAll: true,
-    ).allMatches(body)) {
-      final raw = m.group(1);
-      if (raw == null) continue;
-      final jsonStr = _htmlUnescape(raw);
-      try {
-        final obj = jsonDecode(jsonStr);
-        if (obj is Map) {
-          for (final key in ['murl', 'mediaurl', 'purl']) {
-            final v = obj[key];
-            if (v is String && v.startsWith('http')) {
-              seen.add(_unescapeJsonUrl(v));
-            }
-          }
-        }
-      } catch (_) {
-        for (final mm in RegExp(r'"murl"\s*:\s*"(https?://[^"]+)"')
-            .allMatches(jsonStr)) {
-          final u = mm.group(1);
-          if (u != null) seen.add(_unescapeJsonUrl(u));
-        }
-      }
-    }
-
-    // HTML-entity encoded murls common in async HTML.
-    for (final pattern in [
-      RegExp(r'murl&quot;:&quot;(https?://[^&]+?)&quot;'),
-      RegExp(r'mediaurl&quot;:&quot;(https?://[^&]+?)&quot;'),
-      RegExp(r'"murl"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'"mediaurl"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'"murl"\s*:\s*"(https?:\\/\\/[^"]+)"'),
-      RegExp(r'murl\\?":\\?"(https?://[^"\\]+)'),
-    ]) {
-      for (final m in pattern.allMatches(body)) {
-        final url = m.group(1);
-        if (url != null) seen.add(_unescapeJsonUrl(url));
-      }
-    }
-
-    // Compact JSON objects that carry murl.
-    for (final m in RegExp(
-      r'\{[^{}]{0,40}"murl"\s*:\s*"(https?://[^"]+)"[^{}]{0,400}\}',
-    ).allMatches(body)) {
-      try {
-        final obj = jsonDecode(m.group(0)!);
-        if (obj is Map && obj['murl'] is String) {
-          seen.add(_unescapeJsonUrl(obj['murl'] as String));
-        }
-      } catch (_) {
-        final u = m.group(1);
-        if (u != null) seen.add(_unescapeJsonUrl(u));
-      }
-    }
-
-    for (final u in seen) {
-      if (u.startsWith('http')) yield u;
-    }
+  static List<String> debugSerperQueries(String companyName) {
+    return _serperQueryList(companyName);
   }
 
-  Future<List<LogoCandidate>> _googleImageSearch(
-    _RelevanceContext ctx, {
-    bool forceExpanded = false,
-    GeminiClient? gemini,
-  }) async {
-    try {
-      final urls = <String>{};
-      final primary = forceExpanded
-          ? _queriesForSearch(ctx, expanded: true)
-          : _queriesForSearch(ctx, expanded: false, includePrimary: true);
-      final expanded = _queriesForSearch(ctx, expanded: true);
-      final queryPlan = <String>[
-        ...primary,
-        if (forceExpanded || primary.isEmpty) ...expanded,
-      ];
-
-      // 1) Headless Playwright crawler — real Chrome, scrolls lazy-loaded tiles.
-      //    This replaces the legacy plain-HTTP Google Images HTML scrape that
-      //    mostly returned JS shells / placeholders.
-      try {
-        final crawler = LogoCrawlerClient();
-        final crawled = await crawler.crawl(
-          query: queryPlan.isNotEmpty
-              ? queryPlan.first
-              : '${ctx.companyName} logo'.trim(),
-          queries: queryPlan.skip(1).take(forceExpanded ? 4 : 2).toList(),
-          maxResults: 36,
-          timeout: _googleCrawlerTimeout,
-        );
-        for (final u in crawled) {
-          if (u.startsWith('http')) urls.add(u);
-        }
-      } catch (_) {}
-
-      // 2) Optional Programmable Search Engine with proper pagination (10/page).
-      if (urls.length < 20) {
-        await _fetchGoogleCustomSearchUrls(
-          queryPlan.isNotEmpty ? queryPlan : primary,
-          urls,
-          minTarget: 20,
-        );
-      }
-
-      // 3) Gemini + Google Search grounding (when crawler/CSE are thin).
-      if (urls.length < 12 && gemini != null && ctx.companyName.isNotEmpty) {
-        try {
-          final grounded = await gemini
-              .suggestGoogleLogoImageUrls(
-                companyName: ctx.companyName,
-                knownDomains: ctx.domains,
-              )
-              .timeout(const Duration(seconds: 10));
-          for (final u in grounded) {
-            if (u.startsWith('http')) urls.add(u);
-          }
-        } catch (_) {}
-      }
-
-      // 4) Site-scoped Google web search for image URLs (lightweight HTTP).
-      if (urls.length < 12) {
-        await _fetchGoogleRelatedLogoUrls(ctx, urls);
-      }
-
-      // 5) Hard-coded brand CDN last resort (still labeled Google Images).
-      if (urls.length < 8) {
-        urls.addAll(_googleBlockedFallbackUrls(ctx));
-      }
-
-      return _urlCandidatesFromSet(
-        urls,
-        source: 'Google Images',
-        ctx: ctx,
-        sourceBonus: 16,
-        minScore: 16,
-      );
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Map<String, String> _googleHeaders(Uri uri) {
-    final headers = _browserHeadersFor(uri);
-    // Static consent cookies — enough for lightweight web-search fallbacks.
-    headers['Cookie'] =
-        'CONSENT=YES+cb.20210328-17-p0.en+FX+410; SOCS=CAESHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LymBg';
-    return headers;
-  }
-
-  /// When headless crawler is thin, collect Google-reachable logo assets via
-  /// site-scoped Google web search snippets.
-  Future<void> _fetchGoogleRelatedLogoUrls(
-    _RelevanceContext ctx,
-    Set<String> urls,
-  ) async {
-    final name = ctx.companyName.trim();
-    if (name.isEmpty && ctx.domains.isEmpty) return;
-    final queries = <String>[
-      if (name.isNotEmpty) ...[
-        '$name logo filetype:png',
-        '"$name" logo site:${ctx.domains.isNotEmpty ? ctx.domains.first : 'com'}',
-      ],
-      for (final d in ctx.domains.take(3)) 'site:$d logo png',
-    ];
-    for (final q in queries.take(4)) {
-      if (urls.length >= 24) break;
-      try {
-        final uri = Uri.https('www.google.com', '/search', {
-          'q': q,
-          'hl': 'en',
-          'gl': 'us',
-          'num': '10',
-          'safe': 'off',
-          'filter': '0',
-        });
-        final res = await _client
-            .get(uri, headers: _googleHeaders(uri))
-            .timeout(_requestTimeout);
-        if (res.statusCode != 200) continue;
-        if (res.body.contains('enablejs') && !res.body.contains('http')) {
-          continue;
-        }
-        for (final m in RegExp(
-          r'https?://[^\"\s<>]+?\.(?:png|jpe?g|webp|svg)(?:\?[^\"\s<>]*)?',
-          caseSensitive: false,
-        ).allMatches(res.body)) {
-          final u = _unescapeJsonUrl(m.group(0)!);
-          if (!_isGoogleThumbnail(u)) urls.add(u);
-        }
-        // Google often wraps destinations as /url?q=
-        for (final m in RegExp(
-          r'/url\?q=(https?://[^&\"\s]+)',
-        ).allMatches(res.body)) {
-          final raw = Uri.decodeFull(m.group(1)!);
-          if (_looksLikeDirectImageUrl(raw) ||
-              raw.toLowerCase().contains('logo')) {
-            urls.add(raw);
-          }
-        }
-      } catch (_) {
-        continue;
-      }
-    }
-  }
-
-  /// Direct `{Company} logo png` (+ bare name for image engines) tried first.
-  static List<String> _primaryLogoQueries(_RelevanceContext ctx) {
-    final name = ctx.companyName.trim();
-    if (name.isEmpty) {
-      if (ctx.domains.isEmpty) return const ['logo png'];
-      final d = ctx.domains.first;
-      return ['$d logo png', '${d.split('.').first} logo png', d];
-    }
-    // Bare company name first — Google/Bing Images find brand marks that
-    // "{name} logo png" often misses (e.g. MasTec Purnell maple-leaf MP).
-    return <String>[
-      name,
-      '$name logo',
-      '$name logo png',
-      if (ctx.domains.isNotEmpty) '${ctx.domains.first} logo',
-    ];
-  }
-
-  /// Smart synonyms used when the primary `{name} logo png` search is empty.
-  static List<String> _expandedLogoQueries(_RelevanceContext ctx) {
-    final name = ctx.companyName.trim();
-    if (name.isEmpty) {
-      if (ctx.domains.isEmpty) return const ['brand vector logo'];
-      final d = ctx.domains.first;
-      final stem = d.split('.').first;
-      return [
-        '$stem brand vector logo',
-        '$stem corporate logo transparent background',
-        '$stem official website logo',
-        'site:$d logo',
-      ];
-    }
-    final out = <String>{
-      '$name brand vector logo',
-      '$name corporate logo transparent background',
-      '$name official website logo',
-      '$name company logo',
-      '$name brand logo',
-      '$name official logo',
-      '"$name" logo png',
-      '"$name" logo',
-      '$name Canada logo',
-      '$name Alberta logo',
-    };
-    for (final d in ctx.domains.take(4)) {
-      out.add('site:$d logo');
-      out.add('$name logo site:$d');
-      out.add('${d.split('.').first} logo');
-    }
-    return out.toList();
-  }
-
-  /// Combined query ladder (primary then expanded + Gemini extras).
-  static List<String> _imageSearchQueries(_RelevanceContext ctx) {
-    return _queriesForSearch(ctx, expanded: true, includePrimary: true);
-  }
-
-  static List<String> _queriesForSearch(
-    _RelevanceContext ctx, {
-    required bool expanded,
-    bool includePrimary = false,
-  }) {
-    final seen = <String>{};
-    final out = <String>[];
-    void addAll(Iterable<String> qs) {
-      for (final q in qs) {
-        final t = q.trim();
-        if (t.isEmpty) continue;
-        if (seen.add(t)) out.add(t);
-      }
-    }
-
-    if (includePrimary || !expanded) addAll(_primaryLogoQueries(ctx));
-    if (expanded) {
-      addAll(_expandedLogoQueries(ctx));
-      addAll(ctx.extraQueries);
-      for (final alt in ctx.alternateNames.take(4)) {
-        addAll([
-          '$alt logo png',
-          '$alt brand vector logo',
-          '$alt corporate logo transparent background',
-        ]);
-      }
-    } else {
-      // Primary path still benefits from a few Gemini hints when present.
-      addAll(ctx.extraQueries.take(3));
-    }
-    return out;
-  }
-
-  /// Extra Google Images URLs used when crawler/CSE are thin.
-  /// Keep these distinct from [ _knownLogoUrlCandidates ] so both sources can
-  /// appear in the picker after URL dedupe.
-  static List<String> _googleBlockedFallbackUrls(_RelevanceContext ctx) {
-    final n =
-        ctx.companyName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-    final out = <String>[];
-    if (n.contains('mastec') && n.contains('purnell')) {
-      out.addAll(const [
-        // Force png — Cloudflare auto-format can hand back AVIF we reject.
-        'https://www.energyjobshop.com/cdn-cgi/image/width=1000,quality=75,format=png,metadata=copyright/storage/uploads/logos/logo_mastec_purnell_1045.webp',
-        'https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100054198143894',
-      ]);
-    }
-    for (final d in ctx.domains.take(3)) {
-      out.add('https://logo.clearbit.com/$d');
-      out.add('https://cdn.brandfetch.io/$d');
-    }
-    return out;
-  }
-
-  List<LogoCandidate> _googleBlockedFallbackCandidates(_RelevanceContext ctx) {
-    final out = <LogoCandidate>[];
-    for (final url in _googleBlockedFallbackUrls(ctx)) {
-      if (!_isAcceptableLogoUrl(url)) continue;
-      // Floor above [_minUrlCandidateScore] so rank/dedupe cannot drop these
-      // when Google HTML is empty.
-      final score =
-          (40 + _scoreUrl(url, 'Google Images', ctx) + 20).clamp(40, 200);
-      out.add(
-        LogoCandidate(url: url, source: 'Google Images', score: score),
-      );
-    }
-    return out;
-  }
-
-  /// Optional Google Programmable Search (Images) when CSE id is configured.
-  /// Paginates with `start=1,11,21…` so results go beyond the first 10.
-  Future<void> _fetchGoogleCustomSearchUrls(
-    List<String> queries,
-    Set<String> urls, {
-    int minTarget = 20,
-  }) async {
-    final cseId = _googleCseId();
-    final key = GeminiClient.resolveApiKey();
-    if (cseId.isEmpty || key.isEmpty) return;
-    for (final q in queries.take(3)) {
-      if (urls.length >= 40) break;
-      // CSE returns max 10 per request; page with start offsets.
-      for (final start in [1, 11, 21, 31]) {
-        if (urls.length >= minTarget && urls.length >= 20) break;
-        if (urls.length >= 40) break;
-        try {
-          final uri = Uri.https('www.googleapis.com', '/customsearch/v1', {
-            'key': key,
-            'cx': cseId,
-            'q': q,
-            'searchType': 'image',
-            'num': '10',
-            'start': '$start',
-            'safe': 'off',
-          });
-          final res = await _client
-              .get(uri, headers: {'Accept': 'application/json'})
-              .timeout(_requestTimeout);
-          if (res.statusCode != 200) break;
-          final body = jsonDecode(res.body);
-          final items = body is Map ? body['items'] : null;
-          if (items is! List || items.isEmpty) break;
-          for (final item in items) {
-            if (item is! Map) continue;
-            final link = '${item['link'] ?? ''}';
-            if (link.startsWith('http')) urls.add(link);
-          }
-          // Soft pacing to avoid CSE rate limits.
-          await Future<void>.delayed(const Duration(milliseconds: 120));
-        } catch (_) {
-          break;
-        }
-      }
-    }
-  }
-
-  static String _googleCseId() {
-    final fromDefine = const String.fromEnvironment(
-      'GOOGLE_CSE_ID',
-      defaultValue: '',
-    ).trim();
-    if (fromDefine.isNotEmpty) return fromDefine;
-    final fromEnv = Platform.environment['GOOGLE_CSE_ID']?.trim() ?? '';
-    return fromEnv;
-  }
-
-  static void _extractGoogleImageUrls(String html, Set<String> urls) {
-    // 1) Classic / still-present JSON keys in image result payloads.
-    for (final pattern in [
-      RegExp(r'"ou"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'\\"ou\\"\s*:\s*\\"(https?://[^\\"]+)\\"'),
-      RegExp(r'\["ou","(https?://[^"]+)"\]'),
-      RegExp(r'"originalUrl"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'"imageUrl"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'"ow"\s*:\s*\d+\s*,\s*"oh"\s*:\s*\d+\s*,\s*"ou"\s*:\s*"(https?://[^"]+)"'),
-      RegExp(r'imgurl=(https?://[^&"]+)'),
-      RegExp(r',"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"'),
-      RegExp(r'\[\s*"(https?://[^"]+\.(?:png|jpe?g|webp))"'),
-    ]) {
-      for (final m in pattern.allMatches(html)) {
-        _offerGoogleUrl(m.group(1), urls);
-      }
-    }
-
-    // 2) Data attributes used by newer Google Images UI.
-    for (final pattern in [
-      RegExp(r'data-src="(https?://[^"]+)"'),
-      RegExp(r"data-src='(https?://[^']+)'"),
-      RegExp(r'data-iurl="(https?://[^"]+)"'),
-      RegExp(r'data-ils="[^"]*"[^>]*src="(https?://[^"]+)"'),
-      RegExp(r'data-deferred="1"[^>]*src="(https?://[^"]+)"'),
-      RegExp(r'data-iml="[^"]*"[^>]*(?:data-src|src)="(https?://[^"]+)"'),
-    ]) {
-      for (final m in pattern.allMatches(html)) {
-        _offerGoogleUrl(m.group(1), urls);
-      }
-    }
-
-    // 3) AF_initDataCallback script blocks — walk embedded data arrays.
-    for (final chunk in _extractAfInitDataChunks(html)) {
-      _collectOuFields(chunk, urls);
-      _collectInitDataUrls(chunk, urls);
-      _walkEmbeddedJsonForImageUrls(chunk, urls);
-    }
-
-    // 4) `<script>` blobs that look like image result JSON.
-    for (final m in RegExp(
-      r'<script[^>]*>([\s\S]*?)</script>',
-      caseSensitive: false,
-    ).allMatches(html)) {
-      final script = m.group(1) ?? '';
-      if (script.length < 80) continue;
-      if (!script.contains('http') ||
-          !(script.contains('ou') ||
-              script.contains('imageUrl') ||
-              script.contains('.png') ||
-              script.contains('AF_initDataCallback'))) {
-        continue;
-      }
-      _collectOuFields(script, urls);
-      _collectInitDataUrls(script, urls);
-    }
-
-    for (final m in RegExp(
-      r'(https?://[^"\s<>]+googleusercontent\.com/[^"\s<>]+)',
-    ).allMatches(html)) {
-      _offerGoogleUrl(m.group(1), urls);
-    }
-  }
-
-  static void _offerGoogleUrl(String? raw, Set<String> urls) {
-    if (raw == null || raw.isEmpty) return;
-    final decoded = _unescapeJsonUrl(raw);
-    if (!decoded.startsWith('http')) return;
-    if (_isGoogleThumbnail(decoded)) return;
-    urls.add(decoded);
-  }
-
-  /// Pull `AF_initDataCallback({...})` payloads with nested-brace awareness.
-  static Iterable<String> _extractAfInitDataChunks(String html) sync* {
-    const marker = 'AF_initDataCallback(';
-    var from = 0;
-    while (true) {
-      final start = html.indexOf(marker, from);
-      if (start < 0) break;
-      final brace = html.indexOf('{', start + marker.length);
-      if (brace < 0) break;
-      final end = _findMatchingBrace(html, brace);
-      if (end < 0) {
-        from = start + marker.length;
-        continue;
-      }
-      yield html.substring(brace, end + 1);
-      from = end + 1;
-    }
-  }
-
-  static int _findMatchingBrace(String s, int openIdx) {
-    if (openIdx < 0 || openIdx >= s.length || s[openIdx] != '{') return -1;
-    var depth = 0;
-    var inString = false;
-    var escape = false;
-    for (var i = openIdx; i < s.length; i++) {
-      final ch = s[i];
-      if (inString) {
-        if (escape) {
-          escape = false;
-        } else if (ch == r'\') {
-          escape = true;
-        } else if (ch == '"') {
-          inString = false;
-        }
-        continue;
-      }
-      if (ch == '"') {
-        inString = true;
-        continue;
-      }
-      if (ch == '{') {
-        depth++;
-      } else if (ch == '}') {
-        depth--;
-        if (depth == 0) return i;
-      }
-    }
-    return -1;
-  }
-
-  static void _walkEmbeddedJsonForImageUrls(String chunk, Set<String> urls) {
-    // Attempt to decode the AF callback object and walk for URL-looking strings.
-    try {
-      final decoded = jsonDecode(chunk);
-      _walkJsonForUrls(decoded, urls, depth: 0);
-      return;
-    } catch (_) {}
-
-    // Callbacks often wrap data in `data:` key with a JS array — extract that array.
-    final dataIdx = chunk.indexOf('"data"');
-    if (dataIdx < 0) return;
-    final colon = chunk.indexOf(':', dataIdx);
-    if (colon < 0) return;
-    var i = colon + 1;
-    while (i < chunk.length && (chunk[i] == ' ' || chunk[i] == '\n')) {
-      i++;
-    }
-    if (i >= chunk.length) return;
-    if (chunk[i] == '[') {
-      final end = _findMatchingBracket(chunk, i);
-      if (end > i) {
-        try {
-          final arr = jsonDecode(chunk.substring(i, end + 1));
-          _walkJsonForUrls(arr, urls, depth: 0);
-        } catch (_) {}
-      }
-    } else if (chunk[i] == '{') {
-      final end = _findMatchingBrace(chunk, i);
-      if (end > i) {
-        try {
-          final obj = jsonDecode(chunk.substring(i, end + 1));
-          _walkJsonForUrls(obj, urls, depth: 0);
-        } catch (_) {}
-      }
-    }
-  }
-
-  static int _findMatchingBracket(String s, int openIdx) {
-    if (openIdx < 0 || openIdx >= s.length || s[openIdx] != '[') return -1;
-    var depth = 0;
-    var inString = false;
-    var escape = false;
-    for (var i = openIdx; i < s.length; i++) {
-      final ch = s[i];
-      if (inString) {
-        if (escape) {
-          escape = false;
-        } else if (ch == r'\') {
-          escape = true;
-        } else if (ch == '"') {
-          inString = false;
-        }
-        continue;
-      }
-      if (ch == '"') {
-        inString = true;
-        continue;
-      }
-      if (ch == '[') {
-        depth++;
-      } else if (ch == ']') {
-        depth--;
-        if (depth == 0) return i;
-      }
-    }
-    return -1;
-  }
-
-  static void _walkJsonForUrls(Object? node, Set<String> urls, {required int depth}) {
-    if (depth > 14 || node == null) return;
-    if (node is String) {
-      if (node.startsWith('http') && _looksLikeDirectImageUrl(node)) {
-        _offerGoogleUrl(node, urls);
-      }
-      return;
-    }
-    if (node is List) {
-      for (final item in node) {
-        _walkJsonForUrls(item, urls, depth: depth + 1);
-      }
-      return;
-    }
-    if (node is Map) {
-      for (final entry in node.entries) {
-        final key = '${entry.key}'.toLowerCase();
-        final value = entry.value;
-        if (value is String &&
-            value.startsWith('http') &&
-            (key.contains('ou') ||
-                key.contains('url') ||
-                key.contains('image') ||
-                key.contains('src'))) {
-          _offerGoogleUrl(value, urls);
-        }
-        _walkJsonForUrls(value, urls, depth: depth + 1);
-      }
-    }
-  }
-
-  static void _collectInitDataUrls(String chunk, Set<String> urls) {
-    for (final m in RegExp(
-      r'"(https?://[^"]+\.(?:png|jpe?g|webp|gif)(?:\?[^"]*)?)"',
-    ).allMatches(chunk)) {
-      _offerGoogleUrl(m.group(1), urls);
-    }
-    for (final m in RegExp(r'\[\s*"(https?://[^"]{12,})"').allMatches(chunk)) {
-      final u = m.group(1);
-      if (u == null || _isGoogleThumbnail(u)) continue;
-      if (_looksLikeDirectImageUrl(u)) _offerGoogleUrl(u, urls);
-    }
-  }
-
-  static bool _isGoogleThumbnail(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('=s16') ||
-        lower.contains('=s32') ||
-        lower.contains('=w16') ||
-        lower.contains('=h16') ||
-        lower.contains('encrypted-tbn0.gstatic.com') ||
-        lower.contains('encrypted-tbn1.gstatic.com') ||
-        lower.contains('encrypted-tbn2.gstatic.com') ||
-        lower.contains('encrypted-tbn3.gstatic.com') ||
-        lower.contains('/imgres?') ||
-        lower.contains('gstatic.com/images?q=tbn');
-  }
-
-  static bool _looksLikeDirectImageUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.png') ||
-        lower.contains('.jpg') ||
-        lower.contains('.jpeg') ||
-        lower.contains('.webp') ||
-        lower.contains('.gif') ||
-        lower.contains('logo') ||
-        lower.contains('brand') ||
-        lower.contains('googleusercontent.com');
-  }
-
-  static void _collectOuFields(String chunk, Set<String> urls) {
-    for (final m in RegExp(r'"ou"\s*:\s*"(https?://[^"]+)"').allMatches(chunk)) {
-      _offerGoogleUrl(m.group(1), urls);
-    }
-  }
-
-  static String _unescapeJsonUrl(String raw) {
-    var s = raw
-        .replaceAll(r'\\/', '/')
-        .replaceAll(r'\/', '/')
-        .replaceAll(r'\\u003d', '=')
-        .replaceAll(r'\u003d', '=')
-        .replaceAll(r'\\u0026', '&')
-        .replaceAll(r'\u0026', '&')
-        .replaceAll('&amp;', '&');
-    try {
-      s = Uri.decodeComponent(s);
-    } catch (_) {}
-    try {
-      // Second pass for double-encoded imgurl= values.
-      if (s.contains('%2F') || s.contains('%3A')) {
-        s = Uri.decodeComponent(s);
-      }
-    } catch (_) {}
-    return s;
-  }
-
-  static String _htmlUnescape(String raw) {
-    return raw
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#34;', '"')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&apos;', "'")
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
-  }
-
-  Future<List<LogoCandidate>> _brandsOfTheWorldSearch(
-    String name,
-    _RelevanceContext ctx,
-  ) async {
-    try {
-      final searchUri = Uri.https('www.brandsoftheworld.com', '/search/logo', {
-        'search_api_views_fulltext': name,
-      });
-      final res = await _client
-          .get(searchUri, headers: _browserHeadersFor(searchUri))
-          .timeout(_requestTimeout);
-      if (res.statusCode != 200) return const [];
-
-      final html = res.body;
-      final urls = <String>{};
-
-      for (final m in RegExp(
-        r'https://d1yjjnpx0p53s8\.cloudfront\.net/styles/[^"''>\s]+',
-      ).allMatches(html)) {
-        final url = m.group(0)!;
-        if (url.contains('logo-botw') || url.contains('aotw-envelope')) {
-          continue;
-        }
-        urls.add(url);
-      }
-
-      final slugs = <String>{};
-      for (final m in RegExp(r'href="(/logo/[^"?]+)"').allMatches(html)) {
-        slugs.add(m.group(1)!);
-      }
-
-      await Future.wait(
-        slugs.take(3).map((slug) async {
-          try {
-            final detailUri =
-                Uri.parse('https://www.brandsoftheworld.com$slug');
-            final detail = await _client
-                .get(detailUri, headers: _browserHeadersFor(detailUri))
-                .timeout(_requestTimeout);
-            if (detail.statusCode != 200) return;
-            for (final m in RegExp(
-              r'https://d1yjjnpx0p53s8\.cloudfront\.net/styles/[^"''>\s]+',
-            ).allMatches(detail.body)) {
-              final url = m.group(0)!;
-              if (!url.contains('aotw-envelope')) urls.add(url);
-            }
-          } catch (_) {}
-        }).map((f) => f.catchError((Object _, StackTrace __) {})),
-      );
-
-      return _urlCandidatesFromSet(
-        urls,
-        source: 'Brands of the World',
-        ctx: ctx,
-        sourceBonus: 10,
-      );
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<List<LogoCandidate>> _tineyeSearch(_RelevanceContext ctx) async {
-    try {
-      final urls = <String>{};
-      for (final q in _imageSearchQueries(ctx).take(5)) {
-        try {
-          final uri = Uri.https('tineye.com', '/search', {'query': q});
-          final res = await _client
-              .get(uri, headers: _browserHeadersFor(uri))
-              .timeout(_requestTimeout);
-          if (res.statusCode != 200) continue;
-          for (final m in RegExp(
-            r'https?://[^"''>\s]+\.(?:png|jpg|jpeg|webp)(?:[^"''>\s]*)',
-          ).allMatches(res.body)) {
-            final url = m.group(0)!;
-            if (_isAcceptableLogoUrl(url) && !url.contains('tineye.com')) {
-              urls.add(url);
-            }
-          }
-          if (urls.length >= 12) break;
-        } catch (_) {
-          continue;
-        }
-      }
-
-      return _urlCandidatesFromSet(
-        urls,
-        source: 'TinEye',
-        ctx: ctx,
-        sourceBonus: 0,
-      );
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<List<LogoCandidate>> _wikipediaCandidates(
-    String name,
-    _RelevanceContext ctx,
-  ) async {
-    try {
-      final out = <LogoCandidate>[];
-      // Try the raw name and a looser company-stripped variant.
-      final searches = <String>{
-        name,
-        '$name company',
-        '$name logo',
-        name.replaceAll(
-          RegExp(
-            r'\b(inc|incorporated|ltd|limited|llc|corp|corporation|co|company)\b',
-            caseSensitive: false,
-          ),
-          '',
-        ).replaceAll(RegExp(r'\s+'), ' ').trim(),
-      };
-
-      for (final term in searches) {
-        if (term.isEmpty) continue;
-        try {
-          final searchUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-            'action': 'query',
-            'list': 'search',
-            'srsearch': term,
-            'srlimit': '12',
-            'format': 'json',
-            'origin': '*',
-          });
-          final searchRes = await _client
-              .get(searchUri, headers: {'User-Agent': _ua, 'Accept': 'application/json'})
-              .timeout(_requestTimeout);
-          if (searchRes.statusCode != 200) continue;
-
-          final body = jsonDecode(searchRes.body);
-          final hits = body['query']?['search'];
-          if (hits is! List || hits.isEmpty) continue;
-
-          for (final hit in hits.take(8)) {
-            final title = '${hit['title'] ?? ''}';
-            if (title.isEmpty) continue;
-            if (!_wikipediaTitleAcceptable(title, ctx)) continue;
-
-            final titleScore = _textRelevance(title, ctx);
-            if (titleScore < 12) continue;
-
-            final imgUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-              'action': 'query',
-              'titles': title,
-              'prop': 'pageimages',
-              'pithumbsize': '1200',
-              'piprop': 'thumbnail',
-              'format': 'json',
-              'origin': '*',
-            });
-            final imgRes = await _client
-                .get(imgUri, headers: {'User-Agent': _ua, 'Accept': 'application/json'})
-                .timeout(_requestTimeout);
-            if (imgRes.statusCode != 200) continue;
-            final imgBody = jsonDecode(imgRes.body);
-            final pages = imgBody['query']?['pages'];
-            if (pages is! Map) continue;
-            for (final page in pages.values) {
-              final thumb = page is Map ? page['thumbnail'] : null;
-              final src = thumb is Map ? '${thumb['source'] ?? ''}' : '';
-              if (src.isEmpty || !_isAcceptableLogoUrl(src)) continue;
-              // Wikipedia pageimages are often photos — keep only if filename hints logo/brand.
-              final srcLower = src.toLowerCase();
-              final looksLogo = srcLower.contains('logo') ||
-                  srcLower.contains('wordmark') ||
-                  srcLower.contains('brand') ||
-                  srcLower.contains('.svg') ||
-                  srcLower.contains('emblem');
-              var score = 18 + (titleScore ~/ 2) + _scoreUrl(src, 'Wikipedia', ctx);
-              if (!looksLogo) score -= 28;
-              if (score < _minUrlCandidateScore) continue;
-              out.add(
-                LogoCandidate(
-                  url: src,
-                  source: 'Wikipedia ($title)',
-                  score: score,
-                ),
-              );
-            }
-          }
-        } catch (_) {
-          continue;
-        }
-      }
-      return out;
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  /// Reject Wikipedia pages that match a weak token but are the wrong entity.
-  static bool _wikipediaTitleAcceptable(String title, _RelevanceContext ctx) {
-    final t = title.toLowerCase().trim();
-    if (t.isEmpty) return false;
-
-    const poison = [
-      'crisis',
-      'carrier strike',
-      'strike group',
-      'special forces',
-      'naval',
-      'navy',
-      'military',
-      'war ',
-      'battle of',
-      'aircraft',
-      'destroyer',
-      'flotilla',
-      'biography',
-      'politician',
-      'election',
-      'film)',
-      'album)',
-      'song)',
-      'tv series',
-      'water crisis',
-      'massacre',
-      'murder',
-    ];
-    // "strike group" poison only when company is not literally that military term —
-    // our oilfield "Strike Group" must not match "Carrier strike group".
-    final company = ctx.companyName.toLowerCase().trim();
-    for (final p in poison) {
-      if (p == 'strike group') {
-        if (t.contains('carrier') ||
-            t.contains('naval') ||
-            t.contains('uk carrier') ||
-            t.contains('special forces')) {
-          return false;
-        }
-        continue;
-      }
-      if (t.contains(p)) return false;
-    }
-
-    // Prefer titles that start with the company name (or close).
-    if (company.isNotEmpty) {
-      if (t == company ||
-          t.startsWith('$company ') ||
-          t.startsWith('$company(') ||
-          t.startsWith('$company,')) {
-        return true;
-      }
-    }
-
-    final significant = _significantCompanyTokens(ctx);
-    if (significant.isEmpty) return false;
-
-    var matched = 0;
-    for (final token in significant) {
-      // Whole-token-ish presence in title words.
-      if (RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(t)) {
-        matched++;
-      }
-    }
-    if (significant.length >= 2) return matched >= 2;
-    // Single distinctive token: title must start with it (avoids "Carrier strike…").
-    final only = significant.first;
-    return t.startsWith(only) || t.startsWith('the $only');
-  }
-
-  static List<String> _significantCompanyTokens(_RelevanceContext ctx) {
-    const generic = {
-      'group',
-      'energy',
-      'services',
-      'service',
-      'process',
-      'equipment',
-      'supply',
-      'oilfield',
-      'canada',
-      'canadian',
-      'industries',
-      'industrial',
-      'solutions',
-      'resources',
-      'resource',
-      'holdings',
-      'international',
-      'global',
-      'partners',
-      'partner',
-      'ltd',
-      'limited',
-      'inc',
-      'corp',
-      'company',
-      'blue', // keep numeric brands distinctive via other tokens
-    };
-    final out = <String>[
-      for (final t in ctx.tokens)
-        if (t.length >= 4 && !generic.contains(t)) t,
-    ];
-    if (out.isNotEmpty) return out;
+  static List<String> _serperQueryList(String companyName) {
+    final name = companyName.trim();
+    if (name.isEmpty) return const [];
     return [
-      for (final t in ctx.tokens)
-        if (t.length >= 4) t,
+      '$name logo high resolution transparent',
+      '$name official brand logo vector',
+      '$name company logo png',
     ];
   }
 
-  /// Fetch homepage HTML and extract logo-like image URLs (og:image, img[src*=logo]).
-  Future<List<LogoCandidate>> _scrapeSiteLogoCandidates(
-    List<String> domains,
-    _RelevanceContext ctx,
-  ) async {
-    final out = <LogoCandidate>[];
-    for (final d in domains.take(4)) {
+  Future<List<LogoCandidate>> _serperImageSearch(
+    _RelevanceContext ctx, {
+    List<String> extraQueries = const [],
+  }) async {
+    final key = _optionalEnv('SERPER_API_KEY');
+    if (key.isEmpty) return const [];
+    final name = ctx.companyName.trim();
+    if (name.isEmpty) return const [];
+
+    final queries = <String>[
+      ..._serperQueryList(name),
+      for (final q in extraQueries)
+        if (q.trim().isNotEmpty) q.trim(),
+    ];
+
+    final seen = <String>{};
+    final urls = <String>[];
+
+    Future<List<String>> oneQuery(String q) async {
       try {
-        final hosts = <String>{
-          d,
-          if (!d.startsWith('www.')) 'www.$d',
-        };
-        var gotAny = false;
-        for (final host in hosts) {
-          for (final scheme in ['https', 'http']) {
-            final home = Uri.parse('$scheme://$host/');
-            final res = await _client
-                .get(home, headers: _browserHeadersFor(home))
-                .timeout(_requestTimeout);
-            if (res.statusCode < 200 || res.statusCode >= 400) continue;
-            final html = res.body;
-            final found = <String>{};
-
-            void offer(String? raw, {bool requireLogoHint = false}) {
-              if (raw == null || raw.isEmpty) return;
-              // Skip numeric og dimension attributes accidentally captured.
-              if (RegExp(r'^\d+$').hasMatch(raw.trim())) return;
-              final abs = _absolutizeUrl(raw, home);
-              if (abs == null) return;
-              final lower = abs.toLowerCase();
-              if (requireLogoHint) {
-                final hinted = lower.contains('logo') ||
-                    lower.contains('wordmark') ||
-                    lower.contains('brandmark') ||
-                    lower.contains('pecten') ||
-                    lower.contains('/brand/');
-                if (!hinted) return;
-              }
-              // Allow SVG only from corporate host scrapes (often true logos).
-              final ok = _isAcceptableLogoUrl(abs) ||
-                  ((lower.endsWith('.svg') || lower.contains('.svg?')) &&
-                      (Uri.tryParse(abs)?.host.toLowerCase().contains(d.split('.').first) ??
-                          false));
-              if (!ok) return;
-              found.add(abs);
-            }
-
-            for (final m in RegExp(
-              r'''property=["']og:image["'][^>]*content=["']([^"']+)["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              // og:image is often a hero/lifestyle photo — only keep logo-ish URLs.
-              offer(m.group(1), requireLogoHint: true);
-            }
-            for (final m in RegExp(
-              r'''content=["']([^"']+)["'][^>]*property=["']og:image["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1), requireLogoHint: true);
-            }
-            for (final m in RegExp(
-              r'''<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1), requireLogoHint: true);
-            }
-            for (final m in RegExp(
-              r'''<link[^>]+rel=["'][^"']*(?:icon|apple-touch-icon)[^"']*["'][^>]+href=["']([^"']+)["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1));
-            }
-            for (final m in RegExp(
-              r'''(?:src|data-src|data-lazy-src)=["']([^"']*logo[^"']*)["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1));
-            }
-            for (final m in RegExp(
-              r'''(?:src|data-src)=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*logo[^"']*["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1));
-            }
-            // Elementor / Header Footer Elementor site-logo widgets often put
-            // the class on <img> / <picture> without "logo" in the file path.
-            for (final m in RegExp(
-              r'''(?:src|data-src|srcset)=["']([^"'\s,]+)[^"']*["'][^>]*class=["'][^"']*site-logo[^"']*["']''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1));
-            }
-            for (final m in RegExp(
-              r'''class=["'][^"']*site-logo[^"']*["'][^>]*(?:src|data-src|srcset)=["']([^"'\s,]+)''',
-              caseSensitive: false,
-            ).allMatches(html)) {
-              offer(m.group(1));
-            }
-
-            for (final url in found.take(16)) {
-              final lower = url.toLowerCase();
-              // Skip tiny chrome icons / tracking pixels from scrapes.
-              // (Byte size unknown pre-download; path heuristics only.)
-              if (lower.contains('1x1') ||
-                  lower.contains('pixel') ||
-                  lower.contains('spacer')) {
-                continue;
-              }
-              var score =
-                  55 + _domainMatchBonus(d, ctx) + _scoreUrl(url, 'Site scrape', ctx);
-              if (lower.contains('logo') && !lower.contains('og_image')) {
-                score += 16;
-              }
-              // UUID-hashed Elementor logo assets often lack "logo" in the path.
-              if (lower.contains('/images/') &&
-                  (lower.contains('_98_') ||
-                      lower.contains('_75_') ||
-                      lower.contains('_50_'))) {
-                score += 22;
-              }
-              // Prefer Canadian MasTec Purnell over US parent mastec.com chrome.
-              final company = ctx.companyName.toLowerCase();
-              if (company.contains('mastec') &&
-                  company.contains('purnell') &&
-                  d == 'mastec.com') {
-                score -= 48;
-              }
-              if (RegExp(r'[/_\-]logo\.(png|webp|jpe?g)(\?|$)').hasMatch(lower) ||
-                  lower.contains('strikegroup-logo') ||
-                  lower.contains('flint-logo') ||
-                  lower.contains('logo_mastec_purnell')) {
-                score += 28;
-              }
-              if (lower.contains('wordmark') || lower.contains('brand')) score += 8;
-              if (_isWeakChromeIconUrl(lower)) {
-                // Skip site chrome icons entirely — they poison Shell/ATCO pickers.
-                continue;
-              }
-              // Prefer actual brand marks over social share cards / hero photos.
-              if (lower.contains('og_image') ||
-                  lower.contains('home-image') ||
-                  lower.contains('hero') ||
-                  lower.contains('banner') ||
-                  lower.contains('facebook')) {
-                score -= 28;
-              }
-              // Tiny icons from scrapes are weak picker options.
-              out.add(
-                LogoCandidate(
-                  url: url,
-                  source: 'Site scrape ($d)',
-                  score: score,
-                ),
-              );
-            }
-            if (found.isNotEmpty) {
-              gotAny = true;
-              break;
-            }
-          }
-          if (gotAny) break;
-        }
-      } catch (_) {
-        continue;
-      }
-    }
-    return out;
-  }
-
-  static String? _absolutizeUrl(String raw, Uri base) {
-    final s = raw.trim();
-    if (s.isEmpty || s.startsWith('data:')) return null;
-    try {
-      final u = Uri.parse(s);
-      if (u.hasScheme) return u.toString();
-      return base.resolveUri(u).toString();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<List<LogoCandidate>> _duckDuckGoCandidates(_RelevanceContext ctx) async {
-    try {
-      final out = <LogoCandidate>[];
-      for (final q in _imageSearchQueries(ctx).take(5)) {
-        try {
-          final uri = Uri.https('api.duckduckgo.com', '/', {
-            'q': q,
-            'format': 'json',
-            'pretty': '0',
-            'no_redirect': '1',
-            'no_html': '1',
-          });
           final res = await _client
-              .get(uri, headers: {
-                'User-Agent': _nextChromeProfile().ua,
-                'Accept': 'application/json',
-              })
+            .post(
+              Uri.parse('https://google.serper.dev/images'),
+              headers: {
+                'X-API-KEY': key,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+            'q': q,
+                'gl': 'us',
+                'hl': 'en',
+              }),
+            )
               .timeout(_requestTimeout);
-          if (res.statusCode != 200) continue;
-
-          final body = jsonDecode(res.body);
-          final image = '${body['Image'] ?? ''}';
-          if (image.isNotEmpty) {
-            final imgUrl =
-                image.startsWith('http') ? image : 'https://duckduckgo.com$image';
-            if (_isAcceptableLogoUrl(imgUrl)) {
-              out.add(
-                LogoCandidate(
-                  url: imgUrl,
-                  source: 'DuckDuckGo',
-                  score: 30 + _scoreUrl(imgUrl, 'DuckDuckGo', ctx),
-                ),
-              );
-            }
-          }
-
-          // Official website from Instant Answer — useful domain signal.
-          final absUrl = '${body['AbstractURL'] ?? ''}';
-          final absDomain = _normalizeDomain(absUrl);
-          if (absDomain.isNotEmpty) {
-            out.add(
-              LogoCandidate(
-                url: 'https://logo.clearbit.com/$absDomain',
-                source: 'DuckDuckGo → Clearbit ($absDomain)',
-                score: _scoreDomainApi(absDomain, 'Clearbit', ctx) + 4,
-              ),
-            );
-          }
-
-          final related = body['RelatedTopics'];
-          if (related is List) {
-            for (final item in related.take(8)) {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return const <String>[];
+        }
+        final decoded = jsonDecode(res.body);
+        if (decoded is! Map) return const <String>[];
+        final images = decoded['images'];
+        if (images is! List) return const <String>[];
+        final out = <String>[];
+        for (final item in images) {
               if (item is! Map) continue;
-              final text = '${item['Text'] ?? ''}';
-              final icon = item['Icon'];
-              final url = icon is Map ? '${icon['URL'] ?? ''}' : '';
-              if (!url.startsWith('http') || !_isAcceptableLogoUrl(url)) continue;
-              out.add(
-                LogoCandidate(
-                  url: url,
-                  source: 'DuckDuckGo',
-                  score: 24 +
-                      _textRelevance(text, ctx) +
-                      _scoreUrl(url, 'DuckDuckGo', ctx),
-                ),
-              );
+          final imageUrl = (item['imageUrl'] ?? '').toString().trim();
+          final thumb = (item['thumbnailUrl'] ?? '').toString().trim();
+          for (final u in [imageUrl, thumb]) {
+            if (u.startsWith('http') && seen.add(_urlKey(u))) {
+              out.add(u);
             }
-          }
-          if (out.length >= 8) break;
-        } catch (_) {
-          continue;
         }
       }
       return out;
     } catch (_) {
-      return const [];
-    }
-  }
-
-  /// DuckDuckGo image HTML endpoint — often less aggressive than Google blocking.
-  Future<List<LogoCandidate>> _duckDuckGoImageSearch(_RelevanceContext ctx) async {
-    try {
-      final urls = <String>{};
-      final primary = _queriesForSearch(ctx, expanded: false, includePrimary: true);
-      final expanded = _queriesForSearch(ctx, expanded: true);
-
-      Future<void> runQueries(List<String> queries) async {
-        for (final q in queries) {
-          if (urls.length >= 48) break;
-          try {
-            final uri = Uri.https('duckduckgo.com', '/', {
-              'q': q,
-              'iax': 'images',
-              'ia': 'images',
-            });
-            final res = await _client
-                .get(uri, headers: _browserHeadersFor(uri))
-                .timeout(_requestTimeout);
-            if (res.statusCode != 200) continue;
-
-            // vqd token unlocks the i.js JSON feed.
-            final vqdMatch =
-                RegExp(r'''vqd=['"]([^'"]+)['"]''').firstMatch(res.body) ??
-                    RegExp(r'vqd=([0-9-]+)').firstMatch(res.body);
-            final vqd = vqdMatch?.group(1);
-            if (vqd != null && vqd.isNotEmpty) {
-              final feed = Uri.https('duckduckgo.com', '/i.js', {
-                'l': 'us-en',
-                'o': 'json',
-                'q': q,
-                'vqd': vqd,
-                'f': ',,,',
-                'p': '1',
-              });
-              final feedHeaders = _browserHeadersRotating(referer: uri.toString())
-                ..addAll({
-                  'Accept': 'application/json,text/javascript,*/*;q=0.8',
-                  'Sec-Fetch-Dest': 'empty',
-                  'Sec-Fetch-Mode': 'cors',
-                  'Sec-Fetch-Site': 'same-origin',
-                });
-              final feedRes = await _client
-                  .get(feed, headers: feedHeaders)
-                  .timeout(_requestTimeout);
-              if (feedRes.statusCode == 200) {
-                try {
-                  final body = jsonDecode(feedRes.body);
-                  final results = body is Map ? body['results'] : null;
-                  if (results is List) {
-                    for (final item in results.take(35)) {
-                      if (item is! Map) continue;
-                      for (final key in ['image', 'url']) {
-                        final image = '${item[key] ?? ''}';
-                        if (image.startsWith('http')) urls.add(image);
-                      }
-                    }
-                  }
-                } catch (_) {}
-              }
-            }
-
-            for (final m in RegExp(
-              r'https?://[^\s"<>]+\.(?:png|jpe?g|webp)(?:\?[^\s"<>]*)?',
-            ).allMatches(res.body)) {
-              final u = m.group(0)!;
-              if (!_isGoogleThumbnail(u)) urls.add(u);
-            }
-          } catch (_) {
-            continue;
-          }
-        }
+        return const <String>[];
       }
+    }
 
-      await runQueries(primary);
-      if (urls.isEmpty) {
-        await runQueries(expanded);
-      } else if (urls.length < 6) {
-        await runQueries(expanded.take(5).toList());
+    final stopOnFirstHit = extraQueries.isEmpty;
+        for (final q in queries) {
+      urls.addAll(await oneQuery(q));
+      if (!stopOnFirstHit) continue;
+      final filtered = _urlCandidatesFromSet(
+        urls,
+        source: 'Serper',
+        ctx: ctx,
+        sourceBonus: 12,
+      );
+      if (filtered.isNotEmpty) break;
       }
 
       return _urlCandidatesFromSet(
         urls,
-        source: 'DuckDuckGo Images',
+      source: 'Serper',
         ctx: ctx,
-        sourceBonus: 8,
-        minScore: 24,
-      );
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  static bool _looseNameMatch(String text, _RelevanceContext ctx) {
-    final hay = text.toLowerCase();
-    for (final token in ctx.tokens) {
-      if (token.length >= 4 && hay.contains(token)) return true;
-    }
-    final name = ctx.companyName.toLowerCase().trim();
-    return name.isNotEmpty && hay.contains(name);
+      sourceBonus: 12,
+    );
   }
 
   List<LogoCandidate> _urlCandidatesFromSet(
@@ -2634,10 +1102,12 @@ class LogoFinder {
       case 'Clearbit':
       case 'Clearbit via Retool':
         break;
+      case 'Serper':
+        score += 14;
+        if (lower.contains('logo') || lower.contains('wordmark')) {
+          score += 6;
+        }
       case 'Bing Images':
-        // Bing results are already filtered by the search query. A previous
-        // rule (score < 38 → −18) wiped out most third-party logo PNGs
-        // (pngmart, logos-world, etc.) and left the picker far under 30.
         score += 14;
         if (lower.contains('logo') || lower.contains('wordmark')) {
           score += 6;
@@ -2762,15 +1232,6 @@ class LogoFinder {
       penalty += 70;
     }
     return penalty;
-  }
-
-  static bool _isWeakChromeIconUrl(String lowerUrl) {
-    return lowerUrl.contains('apple-touch') ||
-        lowerUrl.contains('/favicon/') ||
-        lowerUrl.contains('favicon.ico') ||
-        lowerUrl.contains('favicon-') ||
-        RegExp(r'/[^/]*favicon[^/]*\.(png|ico|jpe?g|webp)(\?|$)')
-            .hasMatch(lowerUrl);
   }
 
   static String _hostOf(String url) {
@@ -3139,108 +1600,6 @@ class LogoFinder {
   }
 
   /// Verified public logo URLs for hard-to-scrape / ambiguous customers.
-  List<LogoCandidate> _knownLogoUrlCandidates(
-    String companyName,
-    _RelevanceContext ctx,
-  ) {
-    final n = companyName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-    final urls = <String>[];
-    if (n.contains('strike group') || n == 'strike') {
-      urls.add(
-        'https://www.strikegroup.ca/wp-content/themes/truemarket/assets/dist/images/StrikeGroup-Logo.png',
-      );
-    }
-    if (n.contains('5blue') || n.contains('5 blue')) {
-      urls.add('https://5blue.com/wp-content/themes/5blue3/dist/img/logo.png');
-    }
-    if (n.contains('flint')) {
-      urls.addAll(const [
-        'https://flintcorp.com/wp-content/uploads/2023/02/flint-logo.webp',
-        'https://flintcorp.com/wp-content/uploads/2024/03/flint_og_logo.jpg',
-      ]);
-    }
-    if (n.contains('mastec') && n.contains('purnell')) {
-      urls.addAll(const [
-        'https://www.mastecpurnell.com/Images/_98_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
-        'https://www.mastecpurnell.com/Images/_75_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
-        'https://www.mastecpurnell.com/Images/_50_d247d02e-fb12-4d2f-bf6f-96c8800b4810.png',
-      ]);
-    }
-    if (n == 'shell' || n.startsWith('shell ')) {
-      // Shell marketing sites often expose only apple-touch icons to scrapes.
-      urls.addAll(const [
-        'https://brandslogos.com/wp-content/uploads/images/large/shell-logo.png',
-        'https://1000logos.net/wp-content/uploads/2017/06/Shell-Logo.png',
-      ]);
-    }
-    if (n == 'atco' || n.startsWith('atco ')) {
-      urls.add(
-        'https://www.atco.com/content/dam/atco-website/en-ca/web/assets/global-files/atco-logo.png',
-      );
-    }
-    if (n.contains('arc resources') || n == 'arc') {
-      urls.addAll(const [
-        'https://www.arcresources.com/wp-content/uploads/2022/02/arc_Logo_PNG_.png',
-        'https://www.arcresources.com/wp-content/uploads/2022/08/ARC-Logo-Colour.png',
-      ]);
-    }
-    if (n.contains('cde engineering') || n.startsWith('cde ')) {
-      urls.add('https://cdeeng.com/wp-content/uploads/2022/12/logo-for-print-1.png');
-    }
-    if (n == 'epcor' || n.startsWith('epcor ')) {
-      urls.add(
-        'https://epcor.com/content/dam/epcor/images/dm-images/logos-and-icons/epcor-logo.png',
-      );
-    }
-    if (n == 'dnow' || n.contains('distribution now')) {
-      urls.add('https://www.dnow.com/hubfs/Logos/DNOW_logo_featured.png');
-    }
-    if (n == 'comco' || n.contains('comco pipe')) {
-      urls.add(
-        'https://www.russelmetals.com/wp-content/uploads/comco-pipe-supply-company-1-5.png',
-      );
-    }
-    if (n == 'apex' ||
-        n.contains('apex valve') ||
-        n == 'apex valves' ||
-        n.contains('apex distribution')) {
-      urls.add('https://www.russelmetals.com/wp-content/uploads/apex-logo.jpg');
-    }
-    if (n.contains('sureus') || n.contains('surerus')) {
-      urls.add(
-        'https://www.surerus-murphy.com/wp-content/uploads/2023/12/SMJV_Alpha.png',
-      );
-    }
-    if (n.contains('whitecap')) {
-      urls.add(
-        'https://wcap.ca/application/themes/whitecap/images/whitecapLogo.png',
-      );
-    }
-    if (n.contains('paramount')) {
-      urls.add(
-        'https://www.paramountres.com/wp-content/themes/paramountres/assets/img/logo-chr.png',
-      );
-    }
-    if (n.contains('warren valve')) {
-      urls.add(
-        'https://warrenvalve.com/assets/images/template/Warren-Valve-Distributed-Products-Logo.png',
-      );
-    }
-    final out = <LogoCandidate>[];
-    for (final url in urls) {
-      if (!_isAcceptableLogoUrl(url)) continue;
-      out.add(
-        LogoCandidate(
-          url: url,
-          source: 'Known brand logo',
-          // Must outrank aggressive site scrapes / Bing homonyms (Shell, ATCO).
-          score: 300 + _domainMatchBonus(_hostOf(url), ctx),
-        ),
-      );
-    }
-    return out;
-  }
-
   static String extensionForBytes(Uint8List bytes) {
     if (_looksLikeImage(bytes)) {
       if (bytes[0] == 0x89) return '.png';

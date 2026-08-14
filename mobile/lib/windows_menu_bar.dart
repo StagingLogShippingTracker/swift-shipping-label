@@ -834,6 +834,15 @@ class WindowsAppMenuBar extends StatelessWidget {
               ),
               child: const Text('Auto-open PDF after generate'),
             ),
+            CheckboxMenuButton(
+              value: s.restoreLowResLogos,
+              onChanged: (v) => _persist(
+                s.copyWith(restoreLowResLogos: v ?? true),
+              ),
+              child: const Text(
+                'Convert low-res logos to high-res',
+              ),
+            ),
             MenuItemButton(
               onPressed: () => _customize(context),
               child: const Text('Customize appearance & PDF…'),

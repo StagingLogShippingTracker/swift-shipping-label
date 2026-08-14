@@ -13,10 +13,16 @@ foreach ($c in @(
 }
 if (-not $Flutter) { throw "Flutter SDK not found (install to $Root\.tools\flutter or PATH)" }
 
+. (Join-Path $Root "scripts\flutter_dart_defines.ps1")
+$dartDefines = Get-FlutterDartDefines -RepoRoot $Root
+if ($dartDefines.Count -gt 0) {
+    Write-Host "Including $($dartDefines.Count) dart-define(s) from .env"
+}
+
 Set-Location (Join-Path $Root "mobile")
 & $Flutter pub get
 if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
-& $Flutter build windows --release
+& $Flutter build windows --release @dartDefines
 if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed" }
 
 $built = Join-Path $Root "mobile\build\windows\x64\runner\Release"

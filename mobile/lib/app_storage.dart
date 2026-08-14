@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -391,7 +391,7 @@ class AppStorage {
     );
 
     await dest.writeAsBytes(finalBytes, flush: true);
-    if (Platform.isWindows) {
+    if (importOptions.restoreHighRes && Platform.isWindows) {
       unawaited(
         LogoRestorer.ensureHighRes(
           dest,
@@ -648,6 +648,7 @@ class AppUiSettings {
     this.denseForms = false,
     this.showToolbarUpdate = true,
     this.autoUpdateEnabled = true,
+    this.restoreLowResLogos = true,
     this.hotkeyOverrides = const {},
     this.themePreference = UiThemePreference.light,
     this.layoutPreset = UiLayoutPreset.classic,
@@ -665,6 +666,8 @@ class AppUiSettings {
   final bool denseForms;
   final bool showToolbarUpdate;
   final bool autoUpdateEnabled;
+  /// Upscale low-res customer logos to 3000px+ (RealESRGAN; replaces Recreate).
+  final bool restoreLowResLogos;
   final Map<String, String> hotkeyOverrides;
   final UiThemePreference themePreference;
   final UiLayoutPreset layoutPreset;
@@ -723,6 +726,9 @@ class AppUiSettings {
       autoUpdateEnabled: json['autoUpdateEnabled'] is bool
           ? json['autoUpdateEnabled'] as bool
           : true,
+      restoreLowResLogos: json['restoreLowResLogos'] is bool
+          ? json['restoreLowResLogos'] as bool
+          : true,
       hotkeyOverrides: hotkeys,
       themePreference:
           UiThemePreference.tryParse('${json['themePreference']}') ??
@@ -756,6 +762,7 @@ class AppUiSettings {
         'denseForms': denseForms,
         'showToolbarUpdate': showToolbarUpdate,
         'autoUpdateEnabled': autoUpdateEnabled,
+        'restoreLowResLogos': restoreLowResLogos,
         'hotkeyOverrides': hotkeyOverrides,
         'themePreference': themePreference.name,
         'layoutPreset': layoutPreset.name,
@@ -775,6 +782,7 @@ class AppUiSettings {
     bool? denseForms,
     bool? showToolbarUpdate,
     bool? autoUpdateEnabled,
+    bool? restoreLowResLogos,
     Map<String, String>? hotkeyOverrides,
     UiThemePreference? themePreference,
     UiLayoutPreset? layoutPreset,
@@ -793,6 +801,7 @@ class AppUiSettings {
       denseForms: denseForms ?? this.denseForms,
       showToolbarUpdate: showToolbarUpdate ?? this.showToolbarUpdate,
       autoUpdateEnabled: autoUpdateEnabled ?? this.autoUpdateEnabled,
+      restoreLowResLogos: restoreLowResLogos ?? this.restoreLowResLogos,
       hotkeyOverrides: hotkeyOverrides ?? this.hotkeyOverrides,
       themePreference: themePreference ?? this.themePreference,
       layoutPreset: layoutPreset ?? this.layoutPreset,

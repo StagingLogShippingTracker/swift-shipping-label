@@ -10,22 +10,31 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.72.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.73.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_72';
+  static const campaignId = 'whats_new_1_1_73';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.72)";
+  static const title = "What's new (v1.1.68 – v1.1.73)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
     ChangelogSection(
+      version: 'v1.1.73',
+      bullets: [
+        'Logo search uses Serper.dev (plus Clearbit/Brandfetch) instead of scraping Google/Bing',
+        'Checkbox: convert a low-resolution customer photo to high-resolution',
+        'Shipping/Receiving: template prompt only after entering the customer name, not on Generate',
+        'Generated document history auto-deletes after 90 days (app + Supabase)',
+      ],
+    ),
+    ChangelogSection(
       version: 'v1.1.72',
       bullets: [
-        'Customer logos: RealESRGAN restore to 3000px+ PNG (Windows local, Android via Fly.io)',
-        'Removed Recreate / vectorizer (no SVG tracing). Low-res logos upscale automatically',
+        'Customer logos: optional “Convert low-resolution photo to high-resolution” (RealESRGAN)',
+        'Removed Recreate / vectorizer (no SVG tracing). Check the box to upscale low-res logos',
         'Logo restore spinner while Fly.io processes the image',
       ],
     ),
