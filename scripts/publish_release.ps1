@@ -204,6 +204,11 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.74)
+- **Address book:** lists Z–A by Ship To Name; duplicate places merge in the cloud
+- **History logos:** each saved version opens the PDF (and logo) that was actually generated
+- **Also:** high-res logo restore targets height; square logos crop empty padding
+
 ### What's new (v1.1.73)
 - **Logo search:** Serper.dev image API (no Google/Bing HTML scraping); Clearbit/Brandfetch still run in parallel
 - **High-res logos:** checkbox to convert a low-res customer photo to 3000px+ (replaces Recreate)

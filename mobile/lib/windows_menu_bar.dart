@@ -837,7 +837,7 @@ class WindowsAppMenuBar extends StatelessWidget {
             CheckboxMenuButton(
               value: s.restoreLowResLogos,
               onChanged: (v) => _persist(
-                s.copyWith(restoreLowResLogos: v ?? true),
+                s.copyWith(restoreLowResLogos: v ?? false),
               ),
               child: const Text(
                 'Convert low-res logos to high-res',

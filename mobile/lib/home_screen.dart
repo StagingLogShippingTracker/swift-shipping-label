@@ -787,7 +787,7 @@ class _HomeScreenState extends State<HomeScreen>
       // Use cached entries if offline.
     }
     if (!mounted) return;
-    final entries = List<DeliveryAddressEntry>.from(_addressBookSync.entries);
+    final entries = AddressBookSync.sortByShipToName(_addressBookSync.entries);
     final picked = await showDialog<DeliveryAddressEntry>(
       context: context,
       builder: (ctx) {
@@ -1671,24 +1671,26 @@ class _HomeScreenState extends State<HomeScreen>
   Future<File> _ensureRestoredLogo(File source) async {
     if (!_uiSettings.restoreLowResLogos) return source;
     if (!await source.exists()) return source;
-    if (LogoRestorer.longestEdgeOfBytes(await source.readAsBytes()) >=
+    if (LogoRestorer.heightOfBytes(await source.readAsBytes()) >=
         LogoRestorer.minDimension) {
       return source;
     }
 
     if (Platform.isWindows) {
+      if (mounted) setState(() => _restoreInFlight++);
       try {
-        final local = await LogoRestorer.ensureHighRes(
+        return await LogoRestorer.ensureHighRes(
           source,
           logosDir: widget.storage.logosDir,
           onLog: debugPrint,
         );
-        if (LogoRestorer.longestEdgeOfBytes(await local.readAsBytes()) >=
-            LogoRestorer.minDimension) {
-          return local;
-        }
       } catch (e) {
-        debugPrint('[logo_restore] local Python failed, trying Fly: $e');
+        debugPrint('[logo_restore] local restore failed, keeping original: $e');
+        return source;
+      } finally {
+        if (mounted) {
+          setState(() => _restoreInFlight = (_restoreInFlight - 1).clamp(0, 99));
+        }
       }
     }
 
@@ -4326,7 +4328,9 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Enhancing to 3000px on Fly.io',
+                    Platform.isWindows
+                        ? 'Upscaling to 3000px height on this PC'
+                        : 'Enhancing to 3000px height on Fly.io',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

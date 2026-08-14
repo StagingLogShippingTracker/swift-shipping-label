@@ -1,17 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
-/// Windows-only local RealESRGAN restore via `logo_restorer.py`.
+/// Windows-only local restore via `logo_restorer.py` (RealESRGAN).
 ///
-/// Low-res logos (longest edge < [minDimension]) are upscaled to a PNG
-/// saved in `customer_logos/`. Results are cached so later document builds
-/// skip the Python step.
+/// Target is **[minDimension] px tall**; width follows aspect ratio.
+/// Fly.io is not used on Windows.
 class LogoRestorer {
   LogoRestorer._();
 
@@ -64,17 +64,17 @@ class LogoRestorer {
     if (cachedPath != null) {
       final cached = File(cachedPath);
       if (await cached.exists() &&
-          await _longestEdge(cached) >= minDimension) {
+          await _heightPx(cached) >= minDimension) {
         onLog?.call('logo_restorer: cache hit ${cached.path}');
         return cached;
       }
     }
 
-    final longest = await _longestEdge(source);
-    if (longest >= minDimension) {
+    final height = await _heightPx(source);
+    if (height >= minDimension) {
       cache[identity] = source.absolute.path;
       await _saveCache(logosDir, cache);
-      onLog?.call('logo_restorer: already ${longest}px, skip');
+      onLog?.call('logo_restorer: already ${height}px tall, skip');
       return source;
     }
 
@@ -82,16 +82,22 @@ class LogoRestorer {
     final script = await _resolveScript();
     if (python == null || script == null) {
       onLog?.call(
-        'logo_restorer: skipped (python=${python ?? "missing"}, '
-        'script=${script ?? "missing"})',
+        'logo_restorer: Python missing — Lanczos to ${minDimension}px height',
       );
+      final dest = await _restoredDestFile(source, logosDir);
+      final scaled = await _lanczosToMinHeight(source, dest);
+      if (scaled != null) {
+        cache[identity] = scaled.absolute.path;
+        await _saveCache(logosDir, cache);
+        return scaled;
+      }
       return source;
     }
 
     final dest = await _restoredDestFile(source, logosDir);
     onLog?.call(
       'logo_restorer: restoring ${source.path} -> ${dest.path} '
-      '(${longest}px, python=$python)',
+      '(${height}px tall, python=$python)',
     );
 
     try {
@@ -104,7 +110,14 @@ class LogoRestorer {
           minDimension: minDimension,
         ),
       );
-      if (code != 0 || !await dest.exists()) {
+      if (code != 0 || !await dest.exists() || await _heightPx(dest) < minDimension) {
+        onLog?.call('logo_restorer: python incomplete, Lanczos to ${minDimension}px height');
+        final scaled = await _lanczosToMinHeight(source, dest);
+        if (scaled != null) {
+          cache[identity] = scaled.absolute.path;
+          await _saveCache(logosDir, cache);
+          return scaled;
+        }
         onLog?.call('logo_restorer: python exit=$code, keeping original');
         return source;
       }
@@ -113,24 +126,61 @@ class LogoRestorer {
       onLog?.call('logo_restorer: wrote ${dest.path}');
       return dest;
     } catch (e) {
-      onLog?.call('logo_restorer: failed, keeping original: $e');
+      onLog?.call('logo_restorer: failed, Lanczos fallback: $e');
+      final scaled = await _lanczosToMinHeight(source, dest);
+      if (scaled != null) {
+        cache[identity] = scaled.absolute.path;
+        await _saveCache(logosDir, cache);
+        return scaled;
+      }
       return source;
     }
   }
 
-  static Future<int> _longestEdge(File file) async {
+  static Future<int> _heightPx(File file) async {
     try {
       final bytes = await file.readAsBytes();
-      return longestEdgeOfBytes(bytes);
+      return heightOfBytes(bytes);
     } catch (_) {
       return 0;
     }
+  }
+
+  static int heightOfBytes(Uint8List bytes) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return 0;
+    return decoded.height;
   }
 
   static int longestEdgeOfBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return 0;
     return decoded.width > decoded.height ? decoded.width : decoded.height;
+  }
+
+  /// CPU Lanczos to [minDimension] height when Python/RealESRGAN is unavailable.
+  static Future<File?> _lanczosToMinHeight(File source, File dest) async {
+    try {
+      final bytes = await source.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+      if (decoded.height >= minDimension) {
+        await dest.writeAsBytes(bytes, flush: true);
+        return dest;
+      }
+      final scale = minDimension / decoded.height;
+      final w = math.max(1, (decoded.width * scale).round());
+      final resized = img.copyResize(
+        decoded,
+        width: w,
+        height: minDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+      await dest.writeAsBytes(img.encodePng(resized), flush: true);
+      return dest;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<String> _sourceIdentity(File source) async {

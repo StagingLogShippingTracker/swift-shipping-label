@@ -26,14 +26,14 @@ class LogoImportOptions {
     required this.removeBackground,
     required this.cropMode,
     this.manualCropRect,
-    this.restoreHighRes = true,
+    this.restoreHighRes = false,
   });
 
   factory LogoImportOptions.standard({
     bool removeBackground = true,
     LogoCropMode cropMode = LogoCropMode.auto,
     Rect? manualCropRect,
-    bool restoreHighRes = true,
+    bool restoreHighRes = false,
   }) =>
       LogoImportOptions(
         removeBackground: removeBackground,
@@ -53,10 +53,10 @@ class LogoImportOptions {
 }
 
 /// Post-pick logo edit prompt — crop + optional background removal.
-Future<LogoImportOptions?> showLogoImportEditDialog(
+  Future<LogoImportOptions?> showLogoImportEditDialog(
   BuildContext context, {
   required Uint8List previewBytes,
-  bool initialRestoreHighRes = true,
+  bool initialRestoreHighRes = false,
 }) {
   return showDialog<LogoImportOptions>(
     context: context,
@@ -70,7 +70,7 @@ Future<LogoImportOptions?> showLogoImportEditDialog(
 class _LogoImportEditDialog extends StatefulWidget {
   const _LogoImportEditDialog({
     required this.previewBytes,
-    this.initialRestoreHighRes = true,
+    this.initialRestoreHighRes = false,
   });
 
   final Uint8List previewBytes;

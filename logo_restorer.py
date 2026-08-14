@@ -114,16 +114,16 @@ def _realesrgan_upscale_4x(bgr: np.ndarray) -> np.ndarray:
     return output
 
 
-def _ensure_min_longest_edge(
+def _ensure_min_height(
     bgr: np.ndarray,
     alpha: np.ndarray | None,
-    min_dimension: int,
+    min_height: int,
 ) -> tuple[np.ndarray, np.ndarray | None]:
+    """Scale so height is at least [min_height]; width follows aspect ratio."""
     h, w = bgr.shape[:2]
-    longest = max(h, w)
-    if longest >= min_dimension:
+    if h >= min_height:
         return bgr, alpha
-    scale = min_dimension / float(longest)
+    scale = min_height / float(h)
     new_w = max(1, int(round(w * scale)))
     new_h = max(1, int(round(h * scale)))
     bgr = cv2.resize(bgr, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
@@ -187,9 +187,9 @@ def restore_logo(
     output_path: str,
     min_dimension: int = 3000,
 ) -> str:
-    """Restore a low-res logo and write a high-resolution PNG.
+    """Restore a low-res logo and write a PNG at least [min_dimension] px tall.
 
-    Returns the output_path.
+    Width is scaled with the same ratio (square → ~3000×3000, wide → 3000×wider).
     """
     if not os.path.isfile(input_path):
         raise FileNotFoundError(f"Input image not found: {input_path}")
@@ -197,13 +197,26 @@ def restore_logo(
         raise ValueError("min_dimension must be >= 1")
 
     bgr, alpha = _load_bgr_alpha(input_path)
-    bgr = _realesrgan_upscale_4x(bgr)
-    if alpha is not None:
-        h, w = bgr.shape[:2]
-        alpha = cv2.resize(alpha, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
-    bgr, alpha = _ensure_min_longest_edge(bgr, alpha, min_dimension)
+    # Super-resolve in 4x steps until we are close to target height, then
+    # Lanczos to exact min height. A single 4x on a 100px-tall logo only
+    # reaches 400px — that looked like "sharper" without a real size jump.
+    esrgan_passes = 0
+    while bgr.shape[0] < min_dimension and esrgan_passes < 3:
+        before_h = bgr.shape[0]
+        try:
+            bgr = _realesrgan_upscale_4x(bgr)
+        except Exception:
+            break
+        if alpha is not None:
+            h, w = bgr.shape[:2]
+            alpha = cv2.resize(alpha, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        esrgan_passes += 1
+        if bgr.shape[0] <= before_h:
+            break
+
     bgr = _opencv_cleanup(bgr)
+    bgr, alpha = _ensure_min_height(bgr, alpha, min_dimension)
     _save_png(output_path, bgr, alpha)
     return output_path
 
@@ -222,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         "--min-dimension",
         type=int,
         default=3000,
-        help="Minimum longest-edge size in pixels (default: 3000)",
+        help="Minimum output height in pixels; width follows aspect (default: 3000)",
     )
     args = parser.parse_args(argv)
     output = args.output

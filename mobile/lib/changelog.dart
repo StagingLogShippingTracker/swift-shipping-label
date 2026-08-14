@@ -10,17 +10,24 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.73.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.74.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_73';
+  static const campaignId = 'whats_new_1_1_74';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.73)";
+  static const title = "What's new (v1.1.68 – v1.1.74)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.74',
+      bullets: [
+        'Delivery Address book lists Z–A by Ship To Name; duplicate places merge in the cloud',
+        'History opens the PDF (and logo) for that version, not the first generate for the same SO',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.73',
       bullets: [

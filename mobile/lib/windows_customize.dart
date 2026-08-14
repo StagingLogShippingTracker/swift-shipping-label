@@ -132,7 +132,7 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           contentPadding: EdgeInsets.zero,
                           value: _draft.restoreLowResLogos,
                           onChanged: (v) => _set(
-                            _draft.copyWith(restoreLowResLogos: v ?? true),
+                            _draft.copyWith(restoreLowResLogos: v ?? false),
                           ),
                           title: const Text(
                             'Convert low-resolution photo to high-resolution',

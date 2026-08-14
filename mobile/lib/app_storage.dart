@@ -648,7 +648,7 @@ class AppUiSettings {
     this.denseForms = false,
     this.showToolbarUpdate = true,
     this.autoUpdateEnabled = true,
-    this.restoreLowResLogos = true,
+    this.restoreLowResLogos = false,
     this.hotkeyOverrides = const {},
     this.themePreference = UiThemePreference.light,
     this.layoutPreset = UiLayoutPreset.classic,
@@ -726,9 +726,7 @@ class AppUiSettings {
       autoUpdateEnabled: json['autoUpdateEnabled'] is bool
           ? json['autoUpdateEnabled'] as bool
           : true,
-      restoreLowResLogos: json['restoreLowResLogos'] is bool
-          ? json['restoreLowResLogos'] as bool
-          : true,
+      restoreLowResLogos: json['restoreLowResLogos'] == true,
       hotkeyOverrides: hotkeys,
       themePreference:
           UiThemePreference.tryParse('${json['themePreference']}') ??

@@ -271,19 +271,16 @@ class LogoImageProcessor {
     return (mr, mg, mb);
   }
 
-  /// Empty = transparent or matches known flat background (margin only).
+  /// Empty = transparent, matches known flat background, or near-white padding.
   static bool _isEmptyPixel(img.Pixel pixel, (int r, int g, int b)? bg) {
     if (pixel.a.toInt() < alphaThreshold) return true;
+    final r = pixel.r.toInt();
+    final g = pixel.g.toInt();
+    final b = pixel.b.toInt();
+    // Square web logos often sit on opaque white; treat that as margin.
+    if (r >= 248 && g >= 248 && b >= 248) return true;
     if (bg == null) return false;
-    return _colorDistance(
-          pixel.r.toInt(),
-          pixel.g.toInt(),
-          pixel.b.toInt(),
-          bg.$1,
-          bg.$2,
-          bg.$3,
-        ) <=
-        colorTolerance;
+    return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance;
   }
 
   static int _colorDistance(int r1, int g1, int b1, int r2, int g2, int b2) {
@@ -308,16 +305,12 @@ class LogoImageProcessor {
       for (var x = 0; x < image.width; x++) {
         final p = image.getPixel(x, y);
         if (p.a.toInt() < minAlpha) continue;
+        final r = p.r.toInt();
+        final g = p.g.toInt();
+        final b = p.b.toInt();
+        if (r >= 248 && g >= 248 && b >= 248) continue;
         if (bg != null &&
-            _colorDistance(
-                  p.r.toInt(),
-                  p.g.toInt(),
-                  p.b.toInt(),
-                  bg.$1,
-                  bg.$2,
-                  bg.$3,
-                ) <=
-                colorTolerance) {
+            _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
           continue;
         }
         if (x < minX) minX = x;

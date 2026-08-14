@@ -159,13 +159,31 @@ class DocumentHistorySync {
     return out;
   }
 
-  /// Download into local filled cache (or return existing cache file).
+  /// Download the unique cloud object for this history row.
+  ///
+  /// Cache is keyed by document [id], never by display [fileName] — regenerating
+  /// the same customer+SO overwrites `filled/{fileName}` locally, which must not
+  /// be reused for an older history entry.
   Future<File> downloadToCache(GeneratedDocumentRecord doc) async {
-    final cache = File(p.join(storage.filledDir.path, doc.fileName));
-    if (await cache.exists() && await cache.length() > 0) return cache;
+    final stem = p.basenameWithoutExtension(
+      doc.fileName.isEmpty ? 'document' : doc.fileName,
+    );
+    final cache = File(
+      p.join(storage.filledDir.path, '${stem}_${doc.id}.pdf'),
+    );
+    if (await cache.exists()) {
+      final len = await cache.length();
+      if (len > 0 && (doc.byteSize <= 0 || len == doc.byteSize)) {
+        return cache;
+      }
+    }
 
+    final encodedPath = doc.storagePath
+        .split('/')
+        .map(Uri.encodeComponent)
+        .join('/');
     final uri = Uri.parse(
-      '${AppConfig.supabaseUrl}/storage/v1/object/public/$bucket/${doc.storagePath}',
+      '${AppConfig.supabaseUrl}/storage/v1/object/public/$bucket/$encodedPath',
     );
     final res = await http.get(uri).timeout(_timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -174,17 +192,8 @@ class DocumentHistorySync {
       );
     }
     await storage.filledDir.create(recursive: true);
-    var dest = cache;
-    if (await dest.exists()) {
-      dest = File(
-        p.join(
-          storage.filledDir.path,
-          '${p.basenameWithoutExtension(doc.fileName)}_${doc.id}.pdf',
-        ),
-      );
-    }
-    await dest.writeAsBytes(res.bodyBytes, flush: true);
-    return dest;
+    await cache.writeAsBytes(res.bodyBytes, flush: true);
+    return cache;
   }
 
   /// Drop history older than 90 days from Supabase (rows + PDFs) and local cache.
