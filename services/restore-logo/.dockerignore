@@ -1,4 +1,4 @@
-# Build context is the repo root. Keep only tools/ + this service.
+# Build context is the repo root. Keep logo_restorer.py + this service.
 .git
 .tools
 .cursor
@@ -6,18 +6,18 @@ native
 mobile
 dist
 qa_logs
-_recreate_qa
-_trace_tests
 customer_logos
 assets
 scripts
 docs
+tools
+services/recreate-logo
+services/logo_crawler
 **/.cache
 **/__pycache__
 **/*.pyc
 **/.venv
 **/node_modules
-agent-transcripts
 *.png
 *.jpg
 *.jpeg

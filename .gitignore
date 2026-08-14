@@ -10,7 +10,6 @@ venv/
 !.env.example
 **/.env
 **/.env.local
-tools/logo_vectorizer/.env
 
 # Secrets / local credentials
 *.pem

@@ -1,3 +1,4 @@
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,24 +10,16 @@ import 'package:path_provider/path_provider.dart';
 import 'label_data.dart';
 import 'logo_image_process.dart';
 import 'logo_import_options.dart';
-import 'logo_recreate.dart';
+import 'logo_restorer.dart';
 import 'pdf_render_options.dart';
 
 /// Result of [AppStorage.importLogoBytes] / [AppStorage.importLogo].
 class ImportLogoResult {
   const ImportLogoResult({
     required this.file,
-    this.recreateSucceeded,
-    this.recreateError,
   });
 
   final File file;
-
-  /// `null` when Recreate was not requested; otherwise whether vectorize succeeded.
-  final bool? recreateSucceeded;
-
-  /// Present when Recreate was requested but failed or was unavailable.
-  final String? recreateError;
 }
 
 /// App-private storage for presets, logos, and generated PDFs.
@@ -335,7 +328,6 @@ class AppStorage {
   Future<ImportLogoResult> importLogo(
     File source, {
     String? preferredName,
-    bool recreate = false,
     LogoImportOptions? options,
     void Function(String)? onLog,
   }) async {
@@ -343,7 +335,6 @@ class AppStorage {
     return importLogoBytes(
       raw,
       preferredName: preferredName ?? p.basename(source.path),
-      recreate: recreate,
       options: options,
       onLog: onLog,
     );
@@ -351,20 +342,12 @@ class AppStorage {
 
   /// Save logo bytes into [logosDir] with unique filename.
   ///
-  /// - `recreate == false` (default): keep the raster as-is. We still run the
-  ///   lightweight [LogoImageProcessor] fast path, which trims flat margins
-  ///   and, when a solid-color background dominates the corners, drops it to
-  ///   transparent. It is intentionally conservative — if the raster is
-  ///   already transparent, or the corners disagree, the input passes through
-  ///   unchanged.
-  /// - `recreate == true`: hand the raster to the premium recreate pipeline.
-  ///   Priority: Windows local Python Bezier → Fly cloud → on-device Rust
-  ///   (`native/logo_recreate`) → Supabase last. Failures degrade gracefully
-  ///   to the processed raster with diagnostics on `onLog` / [ImportLogoResult].
+  /// Runs the lightweight [LogoImageProcessor] fast path (trim margins /
+  /// optional background removal). Low-res logos are restored separately
+  /// via [LogoRestorer] / Fly.io RealESRGAN.
   Future<ImportLogoResult> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
-    bool recreate = false,
     LogoImportOptions? options,
     void Function(String)? onLog,
   }) async {
@@ -373,8 +356,7 @@ class AppStorage {
     var stem = p.basenameWithoutExtension(preferredName.trim());
     if (stem.isEmpty) stem = 'logo';
     stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
-    var name = '$stem.png';
-    var dest = File(p.join(logosDir.path, name));
+    var dest = File(p.join(logosDir.path, '$stem.png'));
     if (await dest.exists()) {
       var n = 2;
       while (await dest.exists()) {
@@ -383,14 +365,9 @@ class AppStorage {
       }
     }
 
-    final importOptions = options ??
-        (recreate
-            ? LogoImportOptions.forRecreate()
-            : LogoImportOptions.standard());
-
+    final importOptions = options ?? LogoImportOptions.standard();
     var working = Uint8List.fromList(bytes);
 
-    // Apply manual crop before recreate / raster processing.
     if (importOptions.cropMode == LogoCropMode.manual &&
         importOptions.manualCropRect != null) {
       working = LogoImageProcessor.processWithOptions(
@@ -403,86 +380,31 @@ class AppStorage {
       );
     }
 
-    // Auto-crop trims empty margins before recreate tracing.
-    if (recreate && importOptions.cropMode == LogoCropMode.auto) {
-      working = LogoImageProcessor.processWithOptions(
-        working,
-        LogoImportOptions.standard(
-          removeBackground: false,
-          cropMode: LogoCropMode.auto,
+    final finalBytes = LogoImageProcessor.processWithOptions(
+      working,
+      importOptions.cropMode == LogoCropMode.manual
+          ? LogoImportOptions.standard(
+              removeBackground: importOptions.removeBackground,
+              cropMode: LogoCropMode.auto,
+            )
+          : importOptions,
+    );
+
+    await dest.writeAsBytes(finalBytes, flush: true);
+    if (Platform.isWindows) {
+      unawaited(
+        LogoRestorer.ensureHighRes(
+          dest,
+          logosDir: logosDir,
+          onLog: onLog,
         ),
       );
     }
-
-    List<int> outputBytes = working;
-    Uint8List? recreatedSvg;
-    var usedRecreate = false;
-    String? recreateError;
-
-    if (recreate && await LogoRecreate.isAvailable()) {
-      Directory? work;
-      try {
-        onLog?.call('Recreate: launching premium vectorizer…');
-        work = await Directory.systemTemp.createTemp('swift_recreate_');
-        final srcFile = File(p.join(work.path, 'source_$stem.png'));
-        await srcFile.writeAsBytes(working, flush: true);
-        final result = await LogoRecreate.run(
-          srcFile,
-          scratchDir: work,
-          onLog: onLog,
-        );
-        outputBytes = result.pngBytes;
-        recreatedSvg = result.svgBytes == null
-            ? null
-            : Uint8List.fromList(result.svgBytes!);
-        usedRecreate = true;
-        onLog?.call('Recreate: success');
-      } catch (e) {
-        recreateError = '$e';
-        onLog?.call('Recreate failed, kept original: $e');
-        outputBytes = working;
-        usedRecreate = false;
-      } finally {
-        if (work != null) {
-          try {
-            await work.delete(recursive: true);
-          } catch (_) {}
-        }
-      }
-    } else if (recreate) {
-      recreateError = await LogoRecreate.diagnostic();
-      onLog?.call(recreateError);
-    }
-
-    // Non-recreate path: apply raster options (bg removal, auto-crop).
-    // Recreate path: vectorizer already outputs clean transparent PNG.
-    final finalBytes = usedRecreate
-        ? Uint8List.fromList(outputBytes)
-        : LogoImageProcessor.processWithOptions(
-            Uint8List.fromList(outputBytes),
-            importOptions.cropMode == LogoCropMode.manual
-                ? LogoImportOptions.standard(
-                    removeBackground: importOptions.removeBackground,
-                    cropMode: LogoCropMode.auto,
-                  )
-                : importOptions,
-          );
-
-    await dest.writeAsBytes(finalBytes, flush: true);
-    if (recreatedSvg != null) {
-      final svgPath = p.setExtension(dest.path, '.svg');
-      try {
-        await File(svgPath).writeAsBytes(recreatedSvg, flush: true);
-      } catch (_) {}
-    }
-    return ImportLogoResult(
-      file: dest,
-      recreateSucceeded: recreate ? usedRecreate : null,
-      recreateError: recreateError,
-    );
+    return ImportLogoResult(file: dest);
   }
 
   /// Directory used for generated PDFs — custom override when set.
+
   Directory pdfOutputDir(AppUiSettings settings) {
     final custom = settings.pdfOutputDir?.trim();
     if (custom != null && custom.isNotEmpty) {

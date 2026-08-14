@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -25,6 +26,8 @@ import 'form_scroll_text_field.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'logo_import_options.dart';
+import 'logo_restoration_service.dart';
+import 'logo_restorer.dart';
 import 'pdf/bol_label_pdf.dart';
 import 'pdf/bulk_label_docx.dart';
 import 'pdf/bulk_label_pdf.dart';
@@ -191,10 +194,8 @@ class _HomeScreenState extends State<HomeScreen>
   final List<String> _logoPaths = [];
   bool _busy = false;
   bool _findingLogo = false;
-  /// When true, next logo import runs through the premium Recreate pipeline
-  /// (Windows: Python → Fly → Rust; Android: Fly → Rust). Default false.
-  bool _recreateLogo = false;
-  bool _recreatingLogo = false;
+  int _restoreInFlight = 0;
+  bool get _restoringLogo => _restoreInFlight > 0;
   LabelKind _kind = LabelKind.shipping;
   /// Which BOL copy pages to generate (all selected by default).
   bool _bolStoreCopy = true;
@@ -582,6 +583,9 @@ class _HomeScreenState extends State<HomeScreen>
       );
     _presetName = displayName;
     if (notify) setState(() {});
+    for (final path in List<String>.from(_logoPaths)) {
+      unawaited(_prefetchLogoRestore(path));
+    }
   }
 
   void _applyPresetLogos(CustomerPreset preset) {
@@ -593,6 +597,9 @@ class _HomeScreenState extends State<HomeScreen>
             .where((path) => File(path).existsSync())
             .take(maxCustomerLogos),
       );
+    for (final path in List<String>.from(_logoPaths)) {
+      unawaited(_prefetchLogoRestore(path));
+    }
   }
 
   void _applyPresetCore(CustomerPreset preset) {
@@ -1101,19 +1108,15 @@ class _HomeScreenState extends State<HomeScreen>
     final options = await showLogoImportEditDialog(
       context,
       previewBytes: bytes,
-      recreate: _recreateLogo,
     );
     if (options == null || !mounted) return;
 
-    final recreate = _recreateLogo;
-    if (recreate) setState(() => _recreatingLogo = true);
     try {
       final result = await widget.storage.importLogoBytes(
         bytes,
         preferredName: preferredName,
-        recreate: recreate,
         options: options,
-        onLog: (line) => debugPrint('[recreate] $line'),
+        onLog: (line) => debugPrint('[logo] $line'),
       );
       if (!mounted) return;
       final file = result.file;
@@ -1127,23 +1130,9 @@ class _HomeScreenState extends State<HomeScreen>
           }
         });
       }
-      if (recreate && mounted) {
-        if (result.recreateSucceeded == true) {
-          showAppSnack(context, 'Recreate finished — logo cleaned.');
-        } else {
-          final detail = (result.recreateError ?? 'unknown error').trim();
-          final short = detail.length > 140
-              ? '${detail.substring(0, 140)}…'
-              : detail;
-          showAppSnack(
-            context,
-            'Recreate failed — imported original instead. $short',
-            duration: const Duration(seconds: 6),
-          );
-        }
-      }
-    } finally {
-      if (recreate && mounted) setState(() => _recreatingLogo = false);
+      unawaited(_prefetchLogoRestore(file.path));
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'Logo import failed: $e');
     }
   }
 
@@ -1296,26 +1285,17 @@ class _HomeScreenState extends State<HomeScreen>
     if (picked == null || !mounted) return;
 
     // Attach an existing stored logo without re-importing a duplicate file.
-    // When Recreate is on, re-run the edit/vectorize pipeline on a fresh copy.
-    if (!_recreateLogo) {
-      setState(() {
-        if (_logoPaths.length < maxCustomerLogos &&
-            !_logoPaths.contains(picked.path)) {
-          _logoPaths.add(picked.path);
-        }
-      });
-      return;
-    }
-
-    final bytes = await picked.readAsBytes();
-    await _importBytesWithPrompt(
-      bytes,
-      preferredName: p.basename(picked.path),
-    );
+    setState(() {
+      if (_logoPaths.length < maxCustomerLogos &&
+          !_logoPaths.contains(picked.path)) {
+        _logoPaths.add(picked.path);
+      }
+    });
+    unawaited(_prefetchLogoRestore(picked.path));
   }
 
   Future<void> _showUploadManuallyMenu() async {
-    if (_recreatingLogo) return;
+    if (_restoringLogo) return;
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -1642,11 +1622,78 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Future<void> _prefetchLogoRestore(String path) async {
+    try {
+      final restored = await _ensureRestoredLogo(File(path));
+      if (!mounted) return;
+      final i = _logoPaths.indexOf(path);
+      if (i >= 0 && restored.path != path) {
+        setState(() => _logoPaths[i] = restored.path);
+      }
+    } catch (e) {
+      debugPrint('[logo_restore] prefetch failed: $e');
+    }
+  }
+
+  Future<File> _ensureRestoredLogo(File source) async {
+    if (!await source.exists()) return source;
+    if (LogoRestorer.longestEdgeOfBytes(await source.readAsBytes()) >=
+        LogoRestorer.minDimension) {
+      return source;
+    }
+
+    if (Platform.isWindows) {
+      try {
+        final local = await LogoRestorer.ensureHighRes(
+          source,
+          logosDir: widget.storage.logosDir,
+          onLog: debugPrint,
+        );
+        if (LogoRestorer.longestEdgeOfBytes(await local.readAsBytes()) >=
+            LogoRestorer.minDimension) {
+          return local;
+        }
+      } catch (e) {
+        debugPrint('[logo_restore] local Python failed, trying Fly: $e');
+      }
+    }
+
+    if (mounted) setState(() => _restoreInFlight++);
+    try {
+      final temp = await LogoRestorationService().restoreLogo(source);
+      await widget.storage.logosDir.create(recursive: true);
+      var stem = p.basenameWithoutExtension(source.path);
+      if (stem.toLowerCase().endsWith('_restored')) {
+        stem = stem.substring(0, stem.length - '_restored'.length);
+      }
+      stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
+      if (stem.isEmpty) stem = 'logo';
+      final dest = File(
+        p.join(widget.storage.logosDir.path, '${stem}_restored.png'),
+      );
+      await temp.copy(dest.path);
+      return dest;
+    } catch (e) {
+      debugPrint('[logo_restore] Fly restore failed, keeping original: $e');
+      return source;
+    } finally {
+      if (mounted) {
+        setState(() => _restoreInFlight = (_restoreInFlight - 1).clamp(0, 99));
+      }
+    }
+  }
+
   Future<List<Uint8List>> _loadSelectedLogoBytes() async {
     final out = <Uint8List>[];
-    for (final path in _logoPaths.take(maxCustomerLogos)) {
-      final f = File(path);
-      if (await f.exists()) out.add(await f.readAsBytes());
+    final paths = _logoPaths.take(maxCustomerLogos).toList();
+    for (final path in paths) {
+      var file = File(path);
+      if (await file.exists()) {
+        file = await _ensureRestoredLogo(file);
+        final idx = _logoPaths.indexOf(path);
+        if (idx >= 0) _logoPaths[idx] = file.path;
+        out.add(await file.readAsBytes());
+      }
     }
     return out;
   }
@@ -3112,7 +3159,7 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               FilledButton.tonalIcon(
                 onPressed: (_findingLogo ||
-                        _recreatingLogo ||
+                        _restoringLogo ||
                         _logoPaths.length >= maxCustomerLogos)
                     ? null
                     : _findLogoOnWeb,
@@ -3132,7 +3179,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _logoPaths.length >= maxCustomerLogos ||
-                        _recreatingLogo
+                        _restoringLogo
                     ? null
                     : _showUploadManuallyMenu,
                 icon: const Icon(Icons.upload_file, size: 18),
@@ -3149,7 +3196,7 @@ class _HomeScreenState extends State<HomeScreen>
               Expanded(
                 child: FilledButton.tonalIcon(
                   onPressed: (_findingLogo ||
-                          _recreatingLogo ||
+                          _restoringLogo ||
                           _logoPaths.length >= maxCustomerLogos)
                       ? null
                       : _findLogoOnWeb,
@@ -3171,7 +3218,7 @@ class _HomeScreenState extends State<HomeScreen>
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _logoPaths.length >= maxCustomerLogos ||
-                          _recreatingLogo
+                          _restoringLogo
                       ? null
                       : _showUploadManuallyMenu,
                   icon: const Icon(Icons.upload_file, size: 18),
@@ -3250,11 +3297,6 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ],
           if (_logoPaths.isNotEmpty) SizedBox(height: dense ? 10 : 12),
-          _RecreateCheckbox(
-            value: _recreateLogo,
-            busy: _recreatingLogo,
-            onChanged: (v) => setState(() => _recreateLogo = v ?? false),
-          ),
           SizedBox(height: dense ? 6 : 8),
           logoButtons,
         ],
@@ -3578,7 +3620,6 @@ class _HomeScreenState extends State<HomeScreen>
       settings: _uiSettings,
       kind: _kind,
       busy: _busy,
-      recreateLogo: _recreateLogo,
       bolStoreCopy: _bolStoreCopy,
       bolDriverCopy: _bolDriverCopy,
       bolCustomerCopy: _bolCustomerCopy,
@@ -3588,7 +3629,6 @@ class _HomeScreenState extends State<HomeScreen>
       onClearAll: _clearAll,
       onSavePreset: _savePreset,
       onDeletePreset: _deletePreset,
-      onToggleRecreate: (v) => setState(() => _recreateLogo = v),
       onSelectKind: _selectKind,
       onBolCopyChanged: _onBolCopyChanged,
       onSettingsChanged: _applyUiSettings,
@@ -4217,10 +4257,43 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (Platform.isWindows) {
-      return _buildWindowsScaffold(context);
-    }
-    return _buildMobileScaffold();
+    final child = Platform.isWindows
+        ? _buildWindowsScaffold(context)
+        : _buildMobileScaffold();
+    if (!_restoringLogo) return child;
+    return Stack(
+      children: [
+        child,
+        const ModalBarrier(dismissible: false, color: Color(0x66000000)),
+        Center(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Restoring logo…',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Enhancing to 3000px on Fly.io',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -4874,75 +4947,6 @@ class _Card extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Compact "Recreate" toggle rendered above the logo action buttons.
-///
-/// When checked, the next logo import (web find OR manual upload) is
-/// routed through the premium vectorizer, producing a bg-stripped
-/// vector SVG + a crisp PNG. When unchecked, the raster is stored as-is
-/// (with only the existing light `LogoImageProcessor` fast-trim applied).
-///
-/// The recreate pipeline runs on both Windows and Android:
-///   - Windows: local Python if present; else Fly.io Python when online;
-///     else on-device Rust; Supabase vtracer last resort.
-///   - Android: Fly.io Python when online; else on-device Rust offline /
-///     on Fly failure; Supabase vtracer last resort.
-class _RecreateCheckbox extends StatelessWidget {
-  const _RecreateCheckbox({
-    required this.value,
-    required this.busy,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final bool busy;
-  final ValueChanged<bool?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final disabled = busy;
-    final subtitle = Platform.isWindows
-        ? 'Runs the premium tracer on the next logo you find or '
-            'upload: strips background, rebuilds it as clean vectors, '
-            'stores SVG + crisp PNG. Slower — ~5–30 s '
-            '(local Python when available; else Fly cloud / Rust).'
-        : 'Online: Fly.io Python cloud tracer. Offline: on-device Rust. '
-            'Strips background, rebuilds clean vectors, stores SVG + '
-            'crisp PNG. Slower — usually ~5–30 s (cold start may add a bit).';
-    return Tooltip(
-      message: 'Vectorize and clean the next logo before saving.',
-      child: busy
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Recreate (vectorize & clean background)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: SwiftChromeColors.of(context).ink,
-                    ),
-                  ),
-                ),
-              ],
-            )
-          : SwiftCircleCheckbox(
-              value: value,
-              onChanged: disabled ? null : onChanged,
-              enabled: !disabled,
-              label: 'Recreate (vectorize & clean background)',
-              subtitle: subtitle,
-            ),
     );
   }
 }

@@ -110,7 +110,6 @@ class GeminiClient {
       final cwd = Directory.current.path;
       yield p.join(cwd, '.env');
       yield p.join(cwd, '.env.local');
-      yield p.join(cwd, 'tools', 'logo_vectorizer', '.env');
       yield p.join(p.dirname(cwd), '.env');
       yield p.join(p.dirname(cwd), '.env.local');
     } catch (_) {}

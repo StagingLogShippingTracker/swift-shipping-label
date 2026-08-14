@@ -28,17 +28,6 @@ class LogoImportOptions {
     this.manualCropRect,
   });
 
-  /// When [recreate] is true, background removal is handled by the vectorizer.
-  factory LogoImportOptions.forRecreate({
-    LogoCropMode cropMode = LogoCropMode.auto,
-    Rect? manualCropRect,
-  }) =>
-      LogoImportOptions(
-        removeBackground: true,
-        cropMode: cropMode,
-        manualCropRect: manualCropRect,
-      );
-
   factory LogoImportOptions.standard({
     bool removeBackground = true,
     LogoCropMode cropMode = LogoCropMode.auto,
@@ -59,19 +48,14 @@ class LogoImportOptions {
 }
 
 /// Post-pick logo edit prompt — crop + optional background removal.
-///
-/// When [recreate] is checked, Recreate options (crop) are shown first and
-/// background removal is implied by the vectorizer.
 Future<LogoImportOptions?> showLogoImportEditDialog(
   BuildContext context, {
   required Uint8List previewBytes,
-  required bool recreate,
 }) {
   return showDialog<LogoImportOptions>(
     context: context,
     builder: (ctx) => _LogoImportEditDialog(
       previewBytes: previewBytes,
-      recreate: recreate,
     ),
   );
 }
@@ -79,11 +63,9 @@ Future<LogoImportOptions?> showLogoImportEditDialog(
 class _LogoImportEditDialog extends StatefulWidget {
   const _LogoImportEditDialog({
     required this.previewBytes,
-    required this.recreate,
   });
 
   final Uint8List previewBytes;
-  final bool recreate;
 
   @override
   State<_LogoImportEditDialog> createState() => _LogoImportEditDialogState();
@@ -96,7 +78,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.recreate ? 'Prepare for Recreate' : 'Edit logo';
+    final title = 'Edit logo';
     final maxW = MediaQuery.sizeOf(context).width;
     return AlertDialog(
       title: Text(title),
@@ -111,23 +93,6 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (widget.recreate) ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: SwiftColors.bg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: SwiftColors.border),
-                  ),
-                  child: const Text(
-                    'Recreate will vectorize this logo, strip the background, '
-                    'and output a high-definition transparent PNG. Choose how '
-                    'to crop the source before tracing.',
-                    style: TextStyle(fontSize: 13, color: SwiftColors.muted),
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: ColoredBox(
@@ -150,7 +115,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
               ),
               const SizedBox(height: 14),
               Text(
-                widget.recreate ? 'CROP BEFORE RECREATE' : 'CROP',
+                'CROP',
                 style: const TextStyle(
                   fontFamily: 'Oswald',
                   fontSize: 11,
@@ -254,7 +219,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                   );
                 },
               ),
-              if (_cropMode == LogoCropMode.none && !widget.recreate)
+              if (_cropMode == LogoCropMode.none)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
@@ -262,7 +227,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                     style: TextStyle(fontSize: 12, color: SwiftColors.muted),
                   ),
                 ),
-              if (!widget.recreate && _cropMode != LogoCropMode.none) ...[
+              if (_cropMode != LogoCropMode.none) ...[
                 const SizedBox(height: 14),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -295,20 +260,15 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
             }
             Navigator.pop(
               context,
-              widget.recreate
-                  ? LogoImportOptions.forRecreate(
-                      cropMode: _cropMode,
-                      manualCropRect: _manualCrop,
-                    )
-                  : LogoImportOptions.standard(
-                      removeBackground:
-                          _cropMode == LogoCropMode.none ? false : _removeBg,
-                      cropMode: _cropMode,
-                      manualCropRect: _manualCrop,
-                    ),
+              LogoImportOptions.standard(
+                removeBackground:
+                    _cropMode == LogoCropMode.none ? false : _removeBg,
+                cropMode: _cropMode,
+                manualCropRect: _manualCrop,
+              ),
             );
           },
-          child: Text(widget.recreate ? 'Recreate & import' : 'Import'),
+          child: const Text('Import'),
         ),
       ],
     );

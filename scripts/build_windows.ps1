@@ -31,38 +31,11 @@ if (Test-Path $legacy) { Remove-Item $legacy -Recurse -Force -ErrorAction Silent
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Copy-Item $built $out -Recurse
 
-# Bundle tools/ so the "Recreate" premium vectorizer (Python) is reachable
-# from the packaged Windows app. `mobile\lib\logo_recreate.dart` probes for
-# tools/logo_vectorizer/__main__.py next to the exe.
-$toolsSrc = Join-Path $Root "tools"
-$toolsDst = Join-Path $out "tools"
-if (Test-Path $toolsSrc) {
-    if (Test-Path $toolsDst) { Remove-Item $toolsDst -Recurse -Force }
-    Copy-Item $toolsSrc $toolsDst -Recurse -Force
-    # Never ship secrets from developer machines into portable/installer builds.
-    Get-ChildItem $toolsDst -Recurse -Force -File -Filter ".env" |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-    # Trim heavy caches so the zip stays small.
-    Get-ChildItem $toolsDst -Recurse -Directory -Filter "__pycache__" |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Get-ChildItem $toolsDst -Recurse -Directory -Filter ".cache" |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "Bundled tools/ (customer logo Recreate vectorizer; .env stripped)"
-}
-
-# Optional on-device Rust fallback (logo_recreate.dll) when already built.
-# Flutter probes next to the exe; without this, offline Windows without
-# Python skips straight toward Supabase last-resort.
-$dllCandidates = @(
-    (Join-Path $Root "native\logo_recreate\target\release\logo_recreate.dll"),
-    (Join-Path $Root "native\logo_recreate\target\x86_64-pc-windows-msvc\release\logo_recreate.dll")
-)
-foreach ($dll in $dllCandidates) {
-    if (Test-Path $dll) {
-        Copy-Item $dll (Join-Path $out "logo_recreate.dll") -Force
-        Write-Host "Bundled logo_recreate.dll from $dll"
-        break
-    }
+# Bundle logo_restorer.py next to the exe for Windows RealESRGAN restore.
+$restorerSrc = Join-Path $Root "logo_restorer.py"
+if (Test-Path $restorerSrc) {
+    Copy-Item $restorerSrc (Join-Path $out "logo_restorer.py") -Force
+    Write-Host "Bundled logo_restorer.py"
 }
 
 Write-Host "Windows app: $out\swift_shipping_label.exe"

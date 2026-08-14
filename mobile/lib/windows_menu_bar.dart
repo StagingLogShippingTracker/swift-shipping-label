@@ -12,7 +12,6 @@ import 'app_storage.dart';
 import 'feedback_forms.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
-import 'logo_recreate.dart';
 import 'pdf_render_options.dart';
 import 'platform_io.dart';
 import 'theme.dart';
@@ -27,7 +26,6 @@ class WindowsMenuActions {
     required this.settings,
     required this.kind,
     required this.busy,
-    required this.recreateLogo,
     required this.bolStoreCopy,
     required this.bolDriverCopy,
     required this.bolCustomerCopy,
@@ -37,7 +35,6 @@ class WindowsMenuActions {
     required this.onClearAll,
     required this.onSavePreset,
     required this.onDeletePreset,
-    required this.onToggleRecreate,
     required this.onSelectKind,
     required this.onBolCopyChanged,
     required this.onSettingsChanged,
@@ -51,7 +48,6 @@ class WindowsMenuActions {
   final AppUiSettings settings;
   final LabelKind kind;
   final bool busy;
-  final bool recreateLogo;
   final bool bolStoreCopy;
   final bool bolDriverCopy;
   final bool bolCustomerCopy;
@@ -62,7 +58,6 @@ class WindowsMenuActions {
   final VoidCallback onClearAll;
   final VoidCallback onSavePreset;
   final VoidCallback onDeletePreset;
-  final ValueChanged<bool> onToggleRecreate;
   final ValueChanged<LabelKind> onSelectKind;
   final void Function({bool? store, bool? driver, bool? customer})
       onBolCopyChanged;
@@ -182,64 +177,6 @@ class WindowsAppMenuBar extends StatelessWidget {
         'PDF output reset to:\n${actions.storage.filledDir.path}',
       );
     }
-  }
-
-  Future<void> _showVectorizerStatus(BuildContext context) async {
-    final diag = await LogoRecreate.diagnostic();
-    final fly = await LogoRecreate.flyHealthReport();
-    final tools = await LogoRecreate.resolveToolsDir();
-    if (!context.mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Vectorizer status'),
-        content: SelectableText(
-          '$diag\n\n$fly\n\nTools: ${tools?.path ?? '(not found)'}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openToolsFolder(BuildContext context) async {
-    final tools = await LogoRecreate.resolveToolsDir();
-    if (tools == null) {
-      if (context.mounted) {
-        await _snack(context, 'logo_vectorizer tools folder not found.');
-      }
-      return;
-    }
-    await openFolder(tools.parent.path);
-  }
-
-  Future<void> _openVectorizerReadme(BuildContext context) async {
-    final tools = await LogoRecreate.resolveToolsDir();
-    final candidates = <String>[
-      if (tools != null) ...[
-        '${tools.path}${Platform.pathSeparator}README.md',
-        '${tools.parent.path}${Platform.pathSeparator}README.md',
-      ],
-    ];
-    for (final path in candidates) {
-      final f = File(path);
-      if (await f.exists()) {
-        await launchUrl(Uri.file(f.path));
-        return;
-      }
-    }
-    if (context.mounted) {
-      await _snack(context, 'No vectorizer README found beside tools.');
-    }
-  }
-
-  Future<void> _probeFly(BuildContext context) async {
-    final report = await LogoRecreate.flyHealthReport();
-    if (context.mounted) await _snack(context, report);
   }
 
   Future<void> _pickLogoEngine(BuildContext context) async {
@@ -421,8 +358,6 @@ class WindowsAppMenuBar extends StatelessWidget {
 
   Future<void> _showDiagnostics(BuildContext context) async {
     final info = await PackageInfo.fromPlatform();
-    final recreate = await LogoRecreate.diagnostic();
-    final fly = await LogoRecreate.flyHealthReport();
     final s = actions.settings;
     final report = StringBuffer()
       ..writeln('Swift Document Generator ${info.version}+${info.buildNumber}')
@@ -434,8 +369,7 @@ class WindowsAppMenuBar extends StatelessWidget {
       )
       ..writeln('Presets: ${actions.storage.presetsFile.path}')
       ..writeln()
-      ..writeln(recreate)
-      ..writeln(fly)
+      ..writeln('Logo restore: ${AppConfig.restoreLogoUrl}')
       ..writeln()
       ..writeln('Workspace pane: ${s.showWorkspacePane}')
       ..writeln('Extended rail: ${s.preferExtendedRail}')
@@ -694,11 +628,6 @@ class WindowsAppMenuBar extends StatelessWidget {
               child: const Text('Delete preset'),
             ),
             const Divider(),
-            CheckboxMenuButton(
-              value: actions.recreateLogo,
-              onChanged: (v) => actions.onToggleRecreate(v ?? false),
-              child: const Text('Recreate logos'),
-            ),
             MenuItemButton(
               onPressed: actions.onLoadSample,
               child: const Text('Load sample'),
@@ -868,23 +797,6 @@ class WindowsAppMenuBar extends StatelessWidget {
         ),
         SubmenuButton(
           menuChildren: [
-            MenuItemButton(
-              onPressed: () => _showVectorizerStatus(context),
-              child: const Text('Vectorizer status…'),
-            ),
-            MenuItemButton(
-              onPressed: () => _openToolsFolder(context),
-              child: const Text('Open tools folder'),
-            ),
-            MenuItemButton(
-              onPressed: () => _openVectorizerReadme(context),
-              child: const Text('Open vectorizer README'),
-            ),
-            MenuItemButton(
-              onPressed: () => _probeFly(context),
-              child: const Text('Probe Fly health'),
-            ),
-            const Divider(),
             MenuItemButton(
               onPressed: () => _pickLogoEngine(context),
               child: const Text('Logo search engine…'),

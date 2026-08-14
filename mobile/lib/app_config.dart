@@ -56,26 +56,16 @@ class AppConfig {
   /// Prefer [GeminiClient.resolveApiKey] at call sites.
   static String get geminiApiKey => geminiApiKeyDefine.trim();
 
-  /// Primary cloud Recreate — Fly.io Python (`tools.logo_vectorizer`).
-  /// Used when online (Android always; Windows when local Python is missing).
-  /// Override with `--dart-define=RECREATE_LOGO_URL=...`.
-  static const recreateLogoUrl = String.fromEnvironment(
-    'RECREATE_LOGO_URL',
-    defaultValue: 'https://swift-recreate-logo.fly.dev/recreate-logo',
+  /// Fly.io RealESRGAN restore (3000px+ PNG). Override with
+  /// `--dart-define=RESTORE_LOGO_URL=...`.
+  static const restoreLogoUrl = String.fromEnvironment(
+    'RESTORE_LOGO_URL',
+    defaultValue: 'https://swift-restore-logo.fly.dev/api/v1/restore-logo',
   );
 
-  /// Liveness probe for [recreateLogoUrl]. Override with
-  /// `--dart-define=RECREATE_LOGO_HEALTH_URL=...`.
-  static const recreateLogoHealthUrl = String.fromEnvironment(
-    'RECREATE_LOGO_HEALTH_URL',
-    defaultValue: 'https://swift-recreate-logo.fly.dev/health',
-  );
-
-  /// Last-resort Supabase Deno/`vtracer` edge function (weaker than Fly Python).
-  /// Only used when Fly and on-device Rust both fail.
-  static const recreateLogoSupabaseUrl = String.fromEnvironment(
-    'RECREATE_LOGO_SUPABASE_URL',
-    defaultValue:
-        'https://gdrpdiwykmnybmkadlrv.supabase.co/functions/v1/recreate-logo',
+  /// Liveness probe for [restoreLogoUrl].
+  static const restoreLogoHealthUrl = String.fromEnvironment(
+    'RESTORE_LOGO_HEALTH_URL',
+    defaultValue: 'https://swift-restore-logo.fly.dev/health',
   );
 }
