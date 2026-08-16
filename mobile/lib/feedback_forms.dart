@@ -31,11 +31,12 @@ Future<void> openErrorCaptureForm(
   BuildContext context, {
   required String installedVersion,
   String? prefillDetails,
+  String title = 'Error capture',
 }) {
   return showDialog<void>(
     context: context,
     builder: (ctx) => _MailFormDialog(
-      title: 'Error capture (F2)',
+      title: title,
       subtitle:
           'Describe what went wrong. Submission opens an e-mail to '
           '$kWarehouseFeedbackEmail.',
@@ -126,7 +127,7 @@ class _MailFormDialogState extends State<_MailFormDialog> {
       ..writeln(widget.includeErrorDetails ? 'Error / repro steps:' : 'Details:')
       ..writeln(_details.text.trim().isEmpty ? '(none)' : _details.text.trim())
       ..writeln()
-      ..writeln('— Sent from in-app ${widget.includeErrorDetails ? 'F2 error capture' : 'Help → Feedback'}');
+      ..writeln('— Sent from in-app ${widget.includeErrorDetails ? 'error capture' : 'feedback'}');
     return buf.toString();
   }
 

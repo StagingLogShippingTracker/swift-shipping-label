@@ -16,6 +16,21 @@ class AppConfig {
   static const windowsZipAsset = 'SwiftDocumentGenerator-windows.zip';
   static const androidApkAsset = 'SwiftDocumentGenerator-android.apk';
 
+  /// Swift Staging & Shipping Log (sibling Operations app).
+  static const stagingTrackerGithubOwner = githubOwner;
+  static const stagingTrackerGithubRepo = 'staging-tracker';
+  static const stagingTrackerLatestReleaseApi =
+      'https://api.github.com/repos/$stagingTrackerGithubOwner/$stagingTrackerGithubRepo/releases/latest';
+  static const stagingTrackerReleasesPage =
+      'https://github.com/$stagingTrackerGithubOwner/$stagingTrackerGithubRepo/releases';
+  static const stagingTrackerWindowsSetupAsset = 'SwiftStagingLog-Setup-User.exe';
+  static const stagingTrackerWindowsSetupAssetLegacy = 'SLST-Setup-User.exe';
+  static const stagingTrackerAndroidApkAsset = 'SwiftStagingLog-Android.apk';
+  static const stagingTrackerAndroidApkAssetLegacy = 'SLST-Android.apk';
+  static const stagingTrackerAndroidPackage = 'ca.swiftsupply.slst';
+  static const stagingTrackerWindowsExe = 'SwiftStagingLog.exe';
+  static const stagingTrackerWindowsInstallFolder = 'Swift Staging Shipping Log';
+
   /// Shared BOL serial counter (StagingLogShippingTracker Supabase).
   /// Anon key only — RPC is SECURITY DEFINER `next_bol_serial`.
   static const supabaseUrl = 'https://gdrpdiwykmnybmkadlrv.supabase.co';
@@ -47,7 +62,7 @@ class AppConfig {
     defaultValue: '',
   );
 
-  /// GCP project number associated with the Gemini key (metadata / Fly secrets).
+  /// GCP project number associated with the Gemini key (metadata).
   static const geminiProjectNumber = String.fromEnvironment(
     'GEMINI_PROJECT_NUMBER',
     defaultValue: '308655478522',
@@ -59,20 +74,25 @@ class AppConfig {
     defaultValue: 'gemini-2.0-flash',
   );
 
+  /// Image-generation model for logo restore.
+  static const geminiImageModel = String.fromEnvironment(
+    'GEMINI_IMAGE_MODEL',
+    defaultValue: 'gemini-3.1-flash-image',
+  );
+
+  /// Unused by live address suggest (OpenStreetMap Nominatim). Kept so
+  /// existing `--dart-define` / `.env` values do not break builds.
+  static const googlePlacesApiKeyDefine = String.fromEnvironment(
+    'GOOGLE_PLACES_API_KEY',
+    defaultValue: '',
+  );
+
+  static const googleMapsApiKeyDefine = String.fromEnvironment(
+    'GOOGLE_MAPS_API_KEY',
+    defaultValue: '',
+  );
+
   /// Resolved Gemini API key for local recreate process env injection.
   /// Prefer [GeminiClient.resolveApiKey] at call sites.
   static String get geminiApiKey => geminiApiKeyDefine.trim();
-
-  /// Fly.io RealESRGAN restore (3000px+ PNG). Override with
-  /// `--dart-define=RESTORE_LOGO_URL=...`.
-  static const restoreLogoUrl = String.fromEnvironment(
-    'RESTORE_LOGO_URL',
-    defaultValue: 'https://swift-restore-logo.fly.dev/api/v1/restore-logo',
-  );
-
-  /// Liveness probe for [restoreLogoUrl].
-  static const restoreLogoHealthUrl = String.fromEnvironment(
-    'RESTORE_LOGO_HEALTH_URL',
-    defaultValue: 'https://swift-restore-logo.fly.dev/health',
-  );
 }

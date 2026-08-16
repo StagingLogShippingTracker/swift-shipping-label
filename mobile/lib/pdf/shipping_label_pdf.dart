@@ -5,9 +5,17 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:vector_math/vector_math_64.dart';
 
+import '../brand_assets.dart';
+import '../carrier_logos.dart';
 import '../label_data.dart';
-import '../logo_image_process.dart';
+import '../logo_ink_fit.dart';
 import '../pdf_render_options.dart';
+
+class _InkLogo {
+  _InkLogo(this.image, this.ink);
+  final PdfImage image;
+  final LogoInkMetrics ink;
+}
 
 /// Port of `generate_swift_shipping_label_pdf.py` — Swiss layout, flat print PDF.
 class ShippingLabelPdf {
@@ -21,6 +29,8 @@ class ShippingLabelPdf {
     required this.montserrat,
     required this.montserratBold,
     required this.swiftLogoBytes,
+    required this.swiftInk,
+    required this.carrierLogoPngs,
   });
 
   final pw.Font oswald;
@@ -32,6 +42,8 @@ class ShippingLabelPdf {
   final pw.Font montserrat;
   final pw.Font montserratBold;
   final Uint8List? swiftLogoBytes;
+  final LogoInkMetrics? swiftInk;
+  Map<String, Uint8List> carrierLogoPngs;
 
   static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const black = PdfColor.fromInt(0xFF111111);
@@ -71,12 +83,17 @@ class ShippingLabelPdf {
         pw.Font.ttf(await rootBundle.load(path));
 
     Uint8List? logoBytes;
+    LogoInkMetrics? logoInk;
     try {
-      final data =
-          await rootBundle.load('assets/images/swift_supply_logo_orange.png');
-      logoBytes = data.buffer.asUint8List();
+      // Isolated lockup (transparent plate). Never use the black-plate orange
+      // PNG or [SwiftBrandAssets.logoOrangeSolid] — both hide black SUPPLY.
+      final data = await rootBundle.load(SwiftBrandAssets.logoDocument);
+      final prepared = LogoInkFit.prepare(data.buffer.asUint8List());
+      logoBytes = prepared.png;
+      logoInk = prepared.ink;
     } catch (_) {
       logoBytes = null;
+      logoInk = null;
     }
 
     _instance = ShippingLabelPdf._(
@@ -89,8 +106,15 @@ class ShippingLabelPdf {
       montserrat: await font('assets/fonts/Montserrat-Regular.ttf'),
       montserratBold: await font('assets/fonts/Montserrat-Bold.ttf'),
       swiftLogoBytes: logoBytes,
+      swiftInk: logoInk,
+      carrierLogoPngs: await CarrierLogos.loadPngs(),
     );
     return _instance!;
+  }
+
+  Future<void> _ensureCarrierLogos() async {
+    if (carrierLogoPngs.isNotEmpty) return;
+    carrierLogoPngs = await CarrierLogos.loadPngs();
   }
 
   double stringWidth(PdfFont font, String text, double size) {
@@ -197,6 +221,7 @@ class ShippingLabelPdf {
   Future<Uint8List> build({
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
+    Uint8List? carrierLogoBytes,
     PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
@@ -208,9 +233,35 @@ class ShippingLabelPdf {
       doc,
       data: data,
       customerLogoBytes: customerLogoBytes,
+      carrierLogoBytes: carrierLogoBytes,
       piecePlan: piecePlan,
       options: options,
     );
+    return doc.save();
+  }
+
+  /// One PDF with shipping pages for each sales order / piece plan pair.
+  Future<Uint8List> buildForSalesOrders({
+    required List<(ShippingLabelData, PieceCountPlan)> jobs,
+    List<Uint8List> customerLogoBytes = const [],
+    Uint8List? carrierLogoBytes,
+    PdfRenderOptions options = PdfRenderOptions.defaults,
+  }) async {
+    final doc = pw.Document(
+      title: 'Swift Oilfield Supply — Shipping Label',
+      author: 'Swift Oilfield Supply',
+    );
+    for (final job in jobs) {
+      if (job.$2.isEmpty) continue;
+      await appendPages(
+        doc,
+        data: job.$1,
+        customerLogoBytes: customerLogoBytes,
+        carrierLogoBytes: carrierLogoBytes,
+        piecePlan: job.$2,
+        options: options,
+      );
+    }
     return doc.save();
   }
 
@@ -219,6 +270,7 @@ class ShippingLabelPdf {
     pw.Document doc, {
     required ShippingLabelData data,
     List<Uint8List> customerLogoBytes = const [],
+    Uint8List? carrierLogoBytes,
     PieceCountPlan piecePlan = const PieceCountPlan(palletCrates: 1),
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
@@ -246,8 +298,10 @@ class ShippingLabelPdf {
       doc,
       pages: pages,
       customerLogoBytes: customerLogoBytes,
+      carrierLogoBytes: carrierLogoBytes,
       painter: _drawPage,
       options: options,
+      resolveCarrierLogo: true,
     );
   }
 
@@ -274,18 +328,24 @@ class ShippingLabelPdf {
     pw.Document doc, {
     required List<ShippingLabelData> pages,
     required List<Uint8List> customerLogoBytes,
+    Uint8List? carrierLogoBytes,
     required void Function(
       PdfGraphics c,
       _ResolvedFonts fonts,
       ShippingLabelData data,
-      List<PdfImage> customerLogos,
+      List<_InkLogo> customerLogos,
       PdfImage? swiftLogo,
       PdfRenderOptions options,
+      PdfImage? carrierLogo,
     ) painter,
     PdfRenderOptions options = PdfRenderOptions.defaults,
+    bool resolveCarrierLogo = false,
   }) async {
     // Shipping / Receiving labels are designed for landscape Letter.
     final format = pageFormat;
+    if (resolveCarrierLogo) {
+      await _ensureCarrierLogos();
+    }
 
     for (final pageData in pages) {
       doc.addPage(
@@ -316,15 +376,15 @@ class ShippingLabelPdf {
                   : null,
             );
 
-            final customerLogos = <PdfImage>[];
+            final customerLogos = <_InkLogo>[];
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
               if (bytes.isNotEmpty) {
-                // Size by visible ink bounds so padded square icons match
-                // tight rectangular wordmarks at the shared Swift height.
-                final normalized =
-                    LogoImageProcessor.normalizeToVisibleContent(bytes);
+                final prepared = LogoInkFit.prepare(bytes);
                 customerLogos.add(
-                  PdfImage.file(context.document, bytes: normalized),
+                  _InkLogo(
+                    PdfImage.file(context.document, bytes: prepared.png),
+                    prepared.ink,
+                  ),
                 );
               }
             }
@@ -333,10 +393,23 @@ class ShippingLabelPdf {
               swiftLogo =
                   PdfImage.file(context.document, bytes: swiftLogoBytes!);
             }
+            PdfImage? carrierLogo;
+            Uint8List? logoBytes = carrierLogoBytes;
+            if (resolveCarrierLogo &&
+                (logoBytes == null || logoBytes.isEmpty)) {
+              final id =
+                  CarrierLogos.matchId(pageData.get(LabelFields.carrier));
+              if (id != null) {
+                logoBytes = carrierLogoPngs[id];
+              }
+            }
+            if (logoBytes != null && logoBytes.isNotEmpty) {
+              carrierLogo = PdfImage.file(context.document, bytes: logoBytes);
+            }
             final logos = options.showCustomerLogos &&
                     options.logoPlacement != PdfLogoPlacement.hidden
                 ? customerLogos
-                : <PdfImage>[];
+                : <_InkLogo>[];
 
             return pw.CustomPaint(
               size: PdfPoint(format.width, format.height),
@@ -349,10 +422,26 @@ class ShippingLabelPdf {
                     ..translateByDouble(0, format.height / 2, 0, 1)
                     ..scaleByDouble(0.5, 0.5, 1, 1);
                   canvas.setTransform(box);
-                  painter(canvas, fonts, pageData, logos, swiftLogo, options);
+                  painter(
+                    canvas,
+                    fonts,
+                    pageData,
+                    logos,
+                    swiftLogo,
+                    options,
+                    carrierLogo,
+                  );
                   canvas.restoreContext();
                 } else {
-                  painter(canvas, fonts, pageData, logos, swiftLogo, options);
+                  painter(
+                    canvas,
+                    fonts,
+                    pageData,
+                    logos,
+                    swiftLogo,
+                    options,
+                    carrierLogo,
+                  );
                 }
               },
             );
@@ -395,9 +484,10 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     ShippingLabelData sample,
-    List<PdfImage> customerLogos,
+    List<_InkLogo> customerLogos,
     PdfImage? swiftLogo,
     PdfRenderOptions options,
+    PdfImage? carrierLogo,
   ) {
     final pageH = pageFormat.height;
 
@@ -408,7 +498,13 @@ class ShippingLabelPdf {
     final pieceTop = footY + pieceBandRowH + 14;
 
     var y = _drawHeader(c, fonts, customerLogos, swiftLogo, options: options);
-    final pair = _drawIdentityPair(c, fonts, y, sample);
+    final pair = _drawIdentityPair(
+      c,
+      fonts,
+      y,
+      sample,
+      carrierLogo: carrierLogo,
+    );
     _drawNotesAndMeta(c, fonts, pair.$1, pair.$2, sample, pieceTop + 4);
 
     _hairline(c, mx, pieceTop + 8, contentW, ruleSoft);
@@ -523,22 +619,25 @@ class ShippingLabelPdf {
     return PdfPoint(w, h);
   }
 
-  /// Fit [image] inside a box at (x,y) bottom-left, centered on both axes.
+  /// Fit [image] inside a box at (x,y) bottom-left.
+  /// Default is centered; [left] keeps vertical center and left-aligns.
   void _drawImageInBox(
     PdfGraphics c,
     PdfImage image,
     double x,
     double y,
     double maxW,
-    double maxH,
-  ) {
+    double maxH, {
+    bool left = false,
+  }) {
     final iw = image.width.toDouble();
     final ih = image.height.toDouble();
     if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) return;
     final scale = (maxW / iw < maxH / ih) ? maxW / iw : maxH / ih;
     final w = iw * scale;
     final h = ih * scale;
-    c.drawImage(image, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h);
+    final dx = left ? x : x + (maxW - w) / 2;
+    c.drawImage(image, dx, y + (maxH - h) / 2, w, h);
   }
 
   /// Fixed Swift logo height (pt). Never scaled by customer logos or logoScale.
@@ -553,80 +652,47 @@ class ShippingLabelPdf {
   /// Breathing gap between the customer-logo row and Swift (never overlap).
   static const customerLogoToSwiftGap = 12.0;
 
-  /// Draw 1–2 customer logos at height [h], left-to-right in [availW].
+  /// Draw 1–2 customer logos so each mark’s **ink** is [h] tall (not the canvas).
   void _drawCustomerLogoRowAt(
     PdfGraphics c,
-    List<PdfImage> valid,
-    List<double> widths,
+    List<_InkLogo> logos,
     double leftX,
-    double bandBottom,
-    double bandTop,
+    double inkBottomY,
     double h,
-    double availW,
     double gap,
   ) {
-    final bandCenter = (bandTop + bandBottom) / 2;
-    var y = bandCenter - h / 2;
-    final minY = bandBottom + customerLogoBandInset;
-    final maxY = bandTop - customerLogoBandInset - h;
-    if (y < minY) y = minY;
-    if (maxY >= minY && y > maxY) y = maxY;
-
     var x = leftX;
-    final rightLimit = leftX + availW;
-    for (var i = 0; i < valid.length; i++) {
-      var w = widths[i];
-      final remain = rightLimit - x;
-      if (remain < 2) break;
-      if (w > remain) w = remain;
-      c.drawImage(valid[i], x, y, w, h);
+    for (final logo in logos) {
+      if (!logo.ink.isValid || h <= 0) continue;
+      final w = logo.ink.drawWidth(h);
+      final bh = logo.ink.drawHeight(h);
+      final y = logo.ink.bitmapBottomY(inkBottomY, h);
+      if (w <= 0 || bh <= 0) continue;
+      c.drawImage(logo.image, x, y, w, bh);
       x += w + gap;
     }
   }
 
-  /// Size customer logos to [targetH] (Swift's height). Shrink uniformly only
-  /// when the row is wider than [availW] — and only as much as needed.
+  /// Size customer logos so visible ink height equals Swift’s drawn height.
+  /// Aspect ratio is preserved. Do not shrink to fit the gap beside Swift.
   void _drawCustomerLogosMatchingHeight(
     PdfGraphics c,
-    List<PdfImage> logos,
+    List<_InkLogo> logos,
     double leftX,
-    double bandBottom,
-    double bandTop,
+    double y,
     double targetH,
-    double availW,
   ) {
-    final valid = <PdfImage>[
+    final valid = [
       for (final l in logos)
-        if (l.width > 0 && l.height > 0) l,
+        if (l.image.width > 0 && l.image.height > 0 && l.ink.isValid) l,
     ];
-    if (valid.isEmpty || availW <= 0 || targetH <= 0) return;
-
-    final bandInnerH =
-        (bandTop - bandBottom - 2 * customerLogoBandInset).clamp(1.0, 10000.0);
-    var h = targetH > bandInnerH ? bandInnerH : targetH;
-
-    var widths = <double>[
-      for (final l in valid) l.width.toDouble() / l.height.toDouble() * h,
-    ];
-    var combined = widths.fold<double>(0, (a, b) => a + b) +
-        customerLogoGap * (valid.length - 1);
-
-    // Shrink only if the row cannot fit — single or multiple.
-    if (combined > availW && combined > 0) {
-      final scale = availW / combined;
-      h *= scale;
-      widths = [for (final w in widths) w * scale];
-    }
-
+    if (valid.isEmpty || targetH <= 0) return;
     _drawCustomerLogoRowAt(
       c,
       valid,
-      widths,
       leftX,
-      bandBottom,
-      bandTop,
-      h,
-      availW,
+      y,
+      targetH,
       customerLogoGap,
     );
   }
@@ -634,14 +700,15 @@ class ShippingLabelPdf {
   double _drawHeader(
     PdfGraphics c,
     _ResolvedFonts fonts,
-    List<PdfImage> customerLogos,
+    List<_InkLogo> customerLogos,
     PdfImage? swiftLogo, {
     bool receivingChip = false,
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) {
     final pageH = pageFormat.height;
     final yTop = pageH - my - 14;
-    final bandH = 0.92 * inch;
+    // Tall enough that a logo drawn at Swift height is not clipped by the band.
+    final bandH = customerLogoTargetH + 2 * customerLogoBandInset + 6;
     final logoBottom = yTop - bandH;
     final airUnderLogos = receivingChip ? 0.36 * inch : 0.40 * inch;
     final ruleY = logoBottom - airUnderLogos;
@@ -651,19 +718,21 @@ class ShippingLabelPdf {
         ? options.logoPlacement
         : PdfLogoPlacement.hidden;
 
-    // --- Swift size is FIXED. Never depends on customer logos or logoScale. ---
-    final swiftMaxW = colW * 0.95;
-    final swiftMaxH = customerLogoTargetH; // locked constant (62.24 pt)
+    // --- Swift ink height is FIXED. Width follows the lockup aspect. ---
     double swiftW = 0;
     double swiftH = 0;
     if (swiftLogo != null) {
-      final iw = swiftLogo.width.toDouble();
-      final ih = swiftLogo.height.toDouble();
-      if (iw > 0 && ih > 0) {
-        final scale =
-            (swiftMaxW / iw < swiftMaxH / ih) ? swiftMaxW / iw : swiftMaxH / ih;
-        swiftW = iw * scale;
-        swiftH = ih * scale;
+      final ink = swiftInk;
+      if (ink != null && ink.isValid) {
+        swiftH = customerLogoTargetH;
+        swiftW = ink.drawWidth(swiftH);
+      } else {
+        final iw = swiftLogo.width.toDouble();
+        final ih = swiftLogo.height.toDouble();
+        if (iw > 0 && ih > 0) {
+          swiftH = customerLogoTargetH;
+          swiftW = iw / ih * swiftH;
+        }
       }
     }
 
@@ -672,34 +741,33 @@ class ShippingLabelPdf {
         ? swiftH
         : (customerLogoTargetH * options.logoScale.clamp(0.6, 1.5));
 
+    final logoH = swiftH > 0 ? swiftH : customerTargetH;
+    final bandCenter = (yTop + logoBottom) / 2;
+    var yLogoBottom = bandCenter - logoH / 2;
+    final minY = logoBottom + customerLogoBandInset;
+    final maxY = yTop - customerLogoBandInset - logoH;
+    if (yLogoBottom < minY) yLogoBottom = minY;
+    if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
+
     if (place == PdfLogoPlacement.left && logos.isNotEmpty) {
-      final swiftLeftX = mx + contentW - swiftW;
-      final availForCustomer = swiftW > 0
-          ? (swiftLeftX - customerLogoToSwiftGap - mx).clamp(0.0, contentW)
-          : contentW;
       _drawCustomerLogosMatchingHeight(
         c,
         logos,
         mx,
-        logoBottom,
-        yTop,
+        yLogoBottom,
         customerTargetH,
-        availForCustomer,
       );
     } else if (place == PdfLogoPlacement.right && logos.isNotEmpty) {
       final swiftRightEdge = mx + swiftW;
       final startX = swiftW > 0
           ? swiftRightEdge + customerLogoToSwiftGap
           : mx + contentW * 0.58;
-      final avail = (mx + contentW - startX).clamp(0.0, contentW);
       _drawCustomerLogosMatchingHeight(
         c,
         logos,
         startX,
-        logoBottom,
-        yTop,
+        yLogoBottom,
         customerTargetH,
-        avail,
       );
     } else if (logos.isEmpty && place != PdfLogoPlacement.belowSwift) {
       c
@@ -712,26 +780,27 @@ class ShippingLabelPdf {
     if (swiftLogo != null && swiftW > 0) {
       final drawX =
           place == PdfLogoPlacement.right ? mx : (mx + contentW - swiftW);
-      final bandCenter = (yTop + logoBottom) / 2;
-      var yLogoBottom = bandCenter - swiftH / 2;
-      final minY = logoBottom + customerLogoBandInset;
-      final maxY = yTop - customerLogoBandInset - swiftH;
-      if (yLogoBottom < minY) yLogoBottom = minY;
-      if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
-      c.drawImage(swiftLogo, drawX, yLogoBottom, swiftW, swiftH);
+      final ink = swiftInk;
+      if (ink != null && ink.isValid) {
+        c.drawImage(
+          swiftLogo,
+          drawX,
+          ink.bitmapBottomY(yLogoBottom, customerLogoTargetH),
+          ink.drawWidth(customerLogoTargetH),
+          ink.drawHeight(customerLogoTargetH),
+        );
+      } else {
+        c.drawImage(swiftLogo, drawX, yLogoBottom, swiftW, swiftH);
+      }
     }
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
-      final belowTop = logoBottom - customerLogoBandInset;
-      final belowBottom = logoBottom - customerTargetH - 4;
       _drawCustomerLogosMatchingHeight(
         c,
         logos,
         mx,
-        belowBottom,
-        belowTop,
+        logoBottom - customerTargetH - 4,
         customerTargetH,
-        contentW,
       );
     }
 
@@ -782,6 +851,7 @@ class ShippingLabelPdf {
     bool showRule = true,
     bool centered = false,
     String? valueOverride,
+    PdfImage? valueImage,
   }) {
     _microLabel(c, fonts, x, y, label);
     y -= 3;
@@ -824,7 +894,18 @@ class ShippingLabelPdf {
       c.setFillColor(valueBgWhenNonEmpty);
       _fillRect(c, x, y - vh, colWidth, vh);
     }
-    if (val.isNotEmpty) {
+    if (valueImage != null) {
+      const inset = 1.5;
+      _drawImageInBox(
+        c,
+        valueImage,
+        x + inset,
+        y - vh + inset,
+        colWidth - 2 * inset,
+        vh - 2 * inset,
+        left: true,
+      );
+    } else if (val.isNotEmpty) {
       _drawValue(
         c,
         fonts,
@@ -850,9 +931,10 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     ShippingLabelData sample,
-    List<PdfImage> customerLogos,
+    List<_InkLogo> customerLogos,
     PdfImage? swiftLogo,
     PdfRenderOptions options,
+    PdfImage? carrierLogo,
   ) {
     final pageH = pageFormat.height;
     _bumper(c, pageH - my + 4);
@@ -1162,8 +1244,9 @@ class ShippingLabelPdf {
     PdfGraphics c,
     _ResolvedFonts fonts,
     double y,
-    ShippingLabelData sample,
-  ) {
+    ShippingLabelData sample, {
+    PdfImage? carrierLogo,
+  }) {
     final lx = mx;
     final bold = fonts.calibriBold;
 
@@ -1223,6 +1306,7 @@ class ShippingLabelPdf {
       lx,
       colW,
       sample,
+      valueImage: carrierLogo,
     );
     yL = _drawFreightBillingHalfRow(c, fonts, yL, lx, colW, sample);
 

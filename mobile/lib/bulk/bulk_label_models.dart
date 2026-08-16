@@ -120,6 +120,8 @@ class OrderAckParseResult {
     this.headerShipToAddress = '',
     this.deliveryCarrier = '',
     this.hasDeliveryShipTo = false,
+    this.packingSlipNumber = '',
+    this.documentKind = 'order_ack',
   });
 
   final String poNumber;
@@ -149,6 +151,12 @@ class OrderAckParseResult {
   /// True when Delivery Instructions include a usable name and/or street.
   final bool hasDeliveryShipTo;
 
+  /// Swift packing slip / packing list number when the PDF is a packing list.
+  final String packingSlipNumber;
+
+  /// `order_ack` or `packing_list`.
+  final String documentKind;
+
   bool get hasIncompleteLines => incompleteLines.isNotEmpty;
 
   int get totalLabels =>
@@ -175,6 +183,8 @@ class OrderAckParseResult {
     String? headerShipToAddress,
     String? deliveryCarrier,
     bool? hasDeliveryShipTo,
+    String? packingSlipNumber,
+    String? documentKind,
   }) {
     return OrderAckParseResult(
       poNumber: poNumber ?? this.poNumber,
@@ -192,6 +202,8 @@ class OrderAckParseResult {
       headerShipToAddress: headerShipToAddress ?? this.headerShipToAddress,
       deliveryCarrier: deliveryCarrier ?? this.deliveryCarrier,
       hasDeliveryShipTo: hasDeliveryShipTo ?? this.hasDeliveryShipTo,
+      packingSlipNumber: packingSlipNumber ?? this.packingSlipNumber,
+      documentKind: documentKind ?? this.documentKind,
     );
   }
 

@@ -136,6 +136,7 @@ class WindowsAppMenuBar extends StatelessWidget {
       installedVersion: info == null
           ? 'unknown'
           : '${info.version}+${info.buildNumber}',
+      title: 'Error capture (F2)',
     );
   }
 
@@ -369,7 +370,7 @@ class WindowsAppMenuBar extends StatelessWidget {
       )
       ..writeln('Presets: ${actions.storage.presetsFile.path}')
       ..writeln()
-      ..writeln('Logo restore: ${AppConfig.restoreLogoUrl}')
+      ..writeln('Logo restore: Gemini (primary); local rebuild if Gemini is down')
       ..writeln()
       ..writeln('Workspace pane: ${s.showWorkspacePane}')
       ..writeln('Extended rail: ${s.preferExtendedRail}')
@@ -840,7 +841,7 @@ class WindowsAppMenuBar extends StatelessWidget {
                 s.copyWith(restoreLowResLogos: v ?? false),
               ),
               child: const Text(
-                'Convert low-res logos to high-res',
+                'Restore low-res logos for print',
               ),
             ),
             MenuItemButton(

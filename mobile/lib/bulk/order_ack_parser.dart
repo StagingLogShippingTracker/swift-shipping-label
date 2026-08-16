@@ -221,6 +221,8 @@ class OrderAckParser {
       headerShipToAddress: header.headerShipToAddress,
       deliveryCarrier: header.deliveryCarrier,
       hasDeliveryShipTo: header.hasDeliveryShipTo,
+      packingSlipNumber: header.packingSlipNumber,
+      documentKind: header.documentKind,
     );
   }
 
@@ -323,7 +325,12 @@ class OrderAckParser {
       r'Order\s*Number\s*(\d{5,})',
       caseSensitive: false,
     ).firstMatch(text);
-    return m2?.group(1);
+    if (m2 != null) return m2.group(1);
+    final m3 = RegExp(
+      r'Order\s*Number\s*\n(?:[^\n]*\n){0,16}?(\d{6,})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return m3?.group(1);
   }
 }
 
@@ -338,6 +345,8 @@ class OrderAckHeader {
     this.headerShipToAddress = '',
     this.deliveryCarrier = '',
     this.hasDeliveryShipTo = false,
+    this.packingSlipNumber = '',
+    this.documentKind = 'order_ack',
   });
 
   final String customerName;
@@ -348,6 +357,8 @@ class OrderAckHeader {
   final String headerShipToAddress;
   final String deliveryCarrier;
   final bool hasDeliveryShipTo;
+  final String packingSlipNumber;
+  final String documentKind;
 
   static final _itemRow = RegExp(
     r'\d[\d,]*\.\d{2}\s*EA|\bEA\s*\d|\bOrder\s+Line\s+Notes:|\bItem\s+Description\b|\bRev\s+20|\bSubtotal:',
@@ -377,7 +388,43 @@ class OrderAckHeader {
       deliveryCarrier: delivery.carrier,
       hasDeliveryShipTo:
           delivery.name.isNotEmpty || delivery.address.isNotEmpty,
+      packingSlipNumber: _extractPackingSlip(text),
+      documentKind: _documentKind(text),
     );
+  }
+
+  static String _documentKind(String text) {
+    final head = text.length > 1200 ? text.substring(0, 1200) : text;
+    final packing = RegExp(
+      r'\bPACKING\s+(LIST|SLIP)\b',
+      caseSensitive: false,
+    ).hasMatch(head);
+    final oa = RegExp(
+      r'\bORDER\s+ACKNOWLEDGEMENT\b',
+      caseSensitive: false,
+    ).hasMatch(head);
+    if (packing && !oa) return 'packing_list';
+    if (packing && oa) return 'packing_list';
+    return 'order_ack';
+  }
+
+  static String _extractPackingSlip(String text) {
+    if (_documentKind(text) != 'packing_list') return '';
+    final labeled = RegExp(
+      r'Packing\s*(?:List|Slip)\s*(?:No\.?|Number|#)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-]{2,})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (labeled != null) {
+      final v = labeled.group(1)!.trim();
+      if (!RegExp(r'^(LIST|SLIP|NO|NUMBER)$', caseSensitive: false).hasMatch(v)) {
+        return v;
+      }
+    }
+    final titled = RegExp(
+      r'PACKING\s+(?:LIST|SLIP)\s*\n\s*([A-Z0-9][A-Z0-9\-]{3,})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return titled?.group(1)?.trim() ?? '';
   }
 
   static String _extractProject(String text) {

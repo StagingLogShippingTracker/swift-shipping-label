@@ -10,17 +10,25 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.75.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.76.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_75';
+  static const campaignId = 'whats_new_1_1_76';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.75)";
+  static const title = "What's new (v1.1.68 – v1.1.76)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.76',
+      bullets: [
+        'MORE APPS on the side rail: open Staging & Shipping Log if installed, or download and install it',
+        'Delivery Address book fills missing city/province/postal from OpenStreetMap; same ship-to keeps separate courier rows',
+        'History prune removes snapshot-less rows and their PDFs from Supabase Storage',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.75',
       bullets: [
@@ -49,7 +57,7 @@ class AppChangelog {
       bullets: [
         'Customer logos: optional “Convert low-resolution photo to high-resolution” (RealESRGAN)',
         'Removed Recreate / vectorizer (no SVG tracing). Check the box to upscale low-res logos',
-        'Logo restore spinner while Fly.io processes the image',
+        'Logo restore spinner while Gemini redraws the image',
       ],
     ),
     ChangelogSection(

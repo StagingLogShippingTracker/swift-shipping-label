@@ -7,15 +7,21 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
+import 'address_book_sync.dart';
+import 'android_shake.dart';
+import 'app_config.dart';
 import 'app_snack.dart';
 import 'app_storage.dart';
 import 'app_theme_scope.dart';
-import 'address_book_sync.dart';
+import 'address_suggest_field.dart';
 import 'bol_document_number.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
+import 'carrier_logos.dart';
 import 'bulk/bulk_label_models.dart';
 import 'bulk/order_ack_pdf_text.dart';
+import 'bulk/order_ack_parser.dart';
+import 'job_pdf_ai.dart';
 import 'changelog.dart';
 import 'circle_selector.dart';
 import 'contact_sync.dart';
@@ -26,12 +32,12 @@ import 'form_scroll_text_field.dart';
 import 'label_data.dart';
 import 'logo_finder.dart';
 import 'logo_import_options.dart';
-import 'logo_restoration_service.dart';
 import 'logo_restorer.dart';
 import 'pdf/bol_label_pdf.dart';
 import 'pdf/bulk_label_docx.dart';
 import 'pdf/bulk_label_pdf.dart';
 import 'pdf/shipping_label_pdf.dart';
+import 'multi_order_fields.dart';
 import 'pdf_render_options.dart';
 import 'platform_io.dart';
 import 'preset_sync.dart';
@@ -39,6 +45,7 @@ import 'signature_pad.dart';
 import 'signature_sync.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
+import 'operations_apps_rail.dart';
 import 'windows_menu_bar.dart';
 
 String swiftUiFont(BuildContext context) {
@@ -56,6 +63,7 @@ const _shippingGroups = <(String title, String hint, List<String> keys)>[
     'Who the shipment is for',
     [
       LabelFields.customer,
+      LabelFields.salesOrder,
       LabelFields.poNum,
       LabelFields.project,
       LabelFields.attn,
@@ -80,7 +88,6 @@ const _shippingGroups = <(String title, String hint, List<String> keys)>[
     'Internal tracking',
     [
       LabelFields.packingSlip,
-      LabelFields.salesOrder,
       LabelFields.swiftContact,
     ],
   ),
@@ -93,9 +100,9 @@ const _receivingGroups = <(String title, String hint, List<String> keys)>[
     [
       LabelFields.customer,
       LabelFields.project,
+      LabelFields.salesOrder,
       LabelFields.poNum,
       LabelFields.specialInstructions,
-      LabelFields.salesOrder,
       LabelFields.swiftContact,
     ],
   ),
@@ -137,9 +144,9 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
     'Tracking & references',
     'PO, packing list, sales order, project',
     [
+      LabelFields.salesOrder,
       LabelFields.poNum,
       BolFields.packingList,
-      LabelFields.salesOrder,
       LabelFields.project,
       LabelFields.specialInstructions,
     ],
@@ -228,6 +235,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// OA PDF used to fill Shipping / Receiving / BOL fields.
   String? _oaFillSourceName;
   bool _oaFilling = false;
+  bool _bolMultiPdf = false;
   List<String> _swiftContactNames = const [];
   bool _swiftContactsLoading = false;
   /// Focus nodes for employee-name autocomplete fields (one per key).
@@ -240,6 +248,11 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _desktopFormScroll = ScrollController();
   /// Desktop workspace pane list.
   final ScrollController _desktopWorkspaceScroll = ScrollController();
+  StreamSubscription<void>? _androidShakeSub;
+  bool _shakeMenuOpen = false;
+  SoFieldMap _soFieldMap = SoFieldMap();
+  bool _mappingDialogOpen = false;
+  final Map<String, FocusNode> _multiFieldFocus = {};
 
   @override
   void initState() {
@@ -271,6 +284,11 @@ class _HomeScreenState extends State<HomeScreen>
     _syncPresetsOnLaunch();
     _refreshContactSuggestions();
     unawaited(_documentHistorySync.purgeExpired());
+    if (Platform.isAndroid) {
+      _androidShakeSub = AndroidShake.events.listen((_) {
+        unawaited(_onAndroidShake());
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowChangelogPrompt();
     });
@@ -378,7 +396,96 @@ class _HomeScreenState extends State<HomeScreen>
       installedVersion: info == null
           ? 'unknown'
           : '${info.version}+${info.buildNumber}',
+      title: Platform.isAndroid ? 'Error Capture' : 'Error capture (F2)',
     );
+  }
+
+  Future<void> _openFeedback() async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (_) {}
+    if (!mounted) return;
+    await openFeedbackForm(
+      context,
+      installedVersion: info == null
+          ? 'unknown'
+          : '${info.version}+${info.buildNumber}',
+    );
+  }
+
+  Future<void> _showAbout() async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (_) {}
+    if (!mounted) return;
+    showAboutDialog(
+      context: context,
+      applicationName: 'Swift Document Generator',
+      applicationVersion: info == null
+          ? 'unknown'
+          : '${info.version}+${info.buildNumber}',
+      applicationLegalese: 'Swift Oilfield Supply',
+      children: [
+        const SizedBox(height: 12),
+        Text(
+          'Shipping, Receiving, and Bill of Lading for Windows and Android.\n'
+          'Releases: ${AppConfig.githubReleasesPage}',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _onAndroidShake() async {
+    if (!mounted || _shakeMenuOpen) return;
+    _shakeMenuOpen = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  title: Text('Help'),
+                  subtitle: Text('Hard shake shortcut'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    unawaited(_showAbout());
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.feedback_outlined),
+                  title: const Text('Send Feedback'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    unawaited(_openFeedback());
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('Error Capture'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    unawaited(_openErrorCapture());
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      _shakeMenuOpen = false;
+    }
   }
 
   Future<void> _setRestoreLowResLogos(bool value) async {
@@ -494,6 +601,10 @@ class _HomeScreenState extends State<HomeScreen>
     for (final n in _employeeFocusNodes.values) {
       n.dispose();
     }
+    for (final n in _multiFieldFocus.values) {
+      n.dispose();
+    }
+    _androidShakeSub?.cancel();
     _desktopFormScroll.dispose();
     _desktopWorkspaceScroll.dispose();
     super.dispose();
@@ -504,7 +615,148 @@ class _HomeScreenState extends State<HomeScreen>
     for (final e in _controllers.entries) {
       data.set(e.key, e.value.text);
     }
+    data.set(LabelFields.soFieldMap, _soFieldMap.encode());
     return data;
+  }
+
+  FocusNode _multiFocus(String key) {
+    return _multiFieldFocus.putIfAbsent(key, () {
+      final n = FocusNode();
+      n.addListener(() {
+        if (!n.hasFocus) {
+          unawaited(_onMultiFieldBlur(key));
+        }
+      });
+      return n;
+    });
+  }
+
+  bool _isSalesOrderKey(String key) =>
+      key == LabelFields.salesOrder || key == BolFields.orderNum;
+
+  bool _isNamedMultiKey(String key) =>
+      key == LabelFields.poNum ||
+      key == LabelFields.project ||
+      key == LabelFields.packingSlip ||
+      key == BolFields.packingList;
+
+  void _applyFormattedField(String key, String formatted) {
+    final c = _controllers[key];
+    if (c == null) return;
+    if (c.text == formatted) return;
+    c.value = TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+    if (key == BolFields.packingList) {
+      final slip = _controllers[LabelFields.packingSlip];
+      if (slip != null && slip.text.trim().isEmpty) {
+        slip.text = formatted;
+      }
+    }
+    if (key == LabelFields.salesOrder) {
+      _controllers[BolFields.orderNum]?.text = formatted;
+    }
+  }
+
+  Future<void> _onMultiFieldBlur(String key) async {
+    if (!mounted || _mappingDialogOpen) return;
+    final raw = _controllers[key]?.text ?? '';
+    if (_isSalesOrderKey(key)) {
+      _applyFormattedField(key, formatSalesOrders(raw, finalize: true));
+      return;
+    }
+    if (!_isNamedMultiKey(key)) return;
+    _applyFormattedField(key, formatNamedSegments(raw, finalize: true));
+    await _promptSoMappingIfNeeded(key);
+  }
+
+  Future<void> _promptSoMappingIfNeeded(String fieldKey) async {
+    final sos = parseSalesOrders(_controllers[LabelFields.salesOrder]?.text ?? '');
+    final extras = parseNamedSegments(
+      _controllers[fieldKey]?.text ?? '',
+      finalize: true,
+    );
+    if (pairableCount(extras.length, sos.length) == 0) return;
+    var assigned = <int, String>{};
+    final existing = _soFieldMap.forField(fieldKey);
+    for (var i = 0; i < extras.length; i++) {
+      for (final e in existing.entries) {
+        if (e.value == extras[i]) assigned[i] = e.key;
+      }
+    }
+    _mappingDialogOpen = true;
+    try {
+      while (mounted) {
+        final step = nextMappingStep(
+          extras: extras,
+          salesOrders: sos,
+          assigned: assigned,
+        );
+        if (step.done) {
+          _soFieldMap.setField(
+            fieldKey,
+            mappingBySalesOrder(extras: extras, assigned: step.assigned),
+          );
+          break;
+        }
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              title: const Text('Link to sales order'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Which sales order does this belong to?\n${step.askValue}',
+                    ),
+                    const SizedBox(height: 12),
+                    for (final so in step.choices)
+                      ListTile(
+                        title: Text(so),
+                        onTap: () => Navigator.pop(ctx, so),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Skip'),
+                ),
+              ],
+            );
+          },
+        );
+        if (picked == null || picked.isEmpty) break;
+        assigned = {...step.assigned, step.askIndex!: picked};
+      }
+    } finally {
+      _mappingDialogOpen = false;
+    }
+  }
+
+  ShippingLabelData _shippingDataForSalesOrder(
+    ShippingLabelData base,
+    String salesOrder,
+  ) {
+    final d = base.copy();
+    d.set(LabelFields.salesOrder, salesOrder);
+    d.set(BolFields.orderNum, salesOrder);
+    void apply(String field, String dest) {
+      final v = _soFieldMap.valueFor(field, salesOrder);
+      if (v.isNotEmpty) d.set(dest, v);
+    }
+    apply(LabelFields.poNum, LabelFields.poNum);
+    apply(LabelFields.project, LabelFields.project);
+    apply(BolFields.packingList, LabelFields.packingSlip);
+    apply(LabelFields.packingSlip, LabelFields.packingSlip);
+    apply(BolFields.packingList, BolFields.packingList);
+    return d;
   }
 
   void _setField(String key, String value) {
@@ -786,61 +1038,14 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _openAddressBook() async {
     try {
       await _addressBookSync.fetchAll();
-    } catch (_) {
-      // Use cached entries if offline.
-    }
+      await _addressBookSync.ensureOsmEnrich();
+    } catch (_) {}
     if (!mounted) return;
-    final entries = AddressBookSync.sortByShipToName(_addressBookSync.entries);
     final picked = await showDialog<DeliveryAddressEntry>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Delivery Address book'),
-          content: SizedBox(
-            width: 480,
-            height: 420,
-            child: entries.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No saved addresses yet.\nThey are remembered when you Generate Shipping or BOL.',
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: entries.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final e = entries[i];
-                      return ListTile(
-                        title: Text(
-                          e.shipToName.isEmpty ? '(No ship-to name)' : e.shipToName,
-                        ),
-                        subtitle: Text(
-                          [
-                            e.address,
-                            if (e.carrier.isNotEmpty) 'Carrier: ${e.carrier}',
-                            if (e.accountNumbers.isNotEmpty)
-                              'Acct: ${e.accountNumbers}',
-                          ].join('\n'),
-                        ),
-                        isThreeLine: true,
-                        trailing: TextButton(
-                          onPressed: () => Navigator.pop(ctx, e),
-                          child: const Text('USE'),
-                        ),
-                        onTap: () => Navigator.pop(ctx, e),
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
+      builder: (ctx) => _AddressBookEditor(
+        sync: _addressBookSync,
+      ),
     );
     if (picked == null || !mounted) return;
     _applyAddressBookEntry(picked);
@@ -921,6 +1126,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     List<GeneratedDocumentRecord> docs;
     try {
+      await _documentHistorySync.pruneWithoutSnapshots();
       docs = await _documentHistorySync.listForKind(_kind);
     } on DocumentHistorySyncException catch (e) {
       if (!mounted) return;
@@ -968,7 +1174,26 @@ class _HomeScreenState extends State<HomeScreen>
                             when,
                           ].join(' · '),
                         ),
-                        trailing: const Icon(Icons.open_in_new, size: 18),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                unawaited(_applyHistoryTemplate(d));
+                              },
+                              child: const Text('Template'),
+                            ),
+                            IconButton(
+                              tooltip: 'Open PDF',
+                              icon: const Icon(Icons.open_in_new, size: 18),
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                await _openHistoryDocument(d);
+                              },
+                            ),
+                          ],
+                        ),
                         onTap: () async {
                           Navigator.pop(ctx);
                           await _openHistoryDocument(d);
@@ -986,6 +1211,62 @@ class _HomeScreenState extends State<HomeScreen>
         );
       },
     );
+  }
+
+  Future<void> _applyHistoryTemplate(GeneratedDocumentRecord doc) async {
+    final snap = await _documentHistorySync.downloadFormSnapshot(doc);
+    if (!mounted) return;
+    if (snap == null || !snap.hasFields) {
+      showAppSnack(
+        context,
+        'No saved form data for this history item. '
+        'Generate again once to store a template.',
+      );
+      return;
+    }
+    _selectKind(doc.kind);
+    const skip = {
+      LabelFields.palletNum,
+      LabelFields.palletOf,
+      LabelFields.boxNum,
+      LabelFields.boxOf,
+      BolFields.documentNumber,
+    };
+    for (final e in snap.fields.entries) {
+      if (skip.contains(e.key)) continue;
+      if (_controllers.containsKey(e.key)) {
+        _setField(e.key, e.value);
+      }
+    }
+    final mapRaw = snap.fields[LabelFields.soFieldMap] ?? '';
+    _soFieldMap = SoFieldMap.decode(mapRaw);
+    _logoPaths.clear();
+    if (snap.logoCount > 0) {
+      final logos = await _documentHistorySync.downloadSnapshotLogos(
+        doc,
+        snap.logoCount,
+      );
+      for (var i = 0; i < logos.length; i++) {
+        try {
+          final imported = await widget.storage.importLogoBytes(
+            logos[i],
+            preferredName: 'history_${doc.id}_$i.png',
+            options: LogoImportOptions.standard(removeBackground: false),
+          );
+          _logoPaths.add(imported.file.path);
+        } catch (_) {}
+      }
+    }
+    if (doc.kind == LabelKind.bol) {
+      _bolLineCount = _detectBolLineCount();
+    }
+    if (mounted) {
+      setState(() {});
+      showAppSnack(
+        context,
+        'Loaded template — edit fields, then Generate for new label counts.',
+      );
+    }
   }
 
   Future<void> _openHistoryDocument(GeneratedDocumentRecord doc) async {
@@ -1017,6 +1298,8 @@ class _HomeScreenState extends State<HomeScreen>
             ? data.get(LabelFields.salesOrder)
             : data.get(BolFields.orderNum),
         title: fileName,
+        fields: Map<String, String>.from(data.values),
+        logoBytes: await _loadSelectedLogoBytes(),
       );
     } on DocumentHistorySyncException catch (e) {
       if (mounted) {
@@ -1674,46 +1957,22 @@ class _HomeScreenState extends State<HomeScreen>
   Future<File> _ensureRestoredLogo(File source) async {
     if (!_uiSettings.restoreLowResLogos) return source;
     if (!await source.exists()) return source;
-    if (LogoRestorer.heightOfBytes(await source.readAsBytes()) >=
-        LogoRestorer.minDimension) {
-      return source;
-    }
-
-    if (Platform.isWindows) {
-      if (mounted) setState(() => _restoreInFlight++);
-      try {
-        return await LogoRestorer.ensureHighRes(
-          source,
-          logosDir: widget.storage.logosDir,
-          onLog: debugPrint,
-        );
-      } catch (e) {
-        debugPrint('[logo_restore] local restore failed, keeping original: $e');
-        return source;
-      } finally {
-        if (mounted) {
-          setState(() => _restoreInFlight = (_restoreInFlight - 1).clamp(0, 99));
-        }
-      }
-    }
 
     if (mounted) setState(() => _restoreInFlight++);
     try {
-      final temp = await LogoRestorationService().restoreLogo(source);
-      await widget.storage.logosDir.create(recursive: true);
-      var stem = p.basenameWithoutExtension(source.path);
-      if (stem.toLowerCase().endsWith('_restored')) {
-        stem = stem.substring(0, stem.length - '_restored'.length);
-      }
-      stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
-      if (stem.isEmpty) stem = 'logo';
-      final dest = File(
-        p.join(widget.storage.logosDir.path, '${stem}_restored.png'),
+      return await LogoRestorer.ensureHighRes(
+        source,
+        logosDir: widget.storage.logosDir,
+        onLog: debugPrint,
       );
-      await temp.copy(dest.path);
-      return dest;
     } catch (e) {
-      debugPrint('[logo_restore] Fly restore failed, keeping original: $e');
+      debugPrint('[logo_restore] Gemini restore failed: $e');
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Logo restore failed. Original logo kept.',
+        );
+      }
       return source;
     } finally {
       if (mounted) {
@@ -1823,6 +2082,150 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Future<Map<String, PieceCountPlan>?> _askPieceCountsPerSalesOrder({
+    required List<String> salesOrders,
+    required PieceCountPlan total,
+  }) async {
+    final palletCtrls = {
+      for (final so in salesOrders)
+        so: TextEditingController(
+          text: so == salesOrders.first ? '${total.palletCrates}' : '0',
+        ),
+    };
+    final boxCtrls = {
+      for (final so in salesOrders)
+        so: TextEditingController(
+          text: so == salesOrders.first ? '${total.boxes}' : '0',
+        ),
+    };
+    var error = '';
+    final result = await showDialog<Map<String, PieceCountPlan>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Labels per sales order'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Split ${total.palletCrates} skid/crate and ${total.boxes} box '
+                    'labels across sales orders.',
+                    style: const TextStyle(fontSize: 13, color: SwiftColors.muted),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final so in salesOrders) ...[
+                    Text(so, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      [
+                        if (_soFieldMap.valueFor(LabelFields.poNum, so).isNotEmpty)
+                          'PO: ${_soFieldMap.valueFor(LabelFields.poNum, so)}',
+                        if (_soFieldMap.valueFor(BolFields.packingList, so).isNotEmpty)
+                          'PL: ${_soFieldMap.valueFor(BolFields.packingList, so)}'
+                        else if (_soFieldMap
+                            .valueFor(LabelFields.packingSlip, so)
+                            .isNotEmpty)
+                          'PL: ${_soFieldMap.valueFor(LabelFields.packingSlip, so)}',
+                        if (_soFieldMap.valueFor(LabelFields.project, so).isNotEmpty)
+                          'Project: ${_soFieldMap.valueFor(LabelFields.project, so)}',
+                      ].join(' · '),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: SwiftColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: palletCtrls[so],
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'SKIDS / CRATES',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: boxCtrls[so],
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'BOXES',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (error.isNotEmpty)
+                    Text(
+                      error,
+                      style: const TextStyle(
+                        color: SwiftColors.accent,
+                        fontSize: 13,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                int parseCount(String raw) {
+                  final t = raw.trim();
+                  if (t.isEmpty) return 0;
+                  return int.tryParse(t) ?? -1;
+                }
+
+                var pallets = 0;
+                var boxes = 0;
+                final plans = <String, PieceCountPlan>{};
+                for (final so in salesOrders) {
+                  final p = parseCount(palletCtrls[so]!.text);
+                  final b = parseCount(boxCtrls[so]!.text);
+                  if (p < 0 || b < 0) {
+                    setLocal(() => error = 'Enter whole numbers only.');
+                    return;
+                  }
+                  pallets += p;
+                  boxes += b;
+                  plans[so] = PieceCountPlan(palletCrates: p, boxes: b);
+                }
+                if (pallets != total.palletCrates || boxes != total.boxes) {
+                  setLocal(
+                    () => error =
+                        'Totals must equal ${total.palletCrates} skids and ${total.boxes} boxes.',
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, plans);
+              },
+              child: const Text('Generate'),
+            ),
+          ],
+        ),
+      ),
+    );
+    for (final c in palletCtrls.values) {
+      c.dispose();
+    }
+    for (final c in boxCtrls.values) {
+      c.dispose();
+    }
+    return result;
+  }
+
   void _loadSample() {
     if (_kind == LabelKind.bulk) {
       _loadBulkSample();
@@ -1887,6 +2290,8 @@ class _HomeScreenState extends State<HomeScreen>
         Uint8List.fromList(bytes),
         sourceFileName: p.basename(path),
       );
+      final text = await extractOrderAckPdfText(Uint8List.fromList(bytes));
+      parsed = await JobPdfAi().enrich(parsed, text);
       if (!mounted) return;
 
       if (parsed.hasIncompleteLines) {
@@ -1922,31 +2327,68 @@ class _HomeScreenState extends State<HomeScreen>
         _bulkParsing = false;
         _bulkParse = null;
       });
-      showAppSnack(context, 'Could not read Order Acknowledgement: $e');
+      showAppSnack(context, 'Could not read OA or packing list: $e');
     }
   }
 
   Future<void> _pickOrderAckForForm() async {
-    final path = await pickPdfPath();
-    if (path == null) return;
-    await _fillFormFromOrderAck(path);
+    final multi = _kind == LabelKind.bol && _bolMultiPdf;
+    final paths = await pickPdfPaths(multiple: multi);
+    if (paths.isEmpty) return;
+    await _fillFormFromJobPdfs(paths);
   }
 
-  Future<void> _fillFormFromOrderAck(String path) async {
+  Future<void> _fillFormFromJobPdfs(List<String> paths) async {
     setState(() => _oaFilling = true);
     try {
-      final bytes = await File(path).readAsBytes();
-      final parsed = await parseOrderAckPdf(
-        Uint8List.fromList(bytes),
-        sourceFileName: p.basename(path),
-      );
+      final parsed = <OrderAckParseResult>[];
+      for (final path in paths) {
+        final bytes = await File(path).readAsBytes();
+        final text = await extractOrderAckPdfText(Uint8List.fromList(bytes));
+        var one = const OrderAckParser().parseText(
+          text,
+          sourceFileName: p.basename(path),
+        );
+        one = await JobPdfAi().enrich(one, text);
+        parsed.add(one);
+      }
       if (!mounted) return;
-      await _applyOrderAckToForm(parsed, p.basename(path));
+      final merged = _mergeJobPdfFills(parsed);
+      await _applyOrderAckToForm(
+        merged,
+        parsed.map((e) => e.sourceFileName).where((s) => s.isNotEmpty).join(', '),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _oaFilling = false);
-      showAppSnack(context, 'Could not read Order Acknowledgement: $e');
+      showAppSnack(context, 'Could not read PDF: $e');
     }
+  }
+
+  OrderAckParseResult _mergeJobPdfFills(List<OrderAckParseResult> items) {
+    if (items.length == 1) return items.first;
+    String j(String Function(OrderAckParseResult e) read) =>
+        joinJobPdfValues(items.map(read));
+    final anyDelivery = items.any((e) => e.hasDeliveryShipTo);
+    return OrderAckParseResult(
+      poNumber: j((e) => e.poNumber),
+      orderNumber: j((e) => e.orderNumber),
+      lines: const [],
+      warnings: [for (final e in items) ...e.warnings],
+      sourceFileName: items.map((e) => e.sourceFileName).join(', '),
+      customerName: j((e) => e.customerName),
+      projectNumber: j((e) => e.projectNumber),
+      deliveryShipToName: j((e) => e.deliveryShipToName),
+      deliveryShipToAddress: j((e) => e.deliveryShipToAddress),
+      headerShipToName: j((e) => e.headerShipToName),
+      headerShipToAddress: j((e) => e.headerShipToAddress),
+      deliveryCarrier: j((e) => e.deliveryCarrier),
+      hasDeliveryShipTo: anyDelivery,
+      packingSlipNumber: j((e) => e.packingSlipNumber),
+      documentKind: items.any((e) => e.documentKind == 'packing_list')
+          ? 'packing_list'
+          : 'order_ack',
+    );
   }
 
   Future<void> _applyOrderAckToForm(
@@ -1965,6 +2407,10 @@ class _HomeScreenState extends State<HomeScreen>
     }
     if (parsed.poNumber.isNotEmpty) {
       _setField(LabelFields.poNum, parsed.poNumber);
+    }
+    if (parsed.packingSlipNumber.isNotEmpty) {
+      _setField(LabelFields.packingSlip, parsed.packingSlipNumber);
+      _setField(BolFields.packingList, parsed.packingSlipNumber);
     }
     if (parsed.deliveryCarrier.isNotEmpty && _kind == LabelKind.shipping) {
       _setField(
@@ -2017,9 +2463,11 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted) return;
     showAppSnack(
       context,
-      parsed.hasDeliveryShipTo
-          ? 'Filled from Order Acknowledgement (Delivery Instructions).'
-          : 'Filled from Order Acknowledgement.',
+      parsed.documentKind == 'packing_list'
+          ? 'Filled from packing list PDF.'
+          : parsed.hasDeliveryShipTo
+              ? 'Filled from Order Acknowledgement (Delivery Instructions).'
+              : 'Filled from Order Acknowledgement.',
     );
   }
 
@@ -2099,15 +2547,28 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildOrderAckFillCard({bool dense = false}) {
     return _Card(
-      title: 'Order Acknowledgement',
+      title: 'Upload OA or Packing List',
       hint: dense
-          ? 'Fill sales order, PO, project, customer, and ship-to from a Swift OA PDF'
-          : 'Upload a Swift OA PDF. Packing list is not on the OA — enter it yourself. '
+          ? 'Upload a Swift OA or packing list PDF'
+          : 'Order Acknowledgement or packing list. Packing lists fill Swift Packing Slip No. '
               'Ship To comes from Delivery Instructions when present.',
       dense: dense,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_kind == LabelKind.bol)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: _bolMultiPdf,
+              onChanged: _busy || _oaFilling
+                  ? null
+                  : (v) => setState(() => _bolMultiPdf = v ?? false),
+              title: const Text('Upload multiple PDFs (same customer / BOL)'),
+              subtitle: const Text(
+                'Joins different values with  /  (e.g. two sales orders)',
+              ),
+            ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -2121,7 +2582,13 @@ class _HomeScreenState extends State<HomeScreen>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                label: Text(_oaFilling ? 'Reading…' : 'Upload OA PDF'),
+                label: Text(
+                  _oaFilling
+                      ? 'Reading…'
+                      : (_kind == LabelKind.bol && _bolMultiPdf)
+                          ? 'Upload PDFs'
+                          : 'Upload OA or Packing List',
+                ),
               ),
               if (_oaFillSourceName != null)
                 TextButton(
@@ -2134,7 +2601,7 @@ class _HomeScreenState extends State<HomeScreen>
             SizedBox(height: dense ? 6 : 8),
             Text(
               _oaFillSourceName!,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -2296,6 +2763,7 @@ class _HomeScreenState extends State<HomeScreen>
       _bulkParse = null;
       _bulkSourcePath = null;
     }
+    _soFieldMap = SoFieldMap();
     setState(() {});
   }
 
@@ -2312,6 +2780,7 @@ class _HomeScreenState extends State<HomeScreen>
     _bulkParse = null;
     _bulkSourcePath = null;
     _templatePromptResolvedForCustomer = null;
+    _soFieldMap = SoFieldMap();
     setState(() {});
   }
 
@@ -2324,10 +2793,19 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     PieceCountPlan? piecePlan;
-    if (_kind == LabelKind.shipping ||
-        (_kind == LabelKind.bol && _bolAlsoShippingLabels)) {
+    Map<String, PieceCountPlan>? perSoPlans;
+    final alsoShipping = _kind == LabelKind.bol && _bolAlsoShippingLabels;
+    if (_kind == LabelKind.shipping || alsoShipping) {
       piecePlan = await _askPieceCounts();
       if (piecePlan == null || piecePlan.isEmpty) return;
+      final sos = parseSalesOrders(_controllers[LabelFields.salesOrder]?.text ?? '');
+      if (alsoShipping && sos.length > 1) {
+        perSoPlans = await _askPieceCountsPerSalesOrder(
+          salesOrders: sos,
+          total: piecePlan,
+        );
+        if (perSoPlans == null) return;
+      }
     }
 
     final bolCopies = <String>[];
@@ -2388,79 +2866,140 @@ class _HomeScreenState extends State<HomeScreen>
         data.set(BolFields.freightCharges, BolFields.freightPrepaid);
       }
 
-      final Uint8List bytes;
-      final alsoShipping = _kind == LabelKind.bol && _bolAlsoShippingLabels;
+      data.set(
+        LabelFields.salesOrder,
+        formatSalesOrders(data.get(LabelFields.salesOrder), finalize: true),
+      );
+      data.set(
+        LabelFields.poNum,
+        formatNamedSegments(data.get(LabelFields.poNum), finalize: true),
+      );
+      data.set(
+        LabelFields.project,
+        formatNamedSegments(data.get(LabelFields.project), finalize: true),
+      );
+      data.set(
+        BolFields.packingList,
+        formatNamedSegments(data.get(BolFields.packingList), finalize: true),
+      );
+      data.set(BolFields.orderNum, data.get(LabelFields.salesOrder));
+
+      Future<File> saveOne({
+        required LabelKind kind,
+        required Uint8List bytes,
+        required ShippingLabelData forData,
+        String? prefixOverride,
+      }) async {
+        final soName = forData.get(LabelFields.salesOrder).isNotEmpty
+            ? forData.get(LabelFields.salesOrder)
+            : forData.get(BolFields.orderNum);
+        final name = widget.storage.labelPdfBaseName(
+          kind: kind,
+          customer: forData.get(LabelFields.customer).isNotEmpty
+              ? forData.get(LabelFields.customer)
+              : forData.get(BolFields.consigneeName),
+          salesOrder: soName,
+          prefixOverride: prefixOverride,
+        );
+        await _uploadGeneratedPdf(
+          kind: kind,
+          fileName: name,
+          bytes: bytes,
+          data: forData,
+        );
+        final file = await widget.storage.writePdf(
+          name,
+          bytes,
+          outputDir: widget.storage.pdfOutputDir(_uiSettings),
+        );
+        final filled = widget.storage.filledDir;
+        if (p.normalize(file.parent.path) != p.normalize(filled.path)) {
+          await widget.storage.writePdf(name, bytes, outputDir: filled);
+        }
+        return file;
+      }
+
+      File? lastFile;
+      var shippingPages = 0;
       switch (_kind) {
         case LabelKind.receiving:
-          bytes = await widget.pdf.buildReceiving(
-            data: data,
-            customerLogoBytes: logoBytes,
-            options: _pdfOptionsForGenerate,
+          lastFile = await saveOne(
+            kind: LabelKind.receiving,
+            bytes: await widget.pdf.buildReceiving(
+              data: data,
+              customerLogoBytes: logoBytes,
+              options: _pdfOptionsForGenerate,
+            ),
+            forData: data,
           );
         case LabelKind.bol:
-          if (alsoShipping) {
-            final shipData = _shippingDataFromBol(data);
-            bytes = await BolLabelPdf(widget.pdf).buildWithShippingLabels(
-              bolData: data,
-              shippingData: shipData,
-              piecePlan: piecePlan!,
-              customerLogoBytes: logoBytes,
-              shipperSignatureBytes: _shipperSignatureBytes,
-              copies: bolCopies,
-              options: _pdfOptionsForGenerate,
-            );
-          } else {
-            bytes = await BolLabelPdf(widget.pdf).build(
+          lastFile = await saveOne(
+            kind: LabelKind.bol,
+            bytes: await BolLabelPdf(widget.pdf).build(
               data: data,
               customerLogoBytes: logoBytes,
               shipperSignatureBytes: _shipperSignatureBytes,
               copies: bolCopies,
               options: _pdfOptionsForGenerate,
+            ),
+            forData: data,
+          );
+          if (alsoShipping) {
+            final shipBase = _shippingDataFromBol(data);
+            final sos = parseSalesOrders(data.get(LabelFields.salesOrder));
+            Uint8List shipBytes;
+            ShippingLabelData shipMeta = shipBase;
+            if (sos.length > 1 && perSoPlans != null) {
+              shipBytes = await widget.pdf.buildForSalesOrders(
+                jobs: [
+                  for (final so in sos)
+                    if (!(perSoPlans[so]?.isEmpty ?? true))
+                      (
+                        _shippingDataForSalesOrder(shipBase, so),
+                        perSoPlans[so]!,
+                      ),
+                ],
+                customerLogoBytes: logoBytes,
+                carrierLogoBytes: _carrierLogoBytesFor(shipBase),
+                options: _pdfOptionsForGenerate,
+              );
+              shippingPages = perSoPlans.values.fold<int>(
+                0,
+                (a, e) => a + e.totalPages,
+              );
+            } else {
+              shipBytes = await widget.pdf.build(
+                data: shipBase,
+                customerLogoBytes: logoBytes,
+                carrierLogoBytes: _carrierLogoBytesFor(shipBase),
+                piecePlan: piecePlan!,
+                options: _pdfOptionsForGenerate,
+              );
+              shippingPages = piecePlan!.totalPages;
+            }
+            lastFile = await saveOne(
+              kind: LabelKind.shipping,
+              bytes: shipBytes,
+              forData: shipMeta,
             );
           }
         case LabelKind.shipping:
-          bytes = await widget.pdf.build(
-            data: data,
-            customerLogoBytes: logoBytes,
-            piecePlan: piecePlan!,
-            options: _pdfOptionsForGenerate,
+          lastFile = await saveOne(
+            kind: LabelKind.shipping,
+            bytes: await widget.pdf.build(
+              data: data,
+              customerLogoBytes: logoBytes,
+              carrierLogoBytes: _carrierLogoBytesFor(data),
+              piecePlan: piecePlan!,
+              options: _pdfOptionsForGenerate,
+            ),
+            forData: data,
           );
+          shippingPages = piecePlan!.totalPages;
         case LabelKind.bulk:
           throw StateError('Bulk labels use _generateBulkLabels');
       }
 
-      final so = data.get(LabelFields.salesOrder).isNotEmpty
-          ? data.get(LabelFields.salesOrder)
-          : data.get(BolFields.orderNum);
-      final name = widget.storage.labelPdfBaseName(
-        kind: _kind,
-        customer: data.get(LabelFields.customer).isNotEmpty
-            ? data.get(LabelFields.customer)
-            : data.get(BolFields.consigneeName),
-        salesOrder: so,
-        prefixOverride: alsoShipping ? 'BOL-SL-' : null,
-      );
-
-      // Cloud is source of truth; local filled/ is a cache for fast open.
-      await _uploadGeneratedPdf(
-        kind: _kind,
-        fileName: name,
-        bytes: bytes,
-        data: data,
-      );
-
-      final file = await widget.storage.writePdf(
-        name,
-        bytes,
-        outputDir: widget.storage.pdfOutputDir(_uiSettings),
-      );
-      // Keep filled/ cache even when the user picked a custom output folder.
-      final filled = widget.storage.filledDir;
-      if (p.normalize(file.parent.path) != p.normalize(filled.path)) {
-        await widget.storage.writePdf(name, bytes, outputDir: filled);
-      }
-
-      // Local contact memory — free-text names used on generate stick for autocomplete.
       await _rememberContactNames([
         data.get(LabelFields.swiftContact),
         data.get(LabelFields.receivedBy),
@@ -2468,21 +3007,24 @@ class _HomeScreenState extends State<HomeScreen>
       ]);
       await _rememberDeliveryAddress(data);
 
-      if (_uiSettings.autoOpenPdf) {
-        await shareOrOpenFile(file: file);
+      if (_uiSettings.autoOpenPdf && lastFile != null) {
+        await shareOrOpenFile(file: lastFile);
       }
 
       if (mounted) {
         final pages = switch (_kind) {
-          LabelKind.shipping => ' (${piecePlan!.totalPages} pages)',
+          LabelKind.shipping => ' ($shippingPages pages)',
           LabelKind.bol => alsoShipping
-              ? ' (${bolCopies.length} BOL + ${piecePlan!.totalPages} shipping · ${data.get(BolFields.documentNumber)})'
+              ? ' (${bolCopies.length} BOL + $shippingPages shipping · ${data.get(BolFields.documentNumber)})'
               : ' (${bolCopies.length} ${bolCopies.length == 1 ? 'copy' : 'copies'} · ${data.get(BolFields.documentNumber)})',
           LabelKind.receiving => '',
           LabelKind.bulk => '',
         };
         final openHint = _uiSettings.autoOpenPdf ? '' : ' (auto-open off)';
-        showAppSnack(context, 'Saved$pages$openHint:\n${file.path}');
+        showAppSnack(
+          context,
+          'Saved$pages$openHint:\n${lastFile?.path ?? ''}',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2491,6 +3033,12 @@ class _HomeScreenState extends State<HomeScreen>
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Uint8List? _carrierLogoBytesFor(ShippingLabelData data) {
+    final id = CarrierLogos.matchId(data.get(LabelFields.carrier));
+    if (id == null) return null;
+    return widget.pdf.carrierLogoPngs[id];
   }
 
   Future<void> _generateBulkLabels() async {
@@ -2870,25 +3418,39 @@ class _HomeScreenState extends State<HomeScreen>
       return _buildDeliveryAddressField(key);
     }
     final m = _meta(key);
+    final isMulti = _isSalesOrderKey(key) || _isNamedMultiKey(key);
     final lines = !m.$3
         ? 1
         : key == LabelFields.specialInstructions
-            ? 2 // Shorter SI entry; PDF band absorbs PO/Project growth.
+            ? 2
             : 3;
+    void onLiveChanged(String v) {
+      if (!isMulti) return;
+      if (_isSalesOrderKey(key) && (v.contains(',') || v.contains('/'))) {
+        _applyFormattedField(key, formatSalesOrders(v, finalize: false));
+      } else if (_isNamedMultiKey(key) && v.contains(',')) {
+        _applyFormattedField(key, formatNamedSegments(v, finalize: false));
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: lines <= 1
           ? TextField(
               controller: _controllers[key],
+              focusNode: isMulti ? _multiFocus(key) : null,
               maxLines: 1,
+              onChanged: isMulti ? onLiveChanged : null,
               decoration: InputDecoration(
                 labelText: m.$2.toUpperCase(),
               ),
             )
           : FormScrollTextField(
               controller: _controllers[key]!,
+              focusNode: isMulti ? _multiFocus(key) : null,
               minLines: 1,
               maxLines: lines,
+              onChanged: isMulti ? onLiveChanged : null,
               decoration: InputDecoration(
                 labelText: m.$2.toUpperCase(),
               ),
@@ -2938,13 +3500,31 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FormScrollTextField(
+          AddressSuggestField(
             controller: _controllers[key]!,
-            minLines: 2,
-            maxLines: 2,
-            decoration: InputDecoration(
-              labelText: m.$2.toUpperCase(),
-            ),
+            entries: _addressBookSync.entries,
+            shipToName: () => _kind == LabelKind.bol
+                ? (_controllers[BolFields.consigneeName]?.text ?? '')
+                : (_controllers[LabelFields.shipTo]?.text ?? ''),
+            customer: () => _controllers[LabelFields.customer]?.text ?? '',
+            labelText: m.$2.toUpperCase(),
+            onPickedBookEntry: (e) {
+              if (_kind == LabelKind.shipping) {
+                if ((_controllers[LabelFields.shipTo]?.text ?? '').trim().isEmpty) {
+                  _setField(LabelFields.shipTo, e.shipToName);
+                }
+                if (e.carrier.isNotEmpty &&
+                    (_controllers[LabelFields.carrier]?.text ?? '').trim().isEmpty) {
+                  _setField(LabelFields.carrier, e.carrier);
+                }
+              } else if (_kind == LabelKind.bol) {
+                if ((_controllers[BolFields.consigneeName]?.text ?? '')
+                    .trim()
+                    .isEmpty) {
+                  _setField(BolFields.consigneeName, e.shipToName);
+                }
+              }
+            },
           ),
           const SizedBox(height: 4),
           Align(
@@ -3565,10 +4145,10 @@ class _HomeScreenState extends State<HomeScreen>
             value: _uiSettings.restoreLowResLogos,
             dense: dense,
             enabled: !_restoringLogo,
-            label: 'Convert low-resolution photo to high-resolution',
+            label: 'Restore low-resolution logos for print',
             subtitle: _restoringLogo
-                ? 'Enhancing logo…'
-                : 'Upscale small or blurry logos to 3000px+ (replaces Recreate)',
+                ? 'Restoring logo…'
+                : 'Gemini redraw: solid fills, clean edges, keep letter outlines',
             onChanged: _restoringLogo
                 ? null
                 : (v) => _setRestoreLowResLogos(v ?? false),
@@ -3584,9 +4164,10 @@ class _HomeScreenState extends State<HomeScreen>
     final parsed = _bulkParse;
     final chrome = SwiftChromeColors.of(context);
     return _Card(
-      title: 'Order Acknowledgement',
+      title: 'Upload OA or Packing List',
       hint:
-          'Upload a Swift OA PDF (Propak / Avery 5163). No manual fields — lines come from the document.',
+          'Upload a Swift Order Acknowledgement or packing list PDF (Propak / Avery 5163). '
+          'Lines come from the document.',
       dense: dense,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3604,7 +4185,7 @@ class _HomeScreenState extends State<HomeScreen>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.upload_file_outlined, size: 18),
-                label: Text(_bulkParsing ? 'Reading…' : 'Upload OA PDF'),
+                label: Text(_bulkParsing ? 'Reading…' : 'Upload OA or Packing List'),
               ),
               if (parsed != null)
                 OutlinedButton.icon(
@@ -4039,12 +4620,13 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     NavigationRail(
                       extended: railExtended,
-                      minExtendedWidth: 168,
+                      minExtendedWidth: 200,
                       backgroundColor: chrome.panel,
                       selectedIndex: _kindRailIndex,
                       labelType: railExtended
                           ? NavigationRailLabelType.none
                           : NavigationRailLabelType.all,
+                      trailing: OperationsAppsRail(compact: !railExtended),
                       onDestinationSelected: (i) {
                         _selectKind(switch (i) {
                           1 => LabelKind.receiving,
@@ -4401,6 +4983,7 @@ class _HomeScreenState extends State<HomeScreen>
                     minWidth: short ? 56 : 64,
                     backgroundColor: chrome.panel,
                     selectedIndex: _kindRailIndex,
+                    trailing: OperationsAppsRail(compact: true),
                     // Labels eat vertical space on short landscape phones.
                     labelType: short
                         ? NavigationRailLabelType.selected
@@ -4547,9 +5130,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    Platform.isWindows
-                        ? 'Upscaling to 3000px height on this PC'
-                        : 'Enhancing to 3000px height on Fly.io',
+                    'Gemini is redrawing a sharp logo. Needs internet.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -5052,6 +5633,203 @@ class _Header extends StatelessWidget {
           Divider(height: 1, color: chrome.border),
         ],
       ),
+    );
+  }
+}
+
+class _AddressBookEditor extends StatefulWidget {
+  const _AddressBookEditor({required this.sync});
+
+  final AddressBookSync sync;
+
+  @override
+  State<_AddressBookEditor> createState() => _AddressBookEditorState();
+}
+
+class _AddressBookEditorState extends State<_AddressBookEditor> {
+  bool _adding = false;
+  bool _busy = false;
+  final _name = TextEditingController();
+  final _address = TextEditingController();
+  final _carrier = TextEditingController();
+  final _accounts = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _address.dispose();
+    _carrier.dispose();
+    _accounts.dispose();
+    super.dispose();
+  }
+
+  List<DeliveryAddressEntry> get _entries =>
+      AddressBookSync.sortByShipToName(widget.sync.entries);
+
+  Future<void> _add() async {
+    final addr = _address.text.trim();
+    if (addr.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await widget.sync.remember(
+        shipToName: _name.text.trim(),
+        address: addr,
+        carrier: _carrier.text.trim(),
+        accountNumbers: _accounts.text.trim(),
+      );
+      _name.clear();
+      _address.clear();
+      _carrier.clear();
+      _accounts.clear();
+      _adding = false;
+    } catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Could not add address: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete(DeliveryAddressEntry e) async {
+    setState(() => _busy = true);
+    try {
+      await widget.sync.forget(e.addressKey);
+    } catch (e) {
+      if (mounted) {
+        showAppSnack(context, 'Could not delete: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _entries;
+    return AlertDialog(
+      title: const Text('Delivery Address book'),
+      content: SizedBox(
+        width: 480,
+        height: 440,
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _adding = !_adding),
+                icon: Icon(_adding ? Icons.close : Icons.add),
+                label: Text(_adding ? 'Cancel add' : 'Add address'),
+              ),
+            ),
+            if (_adding) ...[
+              TextField(
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'SHIP TO NAME'),
+              ),
+              AddressSuggestField(
+                controller: _address,
+                entries: widget.sync.entries,
+                shipToName: () => _name.text,
+                customer: () => '',
+                labelText: 'ADDRESS',
+                onPicked: (s) {
+                  if (_name.text.trim().isNotEmpty) return;
+                  final n = s.placeName.trim();
+                  if (n.isEmpty) return;
+                  _name.text = n;
+                  setState(() {});
+                },
+                onPickedBookEntry: (e) {
+                  if (_name.text.trim().isEmpty &&
+                      e.shipToName.trim().isNotEmpty) {
+                    _name.text = e.shipToName;
+                  }
+                  if (_carrier.text.trim().isEmpty && e.carrier.isNotEmpty) {
+                    _carrier.text = e.carrier;
+                  }
+                  if (_accounts.text.trim().isEmpty &&
+                      e.accountNumbers.isNotEmpty) {
+                    _accounts.text = e.accountNumbers;
+                  }
+                  setState(() {});
+                },
+              ),
+              TextField(
+                controller: _carrier,
+                decoration: const InputDecoration(labelText: 'CARRIER'),
+              ),
+              TextField(
+                controller: _accounts,
+                decoration: const InputDecoration(labelText: 'ACCOUNT #'),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _busy ? null : _add,
+                  child: const Text('Save'),
+                ),
+              ),
+              const Divider(),
+            ],
+            Expanded(
+              child: entries.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No saved addresses yet.\nAdd one here or they are remembered when you Generate.',
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: entries.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final e = entries[i];
+                        return ListTile(
+                          title: Text(
+                            e.shipToName.isEmpty
+                                ? '(No ship-to name)'
+                                : e.shipToName,
+                          ),
+                          subtitle: Text(
+                            [
+                              e.address,
+                              if (e.carrier.isNotEmpty) 'Carrier: ${e.carrier}',
+                              if (e.accountNumbers.isNotEmpty)
+                                'Acct: ${e.accountNumbers}',
+                            ].join('\n'),
+                          ),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Delete',
+                                onPressed: _busy ? null : () => _delete(e),
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, e),
+                                child: const Text('USE'),
+                              ),
+                            ],
+                          ),
+                          onTap: () => Navigator.pop(context, e),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

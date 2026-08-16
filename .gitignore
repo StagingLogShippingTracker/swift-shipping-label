@@ -44,6 +44,12 @@ update_schedule.json
 signatures.json
 data_epoch.json
 
+# Retired Fly.io restore-logo app — OneDrive sometimes restores these; never deploy.
+services/restore-logo/Dockerfile
+services/restore-logo/fly.toml
+services/restore-logo/main.py
+services/restore-logo/.dockerignore
+
 # OneDrive / Windows junk
 desktop.ini
 Thumbs.db

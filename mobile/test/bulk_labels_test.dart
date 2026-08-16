@@ -207,6 +207,36 @@ part # 1
       expect(result.headerShipToName, 'ACME LTD.');
       expect(result.headerShipToAddress.toLowerCase(), contains('main'));
     });
+
+    test('packing list fills Swift packing slip number', () {
+      const text = '''
+PACKING LIST
+PS-88991
+Order Date
+Order Number
+Swift Oilfield Supply Inc.
+1425965
+Bill To: 11693 Ship To:
+PROPAK SYSTEMS LTD.
+440 EAST. LAKE ROAD
+AIRDRIE, AB T4A 2J8
+CA
+403-912-7000
+PROPAK SYSTEMS LTD.
+440 EAST. LAKE ROAD
+AIRDRIE, AB T4A 2J8
+CA
+Ordered By: RONDA MOORE
+ProjectLocationPO Number
+P613120
+Packing Slip No. PS-88991
+''';
+      final result = const OrderAckParser().parseText(text);
+      expect(result.documentKind, 'packing_list');
+      expect(result.packingSlipNumber, 'PS-88991');
+      expect(result.orderNumber, '1425965');
+      expect(result.customerName, 'PROPAK SYSTEMS LTD.');
+    });
   });
 
   group('Avery 5163 tiling', () {

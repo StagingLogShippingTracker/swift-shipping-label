@@ -1,9 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'address_match.dart';
+import 'address_osm_enrich.dart';
 import 'app_config.dart';
+import 'gemini_client.dart';
+import 'job_pdf_ai.dart';
+import 'osm_nominatim_client.dart';
 
 /// One Delivery Address book entry shared by Shipping + BOL.
 class DeliveryAddressEntry {
@@ -23,14 +29,21 @@ class DeliveryAddressEntry {
   final String accountNumbers;
   final DateTime lastUsedAt;
 
-  DeliveryAddressEntry copyWith({String? addressKey}) {
+  DeliveryAddressEntry copyWith({
+    String? addressKey,
+    String? shipToName,
+    String? address,
+    String? carrier,
+    String? accountNumbers,
+    DateTime? lastUsedAt,
+  }) {
     return DeliveryAddressEntry(
       addressKey: addressKey ?? this.addressKey,
-      shipToName: shipToName,
-      address: address,
-      carrier: carrier,
-      accountNumbers: accountNumbers,
-      lastUsedAt: lastUsedAt,
+      shipToName: shipToName ?? this.shipToName,
+      address: address ?? this.address,
+      carrier: carrier ?? this.carrier,
+      accountNumbers: accountNumbers ?? this.accountNumbers,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
     );
   }
 
@@ -46,7 +59,16 @@ class DeliveryAddressEntry {
 
 /// Syncs Delivery Address book across Windows & Android (not contact memory).
 class AddressBookSync {
-  AddressBookSync();
+  AddressBookSync({
+    OsmNominatimClient? osm,
+    Duration osmMinInterval = const Duration(milliseconds: 1100),
+  })  : _osm = osm ?? OsmNominatimClient(),
+        _osmMinInterval = osmMinInterval;
+
+  final OsmNominatimClient _osm;
+  final Duration _osmMinInterval;
+  Future<void>? _osmPass;
+  DateTime? _lastOsmAt;
 
   static const _timeout = Duration(seconds: 25);
   static const maxEntries = 80;
@@ -67,38 +89,101 @@ class AddressBookSync {
 
   Future<void> syncOnLaunch() async {
     entries = await fetchAll();
+    unawaited(ensureOsmEnrich());
+  }
+
+  /// One-shot OSM fill + courier-aware collapse. Safe to await when opening
+  /// the address book; launch starts it in the background.
+  Future<void> ensureOsmEnrich() {
+    return _osmPass ??= _runOsmEnrichPass();
+  }
+
+  Future<void> _runOsmEnrichPass() async {
+    try {
+      final raw = entries.isNotEmpty ? List<DeliveryAddressEntry>.from(entries) : await _fetchRaw();
+      final filled = <DeliveryAddressEntry>[];
+      for (final e in raw) {
+        if (!AddressOsmEnrich.looksIncomplete(e.address)) {
+          filled.add(e);
+          continue;
+        }
+        await _paceOsm();
+        List<NominatimHit> hits = const [];
+        try {
+          hits = await _osm.searchAddress(e.address, shipTo: e.shipToName);
+        } catch (_) {}
+        final next = AddressOsmEnrich.fillFromHits(e.address, hits);
+        filled.add(next == e.address ? e : e.copyWith(address: next));
+      }
+      var collapsed = collapseDuplicates(filled);
+      if (GeminiClient.isConfigured) {
+        try {
+          collapsed = await _aiMerge(collapsed);
+        } catch (_) {}
+      }
+      await _persistCollapsed(raw, collapsed);
+      try {
+        collapsed = collapseDuplicates(await _fetchRaw());
+      } catch (_) {}
+      entries = _capAndSort(collapsed);
+    } catch (_) {}
+  }
+
+  Future<void> _paceOsm() async {
+    final last = _lastOsmAt;
+    if (last != null) {
+      final wait = _osmMinInterval - DateTime.now().difference(last);
+      if (wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+      }
+    }
+    _lastOsmAt = DateTime.now();
   }
 
   Future<List<DeliveryAddressEntry>> fetchAll() async {
     final raw = await _fetchRaw();
-    var collapsed = _collapseDuplicates(raw);
+    var collapsed = collapseDuplicates(raw);
+    if (GeminiClient.isConfigured) {
+      try {
+        collapsed = await _aiMerge(collapsed);
+      } catch (_) {}
+    }
     await _persistCollapsed(raw, collapsed);
     try {
-      collapsed = _collapseDuplicates(await _fetchRaw());
+      collapsed = collapseDuplicates(await _fetchRaw());
     } catch (_) {}
-    if (collapsed.length > maxEntries) {
-      collapsed = List<DeliveryAddressEntry>.from(collapsed)
-        ..sort((a, b) => b.lastUsedAt.compareTo(a.lastUsedAt));
-      collapsed = collapsed.take(maxEntries).toList();
-    }
-    entries = sortByShipToName(collapsed);
+    entries = _capAndSort(collapsed);
     return entries;
   }
 
-  /// One row per physical place on every device: drop extras and rewrite the
-  /// keeper to [AddressMatch.addressKey] when the stored PK is stale.
+  static List<DeliveryAddressEntry> _capAndSort(
+    List<DeliveryAddressEntry> collapsed,
+  ) {
+    var out = collapsed;
+    if (out.length > maxEntries) {
+      out = List<DeliveryAddressEntry>.from(out)
+        ..sort((a, b) => b.lastUsedAt.compareTo(a.lastUsedAt));
+      out = out.take(maxEntries).toList();
+    }
+    return sortByShipToName(out);
+  }
+
+  /// Drop extras and rewrite keepers to [rowKey] so courier variants persist.
   Future<void> _persistCollapsed(
     List<DeliveryAddressEntry> raw,
     List<DeliveryAddressEntry> collapsed,
   ) async {
     final keepKeys = <String>{};
     for (final e in collapsed) {
-      final canonical = AddressMatch.addressKey(e.address);
-      final destKey = canonical.isEmpty ? e.addressKey : canonical;
-      keepKeys.add(destKey);
-      if (destKey == e.addressKey) continue;
+      final destKey = rowKey(
+        address: e.address,
+        carrier: e.carrier,
+        accountNumbers: e.accountNumbers,
+      );
+      final key = destKey.isEmpty ? e.addressKey : destKey;
+      keepKeys.add(key);
       try {
-        await _upsertRow(e.copyWith(addressKey: destKey));
+        await _upsertRow(e.copyWith(addressKey: key));
       } catch (_) {}
     }
     for (final e in raw) {
@@ -109,23 +194,57 @@ class AddressBookSync {
     }
   }
 
-  /// Keep one row per ship-to + place; prefer the most recently used.
-  static List<DeliveryAddressEntry> _collapseDuplicates(
+  /// Keep one row per ship-to + place + courier (distinct accounts stay split).
+  @visibleForTesting
+  static List<DeliveryAddressEntry> collapseDuplicates(
     List<DeliveryAddressEntry> input,
   ) {
-    final best = <String, DeliveryAddressEntry>{};
+    final byCourier = <String, List<DeliveryAddressEntry>>{};
     for (final e in input) {
-      final id = _placeId(e.shipToName, e.address);
-      if (id.isEmpty) continue;
-      final prev = best[id];
-      if (prev == null || e.lastUsedAt.isAfter(prev.lastUsedAt)) {
-        best[id] = e;
-      }
+      final s = AddressMatch.shipToKey(e.shipToName);
+      final a = AddressMatch.addressKey(e.address);
+      if (a.isEmpty) continue;
+      final id = '${s.isEmpty ? '_' : s}|$a|${_normCarrier(e.carrier)}';
+      byCourier.putIfAbsent(id, () => []).add(e);
     }
-    return sortByShipToName(best.values.toList());
+    final out = <DeliveryAddressEntry>[];
+    for (final group in byCourier.values) {
+      out.addAll(_splitByAccount(group));
+    }
+    return sortByShipToName(out);
   }
 
-  /// Z–A by Ship To Name (case-insensitive).
+  static List<DeliveryAddressEntry> _splitByAccount(
+    List<DeliveryAddressEntry> group,
+  ) {
+    if (group.length == 1) return group;
+    final byAcc = <String, DeliveryAddressEntry>{};
+    final empties = <DeliveryAddressEntry>[];
+    for (final e in group) {
+      final acc = _normAccount(e.accountNumbers);
+      if (acc.isEmpty) {
+        empties.add(e);
+        continue;
+      }
+      final prev = byAcc[acc];
+      byAcc[acc] = prev == null ? e : mergeKeepers(e, prev);
+    }
+    if (byAcc.isEmpty) {
+      return [group.reduce(mergeKeepers)];
+    }
+    if (empties.isNotEmpty) {
+      final emptyMerged = empties.reduce(mergeKeepers);
+      DeliveryAddressEntry newest = byAcc.values.first;
+      for (final e in byAcc.values) {
+        if (e.lastUsedAt.isAfter(newest.lastUsedAt)) newest = e;
+      }
+      final acc = _normAccount(newest.accountNumbers);
+      byAcc[acc] = mergeKeepers(newest, emptyMerged);
+    }
+    return byAcc.values.toList();
+  }
+
+  /// A–Z by Ship To Name (case-insensitive).
   static List<DeliveryAddressEntry> sortByShipToName(
     List<DeliveryAddressEntry> input,
   ) {
@@ -134,18 +253,124 @@ class AddressBookSync {
       final an = a.shipToName.trim();
       final bn = b.shipToName.trim();
       if (an.isEmpty != bn.isEmpty) return an.isEmpty ? 1 : -1;
-      final byName = bn.toLowerCase().compareTo(an.toLowerCase());
+      final byName = an.toLowerCase().compareTo(bn.toLowerCase());
       if (byName != 0) return byName;
       return b.lastUsedAt.compareTo(a.lastUsedAt);
     });
     return out;
   }
 
-  static String _placeId(String shipTo, String address) {
-    final s = AddressMatch.shipToKey(shipTo);
-    final a = AddressMatch.addressKey(address);
-    if (s.isEmpty || a.isEmpty) return a;
-    return '$s|$a';
+  @visibleForTesting
+  static DeliveryAddressEntry mergeKeepers(
+    DeliveryAddressEntry a,
+    DeliveryAddressEntry b,
+  ) {
+    final newer = a.lastUsedAt.isAfter(b.lastUsedAt) ? a : b;
+    final older = identical(newer, a) ? b : a;
+    final richer = newer.address.trim().length >= older.address.trim().length
+        ? newer.address
+        : older.address;
+    final carrier =
+        newer.carrier.trim().isNotEmpty ? newer.carrier : older.carrier;
+    final accounts = _mergeAccounts(a.accountNumbers, b.accountNumbers);
+    return DeliveryAddressEntry(
+      addressKey: rowKey(
+        address: richer,
+        carrier: carrier,
+        accountNumbers: accounts,
+      ),
+      shipToName: newer.shipToName.trim().isNotEmpty
+          ? newer.shipToName
+          : older.shipToName,
+      address: richer,
+      carrier: carrier,
+      accountNumbers: accounts,
+      lastUsedAt: newer.lastUsedAt,
+    );
+  }
+
+  static String _mergeAccounts(String a, String b) {
+    final parts = <String>{};
+    for (final raw in [a, b]) {
+      for (final p in raw.split(RegExp(r'[,;/]+'))) {
+        final t = p.trim();
+        if (t.isNotEmpty) parts.add(t);
+      }
+    }
+    if (parts.isEmpty) {
+      return a.trim().isNotEmpty ? a.trim() : b.trim();
+    }
+    return parts.join(', ');
+  }
+
+  /// Stable PK: street fingerprint, plus courier/account when set.
+  @visibleForTesting
+  static String rowKey({
+    required String address,
+    required String carrier,
+    required String accountNumbers,
+  }) {
+    final street = AddressMatch.addressKey(address);
+    if (street.isEmpty) return '';
+    final c = _normCarrier(carrier);
+    final acc = _normAccount(accountNumbers);
+    if (c.isEmpty && acc.isEmpty) return street;
+    return '$street::$c::$acc';
+  }
+
+  static String _normCarrier(String raw) =>
+      raw.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  static String _normAccount(String raw) =>
+      raw.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+
+  @visibleForTesting
+  static bool sameCourier(DeliveryAddressEntry a, DeliveryAddressEntry b) {
+    if (_normCarrier(a.carrier) != _normCarrier(b.carrier)) return false;
+    final aa = _normAccount(a.accountNumbers);
+    final ab = _normAccount(b.accountNumbers);
+    if (aa.isEmpty || ab.isEmpty) return true;
+    return aa == ab;
+  }
+
+  Future<List<DeliveryAddressEntry>> _aiMerge(
+    List<DeliveryAddressEntry> input,
+  ) async {
+    if (input.length < 2) return input;
+    final ai = JobPdfAi();
+    final kept = <DeliveryAddressEntry>[];
+    for (final e in input) {
+      var merged = false;
+      for (var i = 0; i < kept.length; i++) {
+        final prev = kept[i];
+        if (!sameCourier(e, prev)) continue;
+        if (AddressMatch.samePlace(
+          shipToA: e.shipToName,
+          addressA: e.address,
+          shipToB: prev.shipToName,
+          addressB: prev.address,
+        )) {
+          kept[i] = mergeKeepers(e, prev);
+          merged = true;
+          break;
+        }
+        final sameName = AddressMatch.shipToKey(e.shipToName) ==
+            AddressMatch.shipToKey(prev.shipToName);
+        if (!sameName) continue;
+        final same = await ai.samePlace(
+          shipToA: e.shipToName,
+          addressA: e.address,
+          shipToB: prev.shipToName,
+          addressB: prev.address,
+        );
+        if (!same) continue;
+        kept[i] = mergeKeepers(e, prev);
+        merged = true;
+        break;
+      }
+      if (!merged) kept.add(e);
+    }
+    return sortByShipToName(kept);
   }
 
   Future<void> remember({
@@ -163,21 +388,35 @@ class AddressBookSync {
       existing = entries;
     }
 
+    final incoming = DeliveryAddressEntry(
+      addressKey: '',
+      shipToName: shipToName.trim(),
+      address: addr,
+      carrier: carrier.trim(),
+      accountNumbers: accountNumbers.trim(),
+      lastUsedAt: DateTime.now().toUtc(),
+    );
+
     final matches = existing
         .where(
-          (e) => AddressMatch.samePlace(
-            shipToA: shipToName,
-            addressA: addr,
-            shipToB: e.shipToName,
-            addressB: e.address,
-          ),
+          (e) =>
+              AddressMatch.samePlace(
+                shipToA: shipToName,
+                addressA: addr,
+                shipToB: e.shipToName,
+                addressB: e.address,
+              ) &&
+              sameCourier(incoming, e),
         )
         .toList();
 
-    final key = AddressMatch.addressKey(addr);
+    final key = rowKey(
+      address: addr,
+      carrier: incoming.carrier,
+      accountNumbers: incoming.accountNumbers,
+    );
     if (key.isEmpty) return;
 
-    final now = DateTime.now().toUtc();
     await _clearTombstone(key);
     for (final extra in matches) {
       if (extra.addressKey != key) {
@@ -185,16 +424,7 @@ class AddressBookSync {
       }
     }
 
-    await _upsertRow(
-      DeliveryAddressEntry(
-        addressKey: key,
-        shipToName: shipToName.trim(),
-        address: addr,
-        carrier: carrier.trim(),
-        accountNumbers: accountNumbers.trim(),
-        lastUsedAt: now,
-      ),
-    );
+    await _upsertRow(incoming.copyWith(addressKey: key));
     await fetchAll();
   }
 
@@ -236,8 +466,8 @@ class AddressBookSync {
   }
 
   Future<void> forget(String addressOrKey) async {
-    final needleKey = AddressMatch.addressKey(addressOrKey);
-    if (needleKey.isEmpty && addressOrKey.trim().isEmpty) return;
+    final trimmed = addressOrKey.trim();
+    if (trimmed.isEmpty) return;
     List<DeliveryAddressEntry> existing;
     try {
       existing = await _fetchRaw();
@@ -245,16 +475,20 @@ class AddressBookSync {
       existing = entries;
     }
     final toDrop = <String>{};
-    final raw = addressOrKey.trim().toLowerCase();
     for (final e in existing) {
-      if (e.addressKey == addressOrKey.trim() ||
-          e.addressKey == needleKey ||
-          AddressMatch.addressKey(e.address) == needleKey ||
-          e.address.trim().toLowerCase() == raw) {
-        toDrop.add(e.addressKey);
-      }
+      if (e.addressKey == trimmed) toDrop.add(e.addressKey);
     }
-    if (toDrop.isEmpty && needleKey.isNotEmpty) toDrop.add(needleKey);
+    if (toDrop.isEmpty) {
+      final needleKey = AddressMatch.addressKey(trimmed);
+      final raw = trimmed.toLowerCase();
+      for (final e in existing) {
+        if (e.addressKey == needleKey ||
+            e.address.trim().toLowerCase() == raw) {
+          toDrop.add(e.addressKey);
+        }
+      }
+      if (toDrop.isEmpty && needleKey.isNotEmpty) toDrop.add(needleKey);
+    }
     for (final key in toDrop) {
       await _deleteRow(key);
       await _tombstone(key);

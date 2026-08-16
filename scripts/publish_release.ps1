@@ -204,6 +204,11 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.76)
+- **MORE APPS:** expanded side rail advertises Swift Staging & Shipping Log — launch if installed, otherwise download Setup/APK and start install
+- **Address book:** OSM fills missing city/province/postal; same ship-to with different couriers stays as separate rows
+- **History:** prune deletes snapshot-less rows and their PDFs (and logos) from Supabase Storage
+
 ### What's new (v1.1.75)
 - **OA fill:** Shipping, Receiving, and BOL can upload a Swift Order Acknowledgement under Customer preset
 - **Fields:** sales order, customer PO / project, Bill To customer; packing list stays blank
@@ -221,7 +226,7 @@ $notes = @"
 - **History:** generated PDFs older than 90 days are deleted from the app cache and Supabase
 
 ### Also in recent releases
-- RealESRGAN logo restore (Windows local / Android Fly.io); Recreate/vectorizer removed
+- Gemini logo restore (Windows/Android); local Python RealESRGAN offline; Recreate/vectorizer removed
 - Bulk OA CPO LINE parsing, looser customer-name matching
 - Android portrait Chrome-like header; landscape Windows-style rail layout
 

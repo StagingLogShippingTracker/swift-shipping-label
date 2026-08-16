@@ -262,9 +262,9 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _restoreHighRes,
                 onChanged: (v) => setState(() => _restoreHighRes = v ?? false),
-                title: const Text('Convert low-resolution photo to high-resolution'),
+                title: const Text('Restore low-resolution logo for print'),
                 subtitle: const Text(
-                  'Upscale small or blurry logos to 3000px+ (replaces Recreate)',
+                  'Gemini redraw: solid fills, clean edges, keep letter outlines. Internet required.',
                   style: TextStyle(fontSize: 12, color: SwiftColors.muted),
                 ),
                 controlAffinity: ListTileControlAffinity.leading,

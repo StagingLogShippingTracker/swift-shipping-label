@@ -1,22 +1,62 @@
 package com.swiftoilfield.swift_shipping_label
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.sqrt
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.swiftoilfield.swift_shipping_label/native"
+    private val shakeChannelName = "com.swiftoilfield.swift_shipping_label/shake"
+    private val siblingAppsChannelName =
+        "com.swiftoilfield.swift_shipping_label/sibling_apps"
     private var pendingResult: MethodChannel.Result? = null
     private val pickImages = 1001
     private val pickPdf = 1002
+    private val pickPdfs = 1003
+    private var shakeSink: EventChannel.EventSink? = null
+    private var sensorManager: SensorManager? = null
+    private var lastShakeAt = 0L
+    private var lastPeakAt = 0L
+    private var shakePeaks = 0
+
+    private val shakeListener = object : SensorEventListener {
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+        override fun onSensorChanged(event: SensorEvent) {
+            val g = sqrt(
+                event.values[0] * event.values[0] +
+                    event.values[1] * event.values[1] +
+                    event.values[2] * event.values[2],
+            ) / SensorManager.GRAVITY_EARTH
+            // Hard shake: ~3.2g+, two peaks close together.
+            if (g < 3.2f) return
+            val now = System.currentTimeMillis()
+            if (now - lastPeakAt > 450) shakePeaks = 0
+            lastPeakAt = now
+            shakePeaks++
+            if (shakePeaks < 2) return
+            shakePeaks = 0
+            if (now - lastShakeAt < 1800) return
+            lastShakeAt = now
+            runOnUiThread { shakeSink?.success("shake") }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -72,13 +112,88 @@ class MainActivity : FlutterActivity() {
                             addCategory(Intent.CATEGORY_OPENABLE)
                         }
                         startActivityForResult(
-                            Intent.createChooser(intent, "Select Order Acknowledgement PDF"),
+                            Intent.createChooser(intent, "Select PDF"),
                             pickPdf,
+                        )
+                    }
+                    "pickPdfs" -> {
+                        if (pendingResult != null) {
+                            result.error("busy", "Picker already open", null)
+                            return@setMethodCallHandler
+                        }
+                        val multiple = call.argument<Boolean>("multiple") ?: false
+                        pendingResult = result
+                        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                            type = "application/pdf"
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+                        }
+                        startActivityForResult(
+                            Intent.createChooser(intent, "Select PDF(s)"),
+                            pickPdfs,
                         )
                     }
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            siblingAppsChannelName,
+        ).setMethodCallHandler { call, result ->
+            val packageName = call.argument<String>("packageName").orEmpty()
+            when (call.method) {
+                "isInstalled" -> result.success(isSiblingInstalled(packageName))
+                "launch" -> result.success(launchSibling(packageName))
+                else -> result.notImplemented()
+            }
+        }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, shakeChannelName)
+            .setStreamHandler(
+                object : EventChannel.StreamHandler {
+                    override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                        shakeSink = events
+                        val sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+                        sensorManager = sm
+                        val sensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                        if (sensor != null) {
+                            sm.registerListener(
+                                shakeListener,
+                                sensor,
+                                SensorManager.SENSOR_DELAY_GAME,
+                            )
+                        }
+                    }
+
+                    override fun onCancel(arguments: Any?) {
+                        sensorManager?.unregisterListener(shakeListener)
+                        shakeSink = null
+                    }
+                },
+            )
+    }
+
+    override fun onDestroy() {
+        sensorManager?.unregisterListener(shakeListener)
+        shakeSink = null
+        super.onDestroy()
+    }
+
+    private fun isSiblingInstalled(packageName: String): Boolean {
+        if (packageName.isEmpty()) return false
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    private fun launchSibling(packageName: String): Boolean {
+        if (packageName.isEmpty()) return false
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        return true
     }
 
     private fun shareFile(path: String, mime: String, subject: String) {
@@ -133,7 +248,7 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != pickImages && requestCode != pickPdf) return
+        if (requestCode != pickImages && requestCode != pickPdf && requestCode != pickPdfs) return
         val result = pendingResult
         pendingResult = null
         if (result == null) return
@@ -149,6 +264,23 @@ class MainActivity : FlutterActivity() {
             if (requestCode == pickPdf) {
                 val path = data.data?.let { uri -> copyUriToCache(uri, "picked_docs") }
                 result.success(path)
+                return
+            }
+            if (requestCode == pickPdfs) {
+                val paths = mutableListOf<String>()
+                val clip = data.clipData
+                if (clip != null) {
+                    for (i in 0 until clip.itemCount) {
+                        clip.getItemAt(i).uri?.let { uri ->
+                            copyUriToCache(uri, "picked_docs")?.let { paths.add(it) }
+                        }
+                    }
+                } else {
+                    data.data?.let { uri ->
+                        copyUriToCache(uri, "picked_docs")?.let { paths.add(it) }
+                    }
+                }
+                result.success(paths)
                 return
             }
             val paths = mutableListOf<String>()

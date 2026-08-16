@@ -1,37 +1,36 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
-/// Windows-only local restore via `logo_restorer.py` (RealESRGAN).
+import 'gemini_client.dart';
+import 'logo_image_process.dart';
+
+/// Print-ready customer logo restore.
 ///
-/// Target is **[minDimension] px tall**; width follows aspect ratio.
-/// Fly.io is not used on Windows.
+/// Proven path (BFL + Murray's Trucking):
+/// 1. Gemini redraws the mark (vector-like edges, solid fills, keep letter
+///    strokes). Do not upscale JPEG pixels.
+/// 2. Crop empty plate, flatten every fill (any hue), restore a dropped
+///    dark outline from the source, scale to [minDimension] px tall.
+/// 3. If Gemini is down: local predictive mask rebuild, then the same
+///    finish. Offline Windows can still run `logo_restorer.py` (RealESRGAN).
 class LogoRestorer {
   LogoRestorer._();
 
   static const minDimension = 3000;
+  static const pipelineVersion = 'print-ready-v1';
   static const cacheFileName = 'logo_restore_cache.json';
-
-  static String? _cachedPython;
-  static String? _cachedScript;
   static final Map<String, Future<File>> _inFlight = {};
 
-  /// Returns [source] on non-Windows, when already high-res, or on failure.
-  ///
-  /// Restoration runs in a background isolate (Python subprocess) so the UI
-  /// isolate stays responsive.
   static Future<File> ensureHighRes(
     File source, {
     required Directory logosDir,
     void Function(String)? onLog,
   }) async {
-    if (!Platform.isWindows) return source;
     if (!await source.exists()) return source;
 
     final identity = await _sourceIdentity(source);
@@ -63,87 +62,66 @@ class LogoRestorer {
     final cachedPath = cache[identity];
     if (cachedPath != null) {
       final cached = File(cachedPath);
-      if (await cached.exists() &&
-          await _heightPx(cached) >= minDimension) {
+      if (await cached.exists() && await cached.length() > 0) {
         onLog?.call('logo_restorer: cache hit ${cached.path}');
         return cached;
       }
     }
 
-    final height = await _heightPx(source);
-    if (height >= minDimension) {
+    final sourceBytes = await source.readAsBytes();
+    if (_isPrintReadyRestored(source, sourceBytes)) {
+      onLog?.call('logo_restorer: already print-ready ${source.path}');
       cache[identity] = source.absolute.path;
       await _saveCache(logosDir, cache);
-      onLog?.call('logo_restorer: already ${height}px tall, skip');
       return source;
     }
 
-    final python = await _resolvePython();
-    final script = await _resolveScript();
-    if (python == null || script == null) {
-      onLog?.call(
-        'logo_restorer: Python missing — Lanczos to ${minDimension}px height',
-      );
-      final dest = await _restoredDestFile(source, logosDir);
-      final scaled = await _lanczosToMinHeight(source, dest);
-      if (scaled != null) {
-        cache[identity] = scaled.absolute.path;
-        await _saveCache(logosDir, cache);
-        return scaled;
+    Uint8List? png;
+    Object? lastError;
+    if (GeminiClient.isConfigured) {
+      try {
+        onLog?.call('logo_restorer: Gemini restore ${source.path}');
+        png = await GeminiClient().restoreLogoPng(sourceBytes);
+      } catch (e) {
+        lastError = e;
+        onLog?.call('logo_restorer: Gemini failed ($e); local rebuild');
       }
-      return source;
     }
-
-    final dest = await _restoredDestFile(source, logosDir);
-    onLog?.call(
-      'logo_restorer: restoring ${source.path} -> ${dest.path} '
-      '(${height}px tall, python=$python)',
-    );
-
-    try {
-      final code = await Isolate.run(
-        () => logoRestoreRunProcess(
-          python: python,
-          script: script,
-          input: source.absolute.path,
-          output: dest.absolute.path,
-          minDimension: minDimension,
-        ),
-      );
-      if (code != 0 || !await dest.exists() || await _heightPx(dest) < minDimension) {
-        onLog?.call('logo_restorer: python incomplete, Lanczos to ${minDimension}px height');
-        final scaled = await _lanczosToMinHeight(source, dest);
-        if (scaled != null) {
-          cache[identity] = scaled.absolute.path;
-          await _saveCache(logosDir, cache);
-          return scaled;
+    if (png == null || png.isEmpty) {
+      try {
+        onLog?.call('logo_restorer: local predictive rebuild');
+        final decoded = img.decodeImage(sourceBytes);
+        if (decoded != null) {
+          final rebuilt = LogoImageProcessor.rebuildPredictedEdges(
+            decoded,
+            targetHeight: minDimension,
+          );
+          png = Uint8List.fromList(img.encodePng(rebuilt));
         }
-        onLog?.call('logo_restorer: python exit=$code, keeping original');
-        return source;
+      } catch (e) {
+        lastError = e;
       }
-      cache[identity] = dest.absolute.path;
-      await _saveCache(logosDir, cache);
-      onLog?.call('logo_restorer: wrote ${dest.path}');
-      return dest;
-    } catch (e) {
-      onLog?.call('logo_restorer: failed, Lanczos fallback: $e');
-      final scaled = await _lanczosToMinHeight(source, dest);
-      if (scaled != null) {
-        cache[identity] = scaled.absolute.path;
-        await _saveCache(logosDir, cache);
-        return scaled;
-      }
-      return source;
     }
+    if (png == null || png.isEmpty) {
+      throw StateError(
+        'Logo restore needs Gemini (internet) or a local rebuild.'
+        '${lastError == null ? '' : ' ($lastError)'}',
+      );
+    }
+    final finalized = finalizeRestoredPng(png, sourceBytes: sourceBytes);
+    final dest = await _restoredDestFile(source, logosDir);
+    await dest.writeAsBytes(finalized, flush: true);
+    cache[identity] = dest.absolute.path;
+    await _saveCache(logosDir, cache);
+    onLog?.call('logo_restorer: wrote ${dest.path}');
+    return dest;
   }
 
-  static Future<int> _heightPx(File file) async {
-    try {
-      final bytes = await file.readAsBytes();
-      return heightOfBytes(bytes);
-    } catch (_) {
-      return 0;
-    }
+  /// Skip a second Gemini pass on a file this pipeline already finished.
+  static bool _isPrintReadyRestored(File source, Uint8List bytes) {
+    final name = p.basename(source.path).toLowerCase();
+    if (!name.contains('restored')) return false;
+    return heightOfBytes(bytes) >= 2000;
   }
 
   static int heightOfBytes(Uint8List bytes) {
@@ -152,41 +130,42 @@ class LogoRestorer {
     return decoded.height;
   }
 
-  static int longestEdgeOfBytes(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return 0;
-    return decoded.width > decoded.height ? decoded.width : decoded.height;
-  }
-
-  /// CPU Lanczos to [minDimension] height when Python/RealESRGAN is unavailable.
-  static Future<File?> _lanczosToMinHeight(File source, File dest) async {
-    try {
-      final bytes = await source.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return null;
-      if (decoded.height >= minDimension) {
-        await dest.writeAsBytes(bytes, flush: true);
-        return dest;
+  /// Crop empty plate, flatten every fill (any hue), restore a dropped
+  /// dark outline from the source, then scale to [minDimension] px tall.
+  static Uint8List finalizeRestoredPng(
+    Uint8List bytes, {
+    Uint8List? sourceBytes,
+  }) {
+    if (bytes.isEmpty) return bytes;
+    final cropped = LogoImageProcessor.normalizeToVisibleContent(bytes);
+    var image = img.decodeImage(cropped.isNotEmpty ? cropped : bytes);
+    if (image == null || image.height <= 0) return bytes;
+    image = LogoImageProcessor.flattenSolidBrandFills(image);
+    if (sourceBytes != null && sourceBytes.isNotEmpty) {
+      final srcImg = img.decodeImage(sourceBytes);
+      if (srcImg != null) {
+        image = LogoImageProcessor.ensureLetterOutline(srcImg, image);
       }
-      final scale = minDimension / decoded.height;
-      final w = math.max(1, (decoded.width * scale).round());
-      final resized = img.copyResize(
-        decoded,
+    }
+
+    if (image.height < minDimension) {
+      final scale = minDimension / image.height;
+      final w = math.max(1, (image.width * scale).round());
+      image = img.copyResize(
+        image,
         width: w,
         height: minDimension,
         interpolation: img.Interpolation.cubic,
       );
-      await dest.writeAsBytes(img.encodePng(resized), flush: true);
-      return dest;
-    } catch (_) {
-      return null;
     }
+    return Uint8List.fromList(img.encodePng(image));
   }
 
   static Future<String> _sourceIdentity(File source) async {
     final stat = await source.stat();
     return '${p.normalize(source.absolute.path)}|'
-        '${stat.size}|${stat.modified.millisecondsSinceEpoch}';
+        '${stat.size}|${stat.modified.millisecondsSinceEpoch}|'
+        '$pipelineVersion';
   }
 
   static Future<File> _restoredDestFile(File source, Directory logosDir) async {
@@ -227,117 +206,8 @@ class LogoRestorer {
     Map<String, String> cache,
   ) async {
     final file = _cacheFile(logosDir);
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(cache));
+    await file.writeAsBytes(
+      utf8.encode(const JsonEncoder.withIndent('  ').convert(cache)),
+    );
   }
-
-  static Future<String?> _resolvePython() async {
-    if (_cachedPython != null) return _cachedPython;
-    for (final exe in const ['py', 'python', 'python3']) {
-      try {
-        final args = exe == 'py'
-            ? const ['-3', '-c', 'import sys; print(sys.version_info[0])']
-            : const ['-c', 'import sys; print(sys.version_info[0])'];
-        final result = await Process.run(
-          exe,
-          args,
-          runInShell: Platform.isWindows,
-        );
-        if (result.exitCode == 0 &&
-            (result.stdout as String).trim().startsWith('3')) {
-          _cachedPython = exe;
-          return exe;
-        }
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  static Future<String?> _resolveScript() async {
-    if (_cachedScript != null && await File(_cachedScript!).exists()) {
-      return _cachedScript;
-    }
-    final exeDir = File(Platform.resolvedExecutable).parent;
-    final candidates = <String>[
-      p.join(exeDir.path, 'logo_restorer.py'),
-      p.normalize(p.join(exeDir.path, '..', 'logo_restorer.py')),
-      p.normalize(
-        p.join(exeDir.path, '..', '..', '..', '..', '..', 'logo_restorer.py'),
-      ),
-    ];
-    final localAppData = Platform.environment['LOCALAPPDATA'];
-    if (localAppData != null) {
-      candidates.add(
-        p.join(
-          localAppData,
-          'swift-document-generator-mobile',
-          'logo_restorer.py',
-        ),
-      );
-    }
-    final userProfile = Platform.environment['USERPROFILE'];
-    if (userProfile != null) {
-      candidates.add(
-        p.join(
-          userProfile,
-          'OneDrive',
-          'Documents',
-          'swift_document_generator',
-          'logo_restorer.py',
-        ),
-      );
-      candidates.add(
-        p.join(
-          userProfile,
-          'Documents',
-          'swift_document_generator',
-          'logo_restorer.py',
-        ),
-      );
-    }
-    candidates.add(p.join(Directory.current.path, 'logo_restorer.py'));
-    for (final path in candidates) {
-      final f = File(path);
-      if (await f.exists()) {
-        _cachedScript = f.absolute.path;
-        return _cachedScript;
-      }
-    }
-    return null;
-  }
-}
-
-/// Top-level so [Isolate.run] can spawn it off the UI isolate.
-Future<int> logoRestoreRunProcess({
-  required String python,
-  required String script,
-  required String input,
-  required String output,
-  required int minDimension,
-}) async {
-  final args = python == 'py'
-      ? <String>[
-          '-3',
-          script,
-          input,
-          output,
-          '--min-dimension',
-          '$minDimension',
-        ]
-      : <String>[
-          script,
-          input,
-          output,
-          '--min-dimension',
-          '$minDimension',
-        ];
-  final result = await Process.run(
-    python,
-    args,
-    runInShell: python == 'py',
-    workingDirectory: File(script).parent.path,
-  ).timeout(const Duration(minutes: 15));
-  if (result.exitCode != 0) {
-    debugPrint('logo_restorer stderr: ${result.stderr}');
-  }
-  return result.exitCode;
 }

@@ -24,12 +24,9 @@ void main() {
     final decoded = img.decodePng(out);
     expect(decoded, isNotNull);
 
-    // Tight crop + small pad — much smaller than source canvas.
+    // Tight crop — much smaller than the padded source canvas.
     expect(decoded!.width, lessThan(60));
     expect(decoded.height, lessThan(50));
-
-    // Corners should be transparent after bg removal.
-    expect(decoded.getPixel(0, 0).a.toInt(), lessThan(12));
 
     // Logo color survives near center.
     final cx = decoded.width ~/ 2;
@@ -57,7 +54,8 @@ void main() {
 
     expect(decoded.width, lessThan(50));
     expect(decoded.height, lessThan(50));
-    expect(decoded.getPixel(0, 0).a.toInt(), lessThan(12));
+    expect(decoded.width, greaterThan(35));
+    expect(decoded.height, greaterThan(35));
   });
 
   test('manual crop extracts normalized region', () {

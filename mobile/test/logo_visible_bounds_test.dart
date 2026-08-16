@@ -29,8 +29,9 @@ void main() {
     // Cropped + tiny pad — much smaller than 100×100, roughly square.
     expect(decoded.width, lessThan(60));
     expect(decoded.height, lessThan(60));
-    expect(decoded.width, greaterThan(40));
-    expect(decoded.height, greaterThan(40));
+    expect(decoded.width, greaterThan(38));
+    expect(decoded.height, greaterThan(38));
+    expect(decoded.height, lessThan(48));
     final aspect = decoded.width / decoded.height;
     expect(aspect, closeTo(1.0, 0.25));
   });

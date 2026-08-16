@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
 import 'app_config.dart';
+import 'logo_image_process.dart';
 
 /// Shared Gemini multimodal client (logo validation + recreate assist).
 ///
@@ -115,11 +117,14 @@ class GeminiClient {
 
   static Iterable<String> _envCandidatePaths() sync* {
     try {
-      final cwd = Directory.current.path;
-      yield p.join(cwd, '.env');
-      yield p.join(cwd, '.env.local');
-      yield p.join(p.dirname(cwd), '.env');
-      yield p.join(p.dirname(cwd), '.env.local');
+      var dir = Directory.current.path;
+      for (var i = 0; i < 6; i++) {
+        yield p.join(dir, '.env');
+        yield p.join(dir, '.env.local');
+        final parent = p.dirname(dir);
+        if (parent == dir) break;
+        dir = parent;
+      }
     } catch (_) {}
     try {
       final exeDir = File(Platform.resolvedExecutable).parent.path;
@@ -427,6 +432,180 @@ Return JSON only:
     );
     if (data == null) return null;
     return GeminiRecreateHints.fromJson(data);
+  }
+
+  /// Recreate a low-res logo as a sharp high-resolution PNG (online Gemini).
+  ///
+  /// Throws if offline, unconfigured, or the model returns no image.
+  Future<Uint8List> restoreLogoPng(Uint8List bytes) async {
+    final key = resolveApiKey();
+    if (key.isEmpty) {
+      throw StateError('Logo restore needs internet and a Gemini API key.');
+    }
+    if (isTemporarilyUnavailable) {
+      throw StateError('Gemini is busy — try logo restore again in a minute.');
+    }
+    if (bytes.isEmpty) {
+      throw StateError('Logo file is empty.');
+    }
+
+    final models = <String>[
+      imageModel,
+      'gemini-3.1-flash-image',
+      'gemini-2.5-flash-image',
+      'gemini-3-pro-image',
+      'gemini-2.5-flash-image-preview',
+    ];
+    final seen = <String>{};
+    Object? lastError;
+    for (final modelId in models) {
+      final id = modelId.trim();
+      if (id.isEmpty || !seen.add(id)) continue;
+      try {
+        final png = await _restoreLogoPngWithModel(key: key, modelId: id, bytes: bytes);
+        if (png != null && png.isNotEmpty) return png;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw StateError(
+      'Gemini could not restore this logo. Check your internet connection.'
+      '${lastError == null ? '' : ' ($lastError)'}',
+    );
+  }
+
+  static String get imageModel {
+    _ensureEnvLoaded();
+    final fromEnv = Platform.environment['GEMINI_IMAGE_MODEL']?.trim() ?? '';
+    if (fromEnv.isNotEmpty) return fromEnv;
+    final defined = AppConfig.geminiImageModel.trim();
+    return defined.isEmpty ? 'gemini-3.1-flash-image' : defined;
+  }
+
+  Future<Uint8List?> _restoreLogoPngWithModel({
+    required String key,
+    required String modelId,
+    required Uint8List bytes,
+  }) async {
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/'
+      '$modelId:generateContent?key=$key',
+    );
+    final src = img.decodeImage(bytes);
+    final outline = src == null ? null : LogoImageProcessor.detectLetterOutline(src);
+    final outlineNote = outline == null
+        ? ''
+        : '\nCRITICAL: The source has a dark RGB(${outline.r},${outline.g},${outline.b}) '
+            'border around the letters. Recreate that stroke on every glyph, including '
+            'inner holes. It is not background.\n';
+    final prompt = '''
+Recreate this exact company logo as a professional print-ready PNG.
+
+Preserve the brand exactly: letterforms, colors, icon, tagline, spacing, and proportions.
+If this is lettering: identify the typeface (or closest), reading, line breaks, and tilt/skew in degrees. Recreate the letters as vector-like shapes — do not upscale pixels. Edges must be smooth predicted curves, never muddy JPEG stairs.
+If the source letters have a dark/black border or outline, that stroke is part of the logo. Draw it on every glyph (including inner counters) as an even, continuous border in that same dark color. Do not drop it, and do not treat it as a background plate.$outlineNote
+Each brand color must be one flat fill (single hex per color) — no gradients, banding, JPEG mottling, paper texture, or splotches inside shapes or letters.
+Transparent background (alpha), no black or gray plate.
+No extra padding, mockups, watermarks, drop shadows, or new text.
+The lockup should fill the frame. High resolution for a 3000-pixel-tall label logo.
+Output the image only.
+''';
+    final aspect = (src != null && src.height > 0)
+        ? src.width / src.height
+        : 1.0;
+    final aspectToken = aspect >= 1.6
+        ? '16:9'
+        : aspect >= 1.25
+            ? '4:3'
+            : aspect <= 0.8
+                ? '3:4'
+                : '1:1';
+    final payload = {
+      'contents': [
+        {
+          'parts': [
+            {
+              'inline_data': {
+                'mime_type': _guessMime(bytes),
+                'data': base64Encode(bytes),
+              },
+            },
+            {'text': prompt},
+          ],
+        },
+      ],
+      'generationConfig': {
+        'responseModalities': ['TEXT', 'IMAGE'],
+        'temperature': 0.1,
+        'imageConfig': {
+          'aspectRatio': aspectToken,
+        },
+      },
+    };
+
+    Future<http.Response> postPayload(Map<String, dynamic> body) {
+      return _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 120));
+    }
+
+    var res = await postPayload(payload);
+    if (res.statusCode >= 400 &&
+        (payload['generationConfig'] as Map).containsKey('imageConfig')) {
+      (payload['generationConfig'] as Map).remove('imageConfig');
+      res = await postPayload(payload);
+    }
+    if (res.statusCode == 429) {
+      _tripQuotaCooldown();
+      throw StateError('Gemini rate limit — try again shortly.');
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StateError('Gemini HTTP ${res.statusCode}');
+    }
+    final body = jsonDecode(res.body);
+    if (body is! Map) return null;
+    return _extractInlineImage(body);
+  }
+
+  static Uint8List? _extractInlineImage(Map body) {
+    try {
+      final candidates = body['candidates'];
+      if (candidates is! List || candidates.isEmpty) return null;
+      final content = candidates.first['content'];
+      if (content is! Map) return null;
+      final parts = content['parts'];
+      if (parts is! List) return null;
+      for (final part in parts) {
+        if (part is! Map) continue;
+        final inline = part['inlineData'] ?? part['inline_data'];
+        if (inline is! Map) continue;
+        final mime = '${inline['mimeType'] ?? inline['mime_type'] ?? ''}'.toLowerCase();
+        final data = '${inline['data'] ?? ''}';
+        if (data.isEmpty) continue;
+        if (mime.isNotEmpty &&
+            !mime.contains('image') &&
+            !mime.contains('png') &&
+            !mime.contains('jpeg') &&
+            !mime.contains('webp')) {
+          continue;
+        }
+        return Uint8List.fromList(base64Decode(data));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> generateJson({
+    required String prompt,
+    Duration timeout = const Duration(seconds: 25),
+  }) async {
+    final key = resolveApiKey();
+    if (key.isEmpty || isTemporarilyUnavailable) return null;
+    return _generateJson(key: key, prompt: prompt, timeout: timeout);
   }
 
   Future<Map<String, dynamic>?> _generateJson({

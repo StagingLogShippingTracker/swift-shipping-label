@@ -32,6 +32,18 @@ void main() {
       );
     });
 
+    test('city, province, and postal extras still match', () {
+      expect(
+        AddressMatch.samePlace(
+          shipToA: 'GCM Valve Modifications',
+          addressA: '3360 10th Street',
+          shipToB: 'GCM Valve Modification',
+          addressB: '3360 10th Street, Nisku, AB T9E 1E7',
+        ),
+        isTrue,
+      );
+    });
+
     test('different civic numbers stay distinct', () {
       expect(
         AddressMatch.addressKey('1017 8 Street'),
@@ -66,7 +78,7 @@ void main() {
     });
   });
 
-  test('address book lists Ship To Name Z–A', () {
+  test('address book lists Ship To Name A–Z', () {
     DeliveryAddressEntry e(String name, int minutesAgo) => DeliveryAddressEntry(
           addressKey: name,
           shipToName: name,
@@ -81,9 +93,9 @@ void main() {
       e('mastec purnell', 2),
     ]);
     expect(sorted.map((x) => x.shipToName).toList(), [
-      'Worley Cord',
-      'mastec purnell',
       'Arc Resources',
+      'mastec purnell',
+      'Worley Cord',
     ]);
   });
 }

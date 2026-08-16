@@ -43,15 +43,35 @@ Future<List<String>> pickImagePaths({required bool multiple}) async {
 /// Android uses the same SAF → cache copy path as logo picking so Dart can
 /// read a real filesystem path. Desktop uses file_selector.
 Future<String?> pickPdfPath() async {
+  final paths = await pickPdfPaths(multiple: false);
+  if (paths.isEmpty) return null;
+  return paths.first;
+}
+
+/// Pick one or more PDFs (OA or packing list).
+Future<List<String>> pickPdfPaths({bool multiple = false}) async {
   if (Platform.isAndroid) {
-    final path = await _native.invokeMethod<String?>('pickPdf');
-    if (path == null || path.isEmpty) return null;
-    return path;
+    if (!multiple) {
+      final path = await _native.invokeMethod<String?>('pickPdf');
+      if (path == null || path.isEmpty) return const [];
+      return [path];
+    }
+    final raw = await _native.invokeMethod<List<dynamic>>('pickPdfs', {
+      'multiple': true,
+    });
+    return (raw ?? const [])
+        .map((e) => '$e')
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
+  if (multiple) {
+    final files = await openFiles(acceptedTypeGroups: [_pdfGroup]);
+    return files.map((f) => f.path).where((p) => p.isNotEmpty).toList();
+  }
   final file = await openFile(acceptedTypeGroups: [_pdfGroup]);
-  if (file == null || file.path.isEmpty) return null;
-  return file.path;
+  if (file == null || file.path.isEmpty) return const [];
+  return [file.path];
 }
 
 /// Share sheet on Android; open with the default viewer on desktop.

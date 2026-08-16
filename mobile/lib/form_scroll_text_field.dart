@@ -17,12 +17,18 @@ class FormScrollTextField extends StatefulWidget {
     required this.maxLines,
     this.minLines = 1,
     this.decoration,
+    this.focusNode,
+    this.onChanged,
+    this.onEditingComplete,
   });
 
   final TextEditingController controller;
   final int maxLines;
   final int minLines;
   final InputDecoration? decoration;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback? onEditingComplete;
 
   @override
   State<FormScrollTextField> createState() => _FormScrollTextFieldState();
@@ -100,13 +106,15 @@ class _FormScrollTextFieldState extends State<FormScrollTextField> {
   Widget build(BuildContext context) {
     final field = TextField(
       controller: widget.controller,
+      focusNode: widget.focusNode,
       scrollController: _scrollController,
       minLines: widget.minLines,
       maxLines: widget.maxLines,
       decoration: widget.decoration,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
-      // Keep caret/selection; never let the field steal viewport focus for wheel.
+      onChanged: widget.onChanged,
+      onEditingComplete: widget.onEditingComplete,
       scrollPhysics: _isDesktop
           ? const ClampingScrollPhysics()
           : null,

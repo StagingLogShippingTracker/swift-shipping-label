@@ -7,8 +7,15 @@ import 'package:pdf/widgets.dart' as pw;
 import '../bol_item_type.dart';
 import '../label_data.dart';
 import '../logo_image_process.dart';
+import '../logo_ink_fit.dart';
 import '../pdf_render_options.dart';
 import 'shipping_label_pdf.dart';
+
+class _BolInkLogo {
+  _BolInkLogo(this.image, this.ink);
+  final PdfImage image;
+  final LogoInkMetrics ink;
+}
 
 /// Flat print Bill of Lading — geometry ported from `generate_swift_bol_pdf.py`.
 /// Three pages: STORE / DRIVER / CUSTOMER copy (same field values).
@@ -155,15 +162,17 @@ class BolLabelPdf {
                 bytes: shipping.swiftLogoBytes!,
               );
             }
-            final customerLogos = <PdfImage>[];
+            final customerLogos = <_BolInkLogo>[];
             if (options.showCustomerLogos &&
                 options.logoPlacement != PdfLogoPlacement.hidden) {
               for (final b in customerLogoBytes.take(maxCustomerLogos)) {
                 if (b.isNotEmpty) {
-                  final normalized =
-                      LogoImageProcessor.normalizeToVisibleContent(b);
+                  final prepared = LogoInkFit.prepare(b);
                   customerLogos.add(
-                    PdfImage.file(context.document, bytes: normalized),
+                    _BolInkLogo(
+                      PdfImage.file(context.document, bytes: prepared.png),
+                      prepared.ink,
+                    ),
                   );
                 }
               }
@@ -237,7 +246,7 @@ class BolLabelPdf {
     ShippingLabelData d,
     String copyLabel,
     PdfImage? swiftLogo,
-    List<PdfImage> customerLogos, {
+    List<_BolInkLogo> customerLogos, {
     PdfImage? shipperSignature,
   }) {
     final pageW = pageFormat.width;
@@ -252,19 +261,39 @@ class BolLabelPdf {
     var swiftX = margin;
 
     if (swiftLogo != null) {
-      final iw = swiftLogo.width.toDouble();
-      final ih = swiftLogo.height.toDouble();
-      if (iw > 0 && ih > 0) {
-        swiftW = swiftH * iw / ih;
+      final ink = shipping.swiftInk;
+      if (ink != null && ink.isValid) {
+        var targetH = swiftBandH;
+        swiftW = ink.drawWidth(targetH);
         final maxW = contentW * 0.42;
-        if (swiftW > maxW) {
-          swiftW = maxW;
-          swiftH = swiftW * ih / iw;
+        if (swiftW > maxW && ink.canvasW > 0) {
+          targetH = maxW * ink.height / ink.canvasW;
+          swiftW = ink.drawWidth(targetH);
         }
-        // Locked: right edge of the content band. Never shifts for uploads.
+        swiftH = targetH;
         swiftX = pageW - margin - swiftW;
         if (swiftX < margin) swiftX = margin;
-        c.drawImage(swiftLogo, swiftX, y - swiftH, swiftW, swiftH);
+        c.drawImage(
+          swiftLogo,
+          swiftX,
+          ink.bitmapBottomY(y - swiftH, targetH),
+          ink.drawWidth(targetH),
+          ink.drawHeight(targetH),
+        );
+      } else {
+        final iw = swiftLogo.width.toDouble();
+        final ih = swiftLogo.height.toDouble();
+        if (iw > 0 && ih > 0) {
+          swiftW = swiftH * iw / ih;
+          final maxW = contentW * 0.42;
+          if (swiftW > maxW) {
+            swiftW = maxW;
+            swiftH = swiftW * ih / iw;
+          }
+          swiftX = pageW - margin - swiftW;
+          if (swiftX < margin) swiftX = margin;
+          c.drawImage(swiftLogo, swiftX, y - swiftH, swiftW, swiftH);
+        }
       }
     }
 
@@ -464,9 +493,9 @@ class BolLabelPdf {
     );
     y -= trackHdr;
     final trackCols = [
+      (BolFields.orderNum, 'ORDER #', 1.15),
       (LabelFields.poNum, 'PO #', 1.15),
       (BolFields.packingList, 'PACKING LIST #', 1.45),
-      (BolFields.orderNum, 'ORDER #', 1.15),
       (LabelFields.project, 'PROJECT', 1.35),
     ];
     const th = 12.0, rh = 14.0;
@@ -1202,63 +1231,53 @@ class BolLabelPdf {
     c.drawImage(img, dx, dy, w, h);
   }
 
-  /// Scale preserving aspect: prefer [targetH], never exceed [maxW]/[maxH].
-  ({double w, double h}) _fitLogoSize(
-    PdfImage img,
-    double maxW,
-    double maxH,
+  /// Scale so visible ink is [targetH] tall. Width follows aspect; the header
+  /// clip keeps wide marks out of the Swift/Probill zone.
+  ({double w, double h, double y}) _inkDraw(
+    LogoInkMetrics ink,
+    double inkBottomY,
     double targetH,
   ) {
-    final iw = img.width.toDouble();
-    final ih = img.height.toDouble();
-    if (iw <= 0 || ih <= 0 || maxW <= 0 || maxH <= 0) {
-      return (w: 0.0, h: 0.0);
-    }
-    final defaultScale = targetH / ih;
-    final scale = math.min(
-      maxW / iw,
-      math.min(maxH / ih, defaultScale),
+    return (
+      w: ink.drawWidth(targetH),
+      h: ink.drawHeight(targetH),
+      y: ink.bitmapBottomY(inkBottomY, targetH),
     );
-    return (w: iw * scale, h: ih * scale);
   }
 
   void _drawLogoInCell(
     PdfGraphics c,
-    PdfImage img,
+    _BolInkLogo logo,
     double cellX,
     double cellY,
     double cellW,
     double cellH,
     double targetH,
   ) {
-    final size = _fitLogoSize(img, cellW, cellH, targetH);
-    if (size.w <= 0 || size.h <= 0) return;
-    c.drawImage(
-      img,
-      cellX + (cellW - size.w) / 2,
-      cellY + (cellH - size.h) / 2,
-      size.w,
-      size.h,
-    );
+    final h = math.min(targetH, cellH);
+    if (h <= 0 || !logo.ink.isValid) return;
+    final draw = _inkDraw(logo.ink, cellY, h);
+    // Left-align in the cell so a wide mark starts at the frame, not centered
+    // into Swift. Height is never reduced to fit leftover width.
+    c.drawImage(logo.image, cellX, draw.y, draw.w, draw.h);
   }
 
   /// Uploaded logos only — left of the locked Probill / Swift static zone.
   ///
-  /// Default height [customerLogoTargetH] (59 pt). Wide logos downscale
-  /// proportionally to stay inside [margin, frameRightLimit] × band.
-  /// Dual logos share equal-width cells and an equal pt height.
+  /// Ink height matches [customerLogoTargetH] (same as Swift). Wide logos may
+  /// clip at [frameRightLimit] instead of shrinking the mark.
   void _drawCustomerLogosLeft(
     PdfGraphics c,
-    List<PdfImage> customerLogos, {
+    List<_BolInkLogo> customerLogos, {
     required double logoTop,
     required double bandH,
     required double frameRightLimit,
   }) {
-    final logos = <PdfImage>[];
+    final logos = <_BolInkLogo>[];
     for (final l in customerLogos.take(maxCustomerLogos)) {
-      final iw = l.width.toDouble();
-      final ih = l.height.toDouble();
-      if (iw > 0 && ih > 0) logos.add(l);
+      if (l.image.width > 0 && l.image.height > 0 && l.ink.isValid) {
+        logos.add(l);
+      }
     }
     if (logos.isEmpty) return;
 
@@ -1302,12 +1321,9 @@ class BolLabelPdf {
       return;
     }
 
+    // Dual logos: same ink height; width follows each mark.
     var sharedH = customerLogoTargetH;
     if (sharedH > frameH) sharedH = frameH;
-    for (final l in logos) {
-      final fitted = _fitLogoSize(l, cellW, frameH, sharedH);
-      if (fitted.h < sharedH) sharedH = fitted.h;
-    }
     if (sharedH < 1) {
       c.restoreContext();
       return;

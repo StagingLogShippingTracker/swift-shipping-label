@@ -9,6 +9,39 @@ import 'app_config.dart';
 import 'app_storage.dart';
 import 'label_data.dart';
 
+/// Field + logo snapshot saved beside a generated PDF for "Use template".
+class HistoryFormSnapshot {
+  const HistoryFormSnapshot({
+    required this.fields,
+    this.logoCount = 0,
+  });
+
+  final Map<String, String> fields;
+  final int logoCount;
+
+  bool get hasFields => fields.values.any((v) => v.trim().isNotEmpty);
+
+  Map<String, dynamic> toJson() => {
+        'fields': fields,
+        'logo_count': logoCount,
+      };
+
+  factory HistoryFormSnapshot.fromJson(Map<String, dynamic> json) {
+    final raw = json['fields'];
+    final fields = <String, String>{};
+    if (raw is Map) {
+      for (final e in raw.entries) {
+        fields['${e.key}'] = '${e.value}';
+      }
+    }
+    final n = json['logo_count'];
+    return HistoryFormSnapshot(
+      fields: fields,
+      logoCount: n is num ? n.toInt() : 0,
+    );
+  }
+}
+
 /// Metadata for a generated PDF stored in Supabase.
 class GeneratedDocumentRecord {
   const GeneratedDocumentRecord({
@@ -56,11 +89,24 @@ class DocumentHistorySync {
     required String customer,
     required String salesOrder,
     String? title,
+    Map<String, String>? fields,
+    List<Uint8List>? logoBytes,
   }) async {
     final id = _newId();
     final safeName = fileName.trim().isEmpty ? '$id.pdf' : fileName.trim();
     final storagePath = '${kind.name}/$id/${p.basename(safeName)}';
-    await _uploadBytes(storagePath, bytes);
+    await _uploadBytes(storagePath, bytes, contentType: 'application/pdf');
+    if (fields != null) {
+      await _saveSnapshot(
+        kind: kind,
+        id: id,
+        snapshot: HistoryFormSnapshot(
+          fields: fields,
+          logoCount: logoBytes?.length ?? 0,
+        ),
+        logoBytes: logoBytes ?? const [],
+      );
+    }
 
     final created = DateTime.now().toUtc();
     final displayTitle = (title ?? safeName).trim();
@@ -105,17 +151,128 @@ class DocumentHistorySync {
     );
   }
 
+  static const historyKinds = [
+    LabelKind.shipping,
+    LabelKind.receiving,
+    LabelKind.bol,
+  ];
+
   Future<List<GeneratedDocumentRecord>> listForKind(
     LabelKind kind, {
     int limit = 60,
   }) async {
     await purgeExpired();
+    return _fetchKind(
+      kind,
+      limit: limit,
+      createdAtGte: _retentionCutoff(),
+    );
+  }
+
+  /// Remove PDF-only history (no `{id}.form.json` / cloud `form.json`) for
+  /// shipping, receiving, and BOL. Rows with snapshots are left alone.
+  Future<int> pruneWithoutSnapshots() async {
+    var removed = 0;
+    for (final kind in historyKinds) {
+      List<GeneratedDocumentRecord> docs;
+      try {
+        docs = await _fetchKind(kind, limit: 1000);
+      } catch (_) {
+        continue;
+      }
+      for (final doc in docs) {
+        try {
+          if (await hasFormSnapshot(doc)) continue;
+          await deleteRecord(doc);
+          removed++;
+        } catch (_) {}
+      }
+    }
+    return removed;
+  }
+
+  Future<bool> hasFormSnapshot(GeneratedDocumentRecord doc) async {
+    final local = _localSnapshotFile(doc.id);
+    if (await local.exists()) {
+      try {
+        final json = jsonDecode(await local.readAsString());
+        if (json is Map) return true;
+      } catch (_) {}
+    }
+    try {
+      final path = '${_dirFor(doc)}/form.json';
+      final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/storage/v1/object/public/$bucket/$encoded',
+      );
+      final res = await http.get(uri).timeout(_timeout);
+      if (isMissingStorageResponse(res.statusCode, res.body)) return false;
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // Uncertain (auth/network) — keep the row.
+        return true;
+      }
+      final json = jsonDecode(res.body);
+      return json is Map;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Supabase public storage often returns HTTP 400 with JSON statusCode 404.
+  static bool isMissingStorageResponse(int statusCode, String body) {
+    if (statusCode == 404) return true;
+    try {
+      final json = jsonDecode(body);
+      if (json is! Map) return false;
+      final sc = '${json['statusCode'] ?? ''}';
+      final code = '${json['code'] ?? ''}';
+      final err = '${json['error'] ?? ''}';
+      return sc == '404' || code == 'NoSuchKey' || err == 'not_found';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Delete REST row, every storage object under `{kind}/{id}/`, and local
+  /// history cache for this id. Ignores 404. Does not touch unrelated
+  /// `filled/` Generate PDFs.
+  Future<void> deleteRecord(GeneratedDocumentRecord doc) async {
+    try {
+      await _deleteAllStorageFor(doc);
+    } catch (_) {}
+    try {
+      final del = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/generated_documents'
+        '?id=eq.${Uri.encodeComponent(doc.id)}',
+      );
+      final res = await http
+          .delete(del, headers: _headers)
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode != 404 &&
+          (res.statusCode < 200 || res.statusCode >= 300)) {
+        throw DocumentHistorySyncException(
+          'Could not delete history row (${res.statusCode}).',
+        );
+      }
+    } catch (e) {
+      if (e is DocumentHistorySyncException) rethrow;
+    }
+    await _deleteLocalCacheForId(doc);
+  }
+
+  Future<List<GeneratedDocumentRecord>> _fetchKind(
+    LabelKind kind, {
+    int limit = 60,
+    DateTime? createdAtGte,
+  }) async {
     final kindEnc = Uri.encodeComponent(kind.name);
-    final cutoff = Uri.encodeComponent(_retentionCutoff().toIso8601String());
+    final cutoffQ = createdAtGte == null
+        ? ''
+        : '&created_at=gte.${Uri.encodeComponent(createdAtGte.toIso8601String())}';
     final uri = Uri.parse(
       '${AppConfig.supabaseUrl}/rest/v1/generated_documents'
       '?kind=eq.$kindEnc'
-      '&created_at=gte.$cutoff'
+      '$cutoffQ'
       '&select=id,kind,title,customer,sales_order,file_name,storage_path,byte_size,created_at'
       '&order=created_at.desc'
       '&limit=$limit',
@@ -240,19 +397,138 @@ class DocumentHistorySync {
     }
   }
 
+  Map<String, String> get _storageHeaders => {
+        'apikey': AppConfig.supabaseAnonKey,
+        'Authorization': 'Bearer ${AppConfig.supabaseAnonKey}',
+      };
+
+  Future<void> _deleteAllStorageFor(GeneratedDocumentRecord doc) async {
+    final dir = _dirFor(doc);
+    final listed = await _listStoragePrefix(dir);
+    final paths = <String>{
+      if (doc.storagePath.trim().isNotEmpty) doc.storagePath.trim(),
+      if (doc.fileName.trim().isNotEmpty) '$dir/${p.basename(doc.fileName)}',
+      ...listed,
+      '$dir/form.json',
+      for (var i = 0; i < maxCustomerLogos; i++) '$dir/logo_$i.png',
+    };
+    for (final path in paths) {
+      await _deleteStorageObject(path);
+    }
+    await _deleteStoragePrefixes({dir, ...paths});
+  }
+
+  /// Same auth as upload (anon). Encoded path first, then raw.
   Future<void> _deleteStorageObject(String storagePath) async {
+    final trimmed = storagePath.trim();
+    if (trimmed.isEmpty) return;
+    final encoded = trimmed.split('/').map(Uri.encodeComponent).join('/');
+    final candidates = [
+      Uri.parse('${AppConfig.supabaseUrl}/storage/v1/object/$bucket/$encoded'),
+      Uri.parse('${AppConfig.supabaseUrl}/storage/v1/object/$bucket/$trimmed'),
+    ];
+    for (final uri in candidates) {
+      final res = await http
+          .delete(uri, headers: _storageHeaders)
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode == 404 ||
+          (res.statusCode >= 200 && res.statusCode < 300) ||
+          isMissingStorageResponse(res.statusCode, res.body)) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _deleteStoragePrefixes(Set<String> prefixes) async {
+    final paths = prefixes.where((p) => p.trim().isNotEmpty).toList();
+    if (paths.isEmpty) return;
     final uri = Uri.parse(
-      '${AppConfig.supabaseUrl}/storage/v1/object/$bucket/${storagePath.split('/').map(Uri.encodeComponent).join('/')}',
+      '${AppConfig.supabaseUrl}/storage/v1/object/$bucket',
     );
     await http
         .delete(
           uri,
-          headers: {
-            'apikey': AppConfig.supabaseAnonKey,
-            'Authorization': 'Bearer ${AppConfig.supabaseAnonKey}',
-          },
+          headers: _headers,
+          body: jsonEncode({'prefixes': paths}),
         )
         .timeout(const Duration(seconds: 20));
+  }
+
+  Future<List<String>> _listStoragePrefix(String prefix) async {
+    final dir = prefix.replaceAll(RegExp(r'/+$'), '');
+    if (dir.isEmpty) return [];
+    final out = <String>[];
+    await _collectStoragePrefix(dir, out);
+    return out;
+  }
+
+  Future<void> _collectStoragePrefix(String prefix, List<String> out) async {
+    final uri = Uri.parse(
+      '${AppConfig.supabaseUrl}/storage/v1/object/list/$bucket',
+    );
+    final res = await http
+        .post(
+          uri,
+          headers: _headers,
+          body: jsonEncode({
+            'prefix': prefix,
+            'limit': 100,
+            'offset': 0,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode == 404 || res.statusCode < 200 || res.statusCode >= 300) {
+      return;
+    }
+    final body = jsonDecode(res.body);
+    if (body is! List) return;
+    for (final item in body) {
+      if (item is! Map) continue;
+      final name = '${item['name'] ?? ''}'.trim();
+      if (name.isEmpty) continue;
+      final full = '$prefix/$name';
+      if (item['id'] == null && item['metadata'] == null) {
+        await _collectStoragePrefix(full, out);
+        continue;
+      }
+      out.add(full);
+    }
+  }
+
+  /// History download cache `{stem}_{id}.pdf` or leftover `{id}.form.json`.
+  /// Not a plain Generate output like `Customer_SO.pdf`.
+  static bool isHistoryLocalFileForId(String basename, String id) {
+    if (id.isEmpty || basename.isEmpty) return false;
+    if (basename == '$id.form.json') return true;
+    if (basename.endsWith('_$id.pdf')) return true;
+    return false;
+  }
+
+  Future<void> _deleteLocalCacheForId(GeneratedDocumentRecord doc) async {
+    final id = doc.id;
+    if (id.isEmpty) return;
+    final dir = storage.filledDir;
+    if (await dir.exists()) {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = p.basename(entity.path);
+        if (!isHistoryLocalFileForId(name, id)) continue;
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    }
+    final logos = storage.logosDir;
+    if (await logos.exists()) {
+      await for (final entity in logos.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = p.basename(entity.path);
+        if (!name.startsWith('history_${id}_')) continue;
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _purgeExpiredLocalCache(DateTime cutoff) async {
@@ -270,7 +546,107 @@ class DocumentHistorySync {
     }
   }
 
-  Future<void> _uploadBytes(String storagePath, Uint8List bytes) async {
+  String _dirFor(GeneratedDocumentRecord doc) {
+    final parts = doc.storagePath.split('/');
+    if (parts.length >= 2) return '${parts[0]}/${parts[1]}';
+    return '${doc.kind.name}/${doc.id}';
+  }
+
+  Future<HistoryFormSnapshot?> downloadFormSnapshot(
+    GeneratedDocumentRecord doc,
+  ) async {
+    final local = _localSnapshotFile(doc.id);
+    if (await local.exists()) {
+      try {
+        final json = jsonDecode(await local.readAsString());
+        if (json is Map<String, dynamic> || json is Map) {
+          return HistoryFormSnapshot.fromJson(Map<String, dynamic>.from(json as Map));
+        }
+      } catch (_) {}
+    }
+    try {
+      final path = '${_dirFor(doc)}/form.json';
+      final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/storage/v1/object/public/$bucket/$encoded',
+      );
+      final res = await http.get(uri).timeout(_timeout);
+      if (res.statusCode < 200 || res.statusCode >= 300) return null;
+      final json = jsonDecode(res.body);
+      if (json is! Map) return null;
+      final snap = HistoryFormSnapshot.fromJson(Map<String, dynamic>.from(json));
+      try {
+        await local.parent.create(recursive: true);
+        await local.writeAsString(jsonEncode(snap.toJson()));
+      } catch (_) {}
+      return snap;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<Uint8List>> downloadSnapshotLogos(
+    GeneratedDocumentRecord doc,
+    int logoCount,
+  ) async {
+    final out = <Uint8List>[];
+    for (var i = 0; i < logoCount && i < maxCustomerLogos; i++) {
+      try {
+        final path = '${_dirFor(doc)}/logo_$i.png';
+        final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+        final uri = Uri.parse(
+          '${AppConfig.supabaseUrl}/storage/v1/object/public/$bucket/$encoded',
+        );
+        final res = await http.get(uri).timeout(_timeout);
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.bodyBytes.isNotEmpty) {
+          out.add(res.bodyBytes);
+        }
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  Future<void> _saveSnapshot({
+    required LabelKind kind,
+    required String id,
+    required HistoryFormSnapshot snapshot,
+    required List<Uint8List> logoBytes,
+  }) async {
+    final jsonBytes = Uint8List.fromList(
+      utf8.encode(jsonEncode(snapshot.toJson())),
+    );
+    final dir = '${kind.name}/$id';
+    try {
+      await _uploadBytes(
+        '$dir/form.json',
+        jsonBytes,
+        contentType: 'application/json',
+      );
+    } catch (_) {}
+    try {
+      final local = _localSnapshotFile(id);
+      await local.parent.create(recursive: true);
+      await local.writeAsString(jsonEncode(snapshot.toJson()));
+    } catch (_) {}
+    for (var i = 0; i < logoBytes.length && i < maxCustomerLogos; i++) {
+      try {
+        await _uploadBytes(
+          '$dir/logo_$i.png',
+          logoBytes[i],
+          contentType: 'image/png',
+        );
+      } catch (_) {}
+    }
+  }
+
+  File _localSnapshotFile(String id) =>
+      File(p.join(storage.filledDir.path, '$id.form.json'));
+
+  Future<void> _uploadBytes(
+    String storagePath,
+    Uint8List bytes, {
+    String contentType = 'application/pdf',
+  }) async {
     final uri = Uri.parse(
       '${AppConfig.supabaseUrl}/storage/v1/object/$bucket/$storagePath',
     );
@@ -280,7 +656,7 @@ class DocumentHistorySync {
           headers: {
             'apikey': AppConfig.supabaseAnonKey,
             'Authorization': 'Bearer ${AppConfig.supabaseAnonKey}',
-            'Content-Type': 'application/pdf',
+            'Content-Type': contentType,
             'x-upsert': 'true',
           },
           body: bytes,

@@ -135,10 +135,10 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                             _draft.copyWith(restoreLowResLogos: v ?? false),
                           ),
                           title: const Text(
-                            'Convert low-resolution photo to high-resolution',
+                            'Restore low-resolution logos for print',
                           ),
                           subtitle: const Text(
-                            'Upscale small or blurry customer logos to 3000px+ (replaces Recreate).',
+                            'Gemini redraw: solid fills, clean edges, keep letter outlines.',
                           ),
                           controlAffinity: ListTileControlAffinity.leading,
                         ),

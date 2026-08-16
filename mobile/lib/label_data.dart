@@ -102,6 +102,8 @@ class LabelFields {
   static const carrier = 'carrier';
   static const packingSlip = 'packing_slip';
   static const salesOrder = 'sales_order';
+  /// JSON map of extra field values → sales order (see [SoFieldMap]).
+  static const soFieldMap = 'so_field_map';
   static const swiftContact = 'swift_contact';
   static const palletNum = 'pallet_num';
   static const palletOf = 'pallet_of';
@@ -113,6 +115,7 @@ class LabelFields {
 
   static final formDefs = <(String key, String label, bool multiline)>[
     (customer, 'Customer', false),
+    (salesOrder, 'Swift Sales Order No.', false),
     (poNum, 'PO No.', true),
     (project, 'Project', true),
     (specialInstructions, 'Special Instructions', true),
@@ -121,7 +124,6 @@ class LabelFields {
     (attn, 'Attn', false),
     (carrier, 'Carrier', false),
     (packingSlip, 'Swift Packing Slip No.', false),
-    (salesOrder, 'Swift Sales Order No.', false),
     (swiftContact, 'Swift Contact', false),
     (palletNum, 'Pallet / Crate #', false),
     (palletOf, 'Pallet / Crate of', false),
@@ -223,6 +225,7 @@ List<String> presetKeysFor(LabelKind kind) {
       return const [
         LabelFields.customer,
         LabelFields.specialInstructions,
+        LabelFields.salesOrder,
         LabelFields.poNum,
         LabelFields.project,
         BolFields.consigneeName,
@@ -232,7 +235,6 @@ List<String> presetKeysFor(LabelKind kind) {
         BolFields.freightCharges,
         BolFields.thirdPartyBilling,
         BolFields.packingList,
-        LabelFields.salesOrder,
         BolFields.driverCompany,
         BolFields.shipperCertName,
       ];

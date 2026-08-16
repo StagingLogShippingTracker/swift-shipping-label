@@ -344,7 +344,7 @@ class AppStorage {
   ///
   /// Runs the lightweight [LogoImageProcessor] fast path (trim margins /
   /// optional background removal). Low-res logos are restored separately
-  /// via [LogoRestorer] / Fly.io RealESRGAN.
+  /// via [LogoRestorer] (Gemini, online).
   Future<ImportLogoResult> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
@@ -391,7 +391,7 @@ class AppStorage {
     );
 
     await dest.writeAsBytes(finalBytes, flush: true);
-    if (importOptions.restoreHighRes && Platform.isWindows) {
+    if (importOptions.restoreHighRes) {
       unawaited(
         LogoRestorer.ensureHighRes(
           dest,
@@ -648,7 +648,7 @@ class AppUiSettings {
     this.denseForms = false,
     this.showToolbarUpdate = true,
     this.autoUpdateEnabled = true,
-    this.restoreLowResLogos = false,
+    this.restoreLowResLogos = true,
     this.hotkeyOverrides = const {},
     this.themePreference = UiThemePreference.light,
     this.layoutPreset = UiLayoutPreset.classic,
@@ -666,7 +666,7 @@ class AppUiSettings {
   final bool denseForms;
   final bool showToolbarUpdate;
   final bool autoUpdateEnabled;
-  /// Upscale low-res customer logos to 3000px+ (RealESRGAN; replaces Recreate).
+  /// Gemini redraw of low-res customer logos (online; replaces Recreate).
   final bool restoreLowResLogos;
   final Map<String, String> hotkeyOverrides;
   final UiThemePreference themePreference;
@@ -726,7 +726,9 @@ class AppUiSettings {
       autoUpdateEnabled: json['autoUpdateEnabled'] is bool
           ? json['autoUpdateEnabled'] as bool
           : true,
-      restoreLowResLogos: json['restoreLowResLogos'] == true,
+      restoreLowResLogos: json['restoreLowResLogos'] is bool
+          ? json['restoreLowResLogos'] as bool
+          : true,
       hotkeyOverrides: hotkeys,
       themePreference:
           UiThemePreference.tryParse('${json['themePreference']}') ??
