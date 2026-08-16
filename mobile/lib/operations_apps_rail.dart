@@ -108,7 +108,7 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -122,7 +122,7 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
               color: chrome.muted,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Material(
             color: chrome.surface,
             borderRadius: BorderRadius.circular(8),
@@ -132,10 +132,11 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
@@ -148,35 +149,29 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                app.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: chrome.ink,
-                                  height: 1.15,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                app.blurb,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  height: 1.25,
-                                  color: chrome.muted,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            app.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: chrome.ink,
+                              height: 1.15,
+                            ),
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      app.blurb,
+                      maxLines: 3,
+                      style: TextStyle(
+                        fontSize: 10,
+                        height: 1.3,
+                        color: chrome.muted,
+                      ),
                     ),
                     if (_busy) ...[
                       const SizedBox(height: 8),
