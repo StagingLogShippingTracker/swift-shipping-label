@@ -204,6 +204,9 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.78)
+- **Staging Log intro:** on the first three launches of this update, a warehouse-style prompt for Swift Staging & Shipping Log appears before What's new. Try it today launches or downloads the same way as MORE APPS; Dismiss only hides it until the next launch (still up to three times).
+
 ### What's new (v1.1.77)
 - **MORE APPS:** rail footer title (not Operations apps); tile stays under Shipping / Receiving / BOL / Bulk on Windows and Android
 

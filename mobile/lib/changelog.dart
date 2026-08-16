@@ -10,17 +10,24 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.77.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.78.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_77';
+  static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.77)";
+  static const title = "What's new (v1.1.68 – v1.1.78)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.78',
+      bullets: [
+        'First-launch intro for Swift Staging & Shipping Log (staff release): what it is, warehouse floor / staging / shipping log, then Try it today',
+        'Intro shares the same 3-launch window as this What’s new summary; Dismiss only hides it until the next launch',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.77',
       bullets: [
@@ -170,18 +177,12 @@ extension ChangelogPromptStorage on AppStorage {
   }
 }
 
-/// Shows the What's New dialog when this device still has shows remaining.
-Future<void> maybeShowChangelogPrompt(BuildContext context, AppStorage storage) async {
+/// What's New dialog only (counter already advanced by [maybeShowLaunchPrompts]).
+Future<void> showChangelogDialog(
+  BuildContext context, {
+  required int timesShown,
+}) async {
   if (!context.mounted) return;
-
-  var state = await storage.loadChangelogPromptState();
-  if (state.campaignId != AppChangelog.campaignId) {
-    state = const ChangelogPromptState(
-      campaignId: AppChangelog.campaignId,
-      timesShown: 0,
-    );
-  }
-  if (state.timesShown >= AppChangelog.maxShows) return;
 
   String versionLabel = '';
   try {
@@ -191,13 +192,7 @@ Future<void> maybeShowChangelogPrompt(BuildContext context, AppStorage storage) 
 
   if (!context.mounted) return;
 
-  final next = ChangelogPromptState(
-    campaignId: AppChangelog.campaignId,
-    timesShown: state.timesShown + 1,
-  );
-  await storage.saveChangelogPromptState(next);
-
-  final remaining = AppChangelog.maxShows - next.timesShown;
+  final remaining = AppChangelog.maxShows - timesShown;
   final footer = remaining <= 0
       ? 'This is the last time this summary will appear on this device.'
       : remaining == 1

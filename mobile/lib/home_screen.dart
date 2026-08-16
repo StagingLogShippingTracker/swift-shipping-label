@@ -22,7 +22,7 @@ import 'bulk/bulk_label_models.dart';
 import 'bulk/order_ack_pdf_text.dart';
 import 'bulk/order_ack_parser.dart';
 import 'job_pdf_ai.dart';
-import 'changelog.dart';
+import 'staging_log_promo.dart';
 import 'circle_selector.dart';
 import 'contact_sync.dart';
 import 'document_history_sync.dart';
@@ -290,18 +290,18 @@ class _HomeScreenState extends State<HomeScreen>
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeShowChangelogPrompt();
+      _maybeShowLaunchPrompts();
     });
   }
 
-  Future<void> _maybeShowChangelogPrompt() async {
+  Future<void> _maybeShowLaunchPrompts() async {
     // Let first-frame layout settle so the dialog is not racing chrome paint.
     await Future<void>.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
     try {
-      await maybeShowChangelogPrompt(context, widget.storage);
+      await maybeShowLaunchPrompts(context, widget.storage);
     } catch (_) {
-      // Changelog is optional — never block the form on prompt errors.
+      // Launch prompts are optional — never block the form on prompt errors.
     }
   }
 
