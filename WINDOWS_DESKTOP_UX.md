@@ -27,7 +27,7 @@ Platform-branched UI so **Windows** feels like a native productivity app while *
 
 ### Unchanged / isolated
 - Android path still uses orange `_Header`, segmented control, single-column cards, and full-width bottom Generate bar (`Platform.isWindows` branch only).
-- Recreate priority logic untouched (Windows: Python → Fly → Rust; Android: Fly → Rust).
+- Logo restore is Gemini (Windows and Android), with local rebuild if Gemini is down.
 - All document generation, presets, logos, signatures, and update flows share the same state methods.
 
 ## Files

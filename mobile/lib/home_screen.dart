@@ -4618,7 +4618,15 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    NavigationRail(
+                    SizedBox(
+                      width: railExtended ? 200 : 88,
+                      child: ColoredBox(
+                        color: chrome.panel,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: NavigationRail(
                       extended: railExtended,
                       minExtendedWidth: 200,
                       backgroundColor: chrome.panel,
@@ -4626,7 +4634,6 @@ class _HomeScreenState extends State<HomeScreen>
                       labelType: railExtended
                           ? NavigationRailLabelType.none
                           : NavigationRailLabelType.all,
-                      trailing: OperationsAppsRail(compact: !railExtended),
                       onDestinationSelected: (i) {
                         _selectKind(switch (i) {
                           1 => LabelKind.receiving,
@@ -4679,6 +4686,12 @@ class _HomeScreenState extends State<HomeScreen>
                           label: Text('Bulk'),
                         ),
                       ],
+                    ),
+                            ),
+                            OperationsAppsRail(compact: !railExtended),
+                          ],
+                        ),
+                      ),
                     ),
                     const VerticalDivider(width: 1),
                     Expanded(
@@ -4978,12 +4991,19 @@ class _HomeScreenState extends State<HomeScreen>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  NavigationRail(
+                  SizedBox(
+                    width: short ? 56 : 72,
+                    child: ColoredBox(
+                      color: chrome.panel,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: NavigationRail(
                     extended: false,
                     minWidth: short ? 56 : 64,
                     backgroundColor: chrome.panel,
                     selectedIndex: _kindRailIndex,
-                    trailing: OperationsAppsRail(compact: true),
                     // Labels eat vertical space on short landscape phones.
                     labelType: short
                         ? NavigationRailLabelType.selected
@@ -5028,6 +5048,12 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ],
                   ),
+                            ),
+                            OperationsAppsRail(compact: true),
+                          ],
+                        ),
+                      ),
+                    ),
                   VerticalDivider(width: 1, color: chrome.border),
                   Expanded(
                     child: Column(

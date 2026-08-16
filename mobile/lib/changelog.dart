@@ -10,17 +10,23 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.76.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.77.
 class AppChangelog {
   AppChangelog._();
 
   /// Bump this when starting a new What's New wave.
-  static const campaignId = 'whats_new_1_1_76';
+  static const campaignId = 'whats_new_1_1_77';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.76)";
+  static const title = "What's new (v1.1.68 – v1.1.77)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.77',
+      bullets: [
+        'Side rail title is MORE APPS (not Operations apps), pinned under Shipping / Receiving / BOL / Bulk',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.76',
       bullets: [

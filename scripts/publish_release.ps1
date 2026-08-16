@@ -204,6 +204,9 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.77)
+- **MORE APPS:** rail footer title (not Operations apps); tile stays under Shipping / Receiving / BOL / Bulk on Windows and Android
+
 ### What's new (v1.1.76)
 - **MORE APPS:** expanded side rail advertises Swift Staging & Shipping Log — launch if installed, otherwise download Setup/APK and start install
 - **Address book:** OSM fills missing city/province/postal; same ship-to with different couriers stays as separate rows

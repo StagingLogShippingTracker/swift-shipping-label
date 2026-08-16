@@ -114,13 +114,12 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'OPERATIONS APPS',
+            'MORE APPS',
             style: TextStyle(
-              fontFamily: 'Oswald',
               fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.1,
-              color: SwiftColors.accent,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: chrome.muted,
             ),
           ),
           const SizedBox(height: 8),
@@ -154,10 +153,11 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
                             children: [
                               Text(
                                 app.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontFamily: 'Oswald',
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   color: chrome.ink,
                                   height: 1.15,
                                 ),
@@ -165,6 +165,8 @@ class _OperationsAppsRailState extends State<OperationsAppsRail> {
                               const SizedBox(height: 2),
                               Text(
                                 app.blurb,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 10,
                                   height: 1.25,
