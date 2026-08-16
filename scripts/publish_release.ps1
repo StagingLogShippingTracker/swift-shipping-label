@@ -204,6 +204,10 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.79)
+- **Address book:** opens from the saved list immediately; extra taps no longer stack another window
+- **Android portrait:** address lines wrap at a readable size in the book and live suggestions
+
 ### What's new (v1.1.78)
 - **Staging Log intro:** on the first three launches of this update, a warehouse-style prompt for Swift Staging & Shipping Log appears before What's new. Try it today launches or downloads the same way as MORE APPS; Dismiss only hides it until the next launch (still up to three times).
 

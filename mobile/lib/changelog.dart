@@ -10,17 +10,24 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.78.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.79.
 class AppChangelog {
   AppChangelog._();
 
-  /// Bump this when starting a new What's New wave.
+  /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.78)";
+  static const title = "What's new (v1.1.68 – v1.1.79)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.79',
+      bullets: [
+        'Delivery Address book opens from the saved list immediately; extra taps no longer stack another window',
+        'Android portrait: address lines wrap at a readable size in the book and live suggestions',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.78',
       bullets: [

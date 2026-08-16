@@ -252,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _shakeMenuOpen = false;
   SoFieldMap _soFieldMap = SoFieldMap();
   bool _mappingDialogOpen = false;
+  bool _addressBookBusy = false;
   final Map<String, FocusNode> _multiFieldFocus = {};
 
   @override
@@ -1036,19 +1037,25 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _openAddressBook() async {
+    if (_addressBookBusy) return;
+    setState(() => _addressBookBusy = true);
     try {
-      await _addressBookSync.fetchAll();
-      await _addressBookSync.ensureOsmEnrich();
-    } catch (_) {}
-    if (!mounted) return;
-    final picked = await showDialog<DeliveryAddressEntry>(
-      context: context,
-      builder: (ctx) => _AddressBookEditor(
-        sync: _addressBookSync,
-      ),
-    );
-    if (picked == null || !mounted) return;
-    _applyAddressBookEntry(picked);
+      if (!mounted) return;
+      final picked = await showDialog<DeliveryAddressEntry>(
+        context: context,
+        builder: (ctx) => _AddressBookEditor(
+          sync: _addressBookSync,
+        ),
+      );
+      if (picked == null || !mounted) return;
+      _applyAddressBookEntry(picked);
+    } finally {
+      if (mounted) {
+        setState(() => _addressBookBusy = false);
+      } else {
+        _addressBookBusy = false;
+      }
+    }
   }
 
   void _applyAddressBookEntry(DeliveryAddressEntry e) {
@@ -3530,7 +3537,7 @@ class _HomeScreenState extends State<HomeScreen>
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: _openAddressBook,
+              onPressed: _addressBookBusy ? null : _openAddressBook,
               icon: const Icon(Icons.menu_book_outlined, size: 18),
               label: const Text('Address book'),
             ),
@@ -5681,6 +5688,24 @@ class _AddressBookEditorState extends State<_AddressBookEditor> {
   final _accounts = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshInBackground());
+  }
+
+  /// Show cached rows immediately; sync/OSM must not block the dialog.
+  Future<void> _refreshInBackground() async {
+    try {
+      await widget.sync.fetchAll();
+      if (mounted) setState(() {});
+    } catch (_) {}
+    try {
+      await widget.sync.ensureOsmEnrich();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     _address.dispose();
@@ -5813,36 +5838,90 @@ class _AddressBookEditorState extends State<_AddressBookEditor> {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final e = entries[i];
-                        return ListTile(
-                          title: Text(
-                            e.shipToName.isEmpty
-                                ? '(No ship-to name)'
-                                : e.shipToName,
-                          ),
-                          subtitle: Text(
-                            [
-                              e.address,
-                              if (e.carrier.isNotEmpty) 'Carrier: ${e.carrier}',
-                              if (e.accountNumbers.isNotEmpty)
-                                'Acct: ${e.accountNumbers}',
-                            ].join('\n'),
-                          ),
-                          isThreeLine: true,
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: 'Delete',
-                                onPressed: _busy ? null : () => _delete(e),
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, e),
-                                child: const Text('USE'),
-                              ),
-                            ],
-                          ),
+                        final portrait = MediaQuery.orientationOf(context) ==
+                            Orientation.portrait;
+                        final android =
+                            Theme.of(context).platform == TargetPlatform.android;
+                        final addrSize = android && portrait ? 16.0 : 14.5;
+                        return InkWell(
                           onTap: () => Navigator.pop(context, e),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 10, 4, 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        e.shipToName.isEmpty
+                                            ? '(No ship-to name)'
+                                            : e.shipToName,
+                                        maxLines: 2,
+                                        softWrap: true,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: addrSize,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        e.address,
+                                        maxLines: 4,
+                                        softWrap: true,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: addrSize,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                      if (e.carrier.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Carrier: ${e.carrier}',
+                                          maxLines: 2,
+                                          softWrap: true,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: addrSize - 1,
+                                            height: 1.3,
+                                            color: Theme.of(context).hintColor,
+                                          ),
+                                        ),
+                                      ],
+                                      if (e.accountNumbers.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Acct: ${e.accountNumbers}',
+                                          maxLines: 2,
+                                          softWrap: true,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: addrSize - 1,
+                                            height: 1.3,
+                                            color: Theme.of(context).hintColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Delete',
+                                  onPressed: _busy ? null : () => _delete(e),
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, e),
+                                  child: const Text('USE'),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       },
                     ),

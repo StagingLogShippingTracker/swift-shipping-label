@@ -316,7 +316,7 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
           borderRadius: BorderRadius.circular(8),
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: 280, maxWidth: width),
+            constraints: BoxConstraints(maxHeight: 360, maxWidth: width),
             child: ListView.builder(
               padding: EdgeInsets.zero,
               shrinkWrap: true,
@@ -338,17 +338,46 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
                   );
                 }
                 final s = row.suggestion!;
+                final portrait =
+                    MediaQuery.orientationOf(context) == Orientation.portrait;
+                final android =
+                    Theme.of(context).platform == TargetPlatform.android;
+                final addrSize = android && portrait ? 16.0 : 14.0;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ListTile(
-                      dense: true,
-                      title: Text(s.address, maxLines: 3),
-                      subtitle: Text(
-                        s.caption,
-                        style: TextStyle(color: chromeHint, fontSize: 12),
-                      ),
+                    InkWell(
                       onTap: () => _pick(s),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              s.address,
+                              maxLines: 4,
+                              softWrap: true,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: addrSize,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              s.caption,
+                              maxLines: 2,
+                              softWrap: true,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: chromeHint,
+                                fontSize: addrSize - 1.5,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     if (i < rows.length - 1 && !rows[i + 1].isHeader)
                       const Divider(height: 1),
@@ -364,14 +393,19 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
 
   @override
   Widget build(BuildContext context) {
+    final portrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final android = Theme.of(context).platform == TargetPlatform.android;
+    final addrSize = android && portrait ? 16.0 : 15.0;
     return CompositedTransformTarget(
       link: _layerLink,
       child: TextField(
         key: _fieldKey,
         controller: widget.controller,
         focusNode: _focus,
-        minLines: 2,
-        maxLines: 3,
+        minLines: portrait ? 3 : 2,
+        maxLines: 4,
+        style: TextStyle(fontSize: addrSize, height: 1.35),
         textCapitalization: TextCapitalization.characters,
         decoration: InputDecoration(
           labelText: widget.labelText,

@@ -92,8 +92,8 @@ class AddressBookSync {
     unawaited(ensureOsmEnrich());
   }
 
-  /// One-shot OSM fill + courier-aware collapse. Safe to await when opening
-  /// the address book; launch starts it in the background.
+  /// One-shot OSM fill + courier-aware collapse. Launch and the address-book
+  /// dialog start this in the background — do not await before showing UI.
   Future<void> ensureOsmEnrich() {
     return _osmPass ??= _runOsmEnrichPass();
   }
