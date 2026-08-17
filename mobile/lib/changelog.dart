@@ -10,17 +10,25 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.79.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.80.
 class AppChangelog {
   AppChangelog._();
 
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.79)";
+  static const title = "What's new (v1.1.68 – v1.1.80)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.80',
+      bullets: [
+        'Customer logos: strip the plate first, then restore — brand colors stay true and letter holes punch to transparent',
+        'PDFs use swift_supply_logo_orange.png (no white seams in SWIFT)',
+        'Order Acknowledgement fill keeps full dotted PO / project values and pulls Attn, site, and AFE',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.79',
       bullets: [

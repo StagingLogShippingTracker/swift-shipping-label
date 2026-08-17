@@ -114,6 +114,9 @@ class OrderAckParseResult {
     this.sourceFileName = '',
     this.customerName = '',
     this.projectNumber = '',
+    this.jobLocation = '',
+    this.requisitioner = '',
+    this.afeNumber = '',
     this.deliveryShipToName = '',
     this.deliveryShipToAddress = '',
     this.headerShipToName = '',
@@ -140,6 +143,15 @@ class OrderAckParseResult {
   /// only prints one value under Project / Location / PO Number.
   final String projectNumber;
 
+  /// Location column (LSD / site) when present.
+  final String jobLocation;
+
+  /// Requisitioner name → Attn.
+  final String requisitioner;
+
+  /// AFE # from the OA header grid.
+  final String afeNumber;
+
   final String deliveryShipToName;
   final String deliveryShipToAddress;
   final String headerShipToName;
@@ -156,6 +168,15 @@ class OrderAckParseResult {
 
   /// `order_ack` or `packing_list`.
   final String documentKind;
+
+  /// Special-instructions blob from location + AFE.
+  String get specialInstructionsHint {
+    final parts = <String>[
+      if (jobLocation.trim().isNotEmpty) jobLocation.trim(),
+      if (afeNumber.trim().isNotEmpty) 'AFE ${afeNumber.trim()}',
+    ];
+    return parts.join(' · ');
+  }
 
   bool get hasIncompleteLines => incompleteLines.isNotEmpty;
 
@@ -177,6 +198,9 @@ class OrderAckParseResult {
     String? sourceFileName,
     String? customerName,
     String? projectNumber,
+    String? jobLocation,
+    String? requisitioner,
+    String? afeNumber,
     String? deliveryShipToName,
     String? deliveryShipToAddress,
     String? headerShipToName,
@@ -195,6 +219,9 @@ class OrderAckParseResult {
       sourceFileName: sourceFileName ?? this.sourceFileName,
       customerName: customerName ?? this.customerName,
       projectNumber: projectNumber ?? this.projectNumber,
+      jobLocation: jobLocation ?? this.jobLocation,
+      requisitioner: requisitioner ?? this.requisitioner,
+      afeNumber: afeNumber ?? this.afeNumber,
       deliveryShipToName: deliveryShipToName ?? this.deliveryShipToName,
       deliveryShipToAddress:
           deliveryShipToAddress ?? this.deliveryShipToAddress,

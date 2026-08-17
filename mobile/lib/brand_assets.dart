@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 class SwiftBrandAssets {
   SwiftBrandAssets._();
 
-  /// Black-plate source lockup (not for PDFs — black SUPPLY disappears on the plate).
+  /// Document / PDF Swift lockup: orange SWIFT + bars, black SUPPLY + shadow.
   static const logoOrange = 'assets/images/swift_supply_logo_orange.png';
 
-  /// Document / PDF logo: transparent plate, orange SWIFT, black SUPPLY + shadow.
+  /// Older transparent-plate export (seams between fill and outline). Unused
+  /// by generated PDFs — kept so existing chrome/tests can still load it.
   static const logoDocument = 'assets/images/swift_supply_logo_document.png';
 
   /// App chrome / side-menu logo: flat solid-orange lockup (no shadow).
@@ -24,7 +25,7 @@ class SwiftBrandAssets {
 /// DPI-aware Swift Supply mark for toolbars / headers / side chrome.
 ///
 /// Always uses [SwiftBrandAssets.logoOrangeSolid] (flat solid orange). Generated
-/// documents use [SwiftBrandAssets.logoDocument] via the PDF pipeline instead.
+/// documents use [SwiftBrandAssets.logoOrange] via the PDF pipeline instead.
 class SwiftChromeLogo extends StatelessWidget {
   const SwiftChromeLogo({
     super.key,

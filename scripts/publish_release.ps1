@@ -204,6 +204,11 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.80)
+- **Logos:** remove the background plate first, then restore — brand colors stay true; letter holes (black or filled) punch to transparent on every similar mark
+- **Swift lockup:** generated PDFs embed swift_supply_logo_orange.png (no white seams in SWIFT)
+- **OA fill:** full dotted PO / project (e.g. 4460.168-016), plus Attn, site location, and AFE into Special Instructions
+
 ### What's new (v1.1.79)
 - **Address book:** opens from the saved list immediately; extra taps no longer stack another window
 - **Android portrait:** address lines wrap at a readable size in the book and live suggestions

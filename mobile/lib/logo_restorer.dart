@@ -11,18 +11,18 @@ import 'logo_image_process.dart';
 
 /// Print-ready customer logo restore.
 ///
-/// Proven path (BFL + Murray's Trucking):
-/// 1. Gemini redraws the mark (vector-like edges, solid fills, keep letter
-///    strokes). Do not upscale JPEG pixels.
-/// 2. Crop empty plate, flatten every fill (any hue), restore a dropped
-///    dark outline from the source, scale to [minDimension] px tall.
-/// 3. If Gemini is down: local predictive mask rebuild, then the same
-///    finish. Offline Windows can still run `logo_restorer.py` (RealESRGAN).
+/// Order (critical for color fidelity):
+/// 1. Strip solid / checkerboard plate from the **raw** raster.
+/// 2. Gemini redraws edges on that cleaned transparent PNG (exact brand hexes).
+/// 3. Snap fills back to source brand colors, crop, optional outline, scale.
+///
+/// Never send a raw plate/checkerboard to Gemini and flatten afterward — that
+/// blends and invents hues. Offline: local predictive rebuild, then same finish.
 class LogoRestorer {
   LogoRestorer._();
 
   static const minDimension = 3000;
-  static const pipelineVersion = 'print-ready-v1';
+  static const pipelineVersion = 'print-ready-v5-plate-counters';
   static const cacheFileName = 'logo_restore_cache.json';
   static final Map<String, Future<File>> _inFlight = {};
 
@@ -76,12 +76,16 @@ class LogoRestorer {
       return source;
     }
 
+    // 1) Background off the raw raster BEFORE any recreate.
+    final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
+    onLog?.call('logo_restorer: prepared transparent raster for restore');
+
     Uint8List? png;
     Object? lastError;
     if (GeminiClient.isConfigured) {
       try {
         onLog?.call('logo_restorer: Gemini restore ${source.path}');
-        png = await GeminiClient().restoreLogoPng(sourceBytes);
+        png = await GeminiClient().restoreLogoPng(prepared);
       } catch (e) {
         lastError = e;
         onLog?.call('logo_restorer: Gemini failed ($e); local rebuild');
@@ -90,7 +94,7 @@ class LogoRestorer {
     if (png == null || png.isEmpty) {
       try {
         onLog?.call('logo_restorer: local predictive rebuild');
-        final decoded = img.decodeImage(sourceBytes);
+        final decoded = img.decodeImage(prepared);
         if (decoded != null) {
           final rebuilt = LogoImageProcessor.rebuildPredictedEdges(
             decoded,
@@ -102,13 +106,34 @@ class LogoRestorer {
         lastError = e;
       }
     }
-    if (png == null || png.isEmpty) {
-      throw StateError(
-        'Logo restore needs Gemini (internet) or a local rebuild.'
-        '${lastError == null ? '' : ' ($lastError)'}',
+    if (png != null &&
+        png.isNotEmpty &&
+        LogoImageProcessor.looksLikeCheckerboardMatte(png)) {
+      onLog?.call(
+        'logo_restorer: restore looks like checkerboard matte; rejecting',
       );
+      png = null;
     }
-    final finalized = finalizeRestoredPng(png, sourceBytes: sourceBytes);
+    if (png != null &&
+        png.isNotEmpty &&
+        !LogoImageProcessor.retainsBrandColors(prepared, png) &&
+        !LogoImageProcessor.retainsBrandColors(sourceBytes, png)) {
+      onLog?.call(
+        'logo_restorer: restore lost brand colors; using cleaned source',
+      );
+      png = null;
+    }
+    if (png == null || png.isEmpty) {
+      // Clean source fallback (still print-ready height via finalize).
+      png = prepared.isNotEmpty ? prepared : sourceBytes;
+      if (lastError != null) {
+        onLog?.call('logo_restorer: fallback after errors ($lastError)');
+      }
+    }
+    final finalized = finalizeRestoredPng(
+      png,
+      sourceBytes: prepared.isNotEmpty ? prepared : sourceBytes,
+    );
     final dest = await _restoredDestFile(source, logosDir);
     await dest.writeAsBytes(finalized, flush: true);
     cache[identity] = dest.absolute.path;
@@ -130,8 +155,12 @@ class LogoRestorer {
     return decoded.height;
   }
 
-  /// Crop empty plate, flatten every fill (any hue), restore a dropped
-  /// dark outline from the source, then scale to [minDimension] px tall.
+  /// Crop empty plate, snap fills to source brand colors, restore outline,
+  /// then scale to [minDimension] px tall.
+  ///
+  /// If the restore dropped a major brand fill (e.g. green wordmark kept only
+  /// the orange accent), fall back to a normalized source so PDFs do not show
+  /// a huge cut-off fragment scaled to Swift height.
   static Uint8List finalizeRestoredPng(
     Uint8List bytes, {
     Uint8List? sourceBytes,
@@ -140,14 +169,42 @@ class LogoRestorer {
     final cropped = LogoImageProcessor.normalizeToVisibleContent(bytes);
     var image = img.decodeImage(cropped.isNotEmpty ? cropped : bytes);
     if (image == null || image.height <= 0) return bytes;
-    image = LogoImageProcessor.flattenSolidBrandFills(image);
+
     if (sourceBytes != null && sourceBytes.isNotEmpty) {
+      // Color lock first — do not flatten before snap (that blends hues).
+      image = LogoImageProcessor.snapToSourceBrandColors(image, sourceBytes);
       final srcImg = img.decodeImage(sourceBytes);
       if (srcImg != null) {
         image = LogoImageProcessor.ensureLetterOutline(srcImg, image);
       }
+      final locked = Uint8List.fromList(img.encodePng(image));
+      if (!LogoImageProcessor.retainsBrandColors(sourceBytes, locked)) {
+        return _finalizeFromSourceFallback(sourceBytes);
+      }
+    } else {
+      image = LogoImageProcessor.flattenSolidBrandFills(image);
     }
 
+    if (image.height < minDimension) {
+      final scale = minDimension / image.height;
+      final w = math.max(1, (image.width * scale).round());
+      // Nearest after color-lock keeps exact brand hexes (no cubic bleed).
+      image = img.copyResize(
+        image,
+        width: w,
+        height: minDimension,
+        interpolation: sourceBytes != null && sourceBytes.isNotEmpty
+            ? img.Interpolation.nearest
+            : img.Interpolation.cubic,
+      );
+    }
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
+  static Uint8List _finalizeFromSourceFallback(Uint8List sourceBytes) {
+    final cropped = LogoImageProcessor.normalizeToVisibleContent(sourceBytes);
+    var image = img.decodeImage(cropped.isNotEmpty ? cropped : sourceBytes);
+    if (image == null || image.height <= 0) return sourceBytes;
     if (image.height < minDimension) {
       final scale = minDimension / image.height;
       final w = math.max(1, (image.width * scale).round());

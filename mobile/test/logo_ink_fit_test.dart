@@ -40,9 +40,12 @@ void main() {
     expect(wide.ink.height, closeTo(60, 4));
     expect(wide.ink.width / wide.ink.height, greaterThan(4));
 
-    expect(square.ink.drawHeight(targetH), closeTo(targetH, 3));
-    expect(wide.ink.drawHeight(targetH), closeTo(targetH, 3));
-    // Ink box itself is exactly targetH after scale.
+    // Safe-pad makes the bitmap slightly taller than the ink box; ink height
+    // itself still maps exactly to Swift's target.
+    expect(square.ink.drawHeight(targetH), greaterThanOrEqualTo(targetH));
+    expect(wide.ink.drawHeight(targetH), greaterThanOrEqualTo(targetH));
+    expect(square.ink.drawHeight(targetH), lessThan(targetH * 1.15));
+    expect(wide.ink.drawHeight(targetH), lessThan(targetH * 1.15));
     expect(square.ink.height * square.ink.scaleForHeight(targetH), closeTo(targetH, 0.001));
     expect(wide.ink.height * wide.ink.scaleForHeight(targetH), closeTo(targetH, 0.001));
   });
@@ -107,5 +110,35 @@ void main() {
       wide.ink.height * wide.ink.scaleForHeight(targetH),
       closeTo(targetH, 0.001),
     );
+  });
+
+  test('bird wordmark on black keeps green+orange and Swift ink height', () {
+    final root = Directory.current.parent;
+    final bird = File('${root.path}/customer_logos/bird_source.png');
+    if (!bird.existsSync()) return;
+
+    const targetH = 62.24;
+    final prepared = LogoInkFit.prepare(bird.readAsBytesSync());
+    expect(prepared.ink.width / prepared.ink.height, greaterThan(2));
+    expect(
+      prepared.ink.height * prepared.ink.scaleForHeight(targetH),
+      closeTo(targetH, 0.001),
+    );
+    // Must not collapse to the orange accent alone (that drew huge/cut-off).
+    expect(prepared.ink.width / prepared.ink.height, lessThan(4.5));
+
+    final im = img.decodeImage(prepared.png)!;
+    var green = 0, orange = 0;
+    for (var y = 0; y < im.height; y += 2) {
+      for (var x = 0; x < im.width; x += 2) {
+        final p = im.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (g > r + 20 && g > b + 20) green++;
+        if (r > 180 && g < 140 && b < 90) orange++;
+      }
+    }
+    expect(green, greaterThan(orange));
+    expect(orange, greaterThan(0));
   });
 }

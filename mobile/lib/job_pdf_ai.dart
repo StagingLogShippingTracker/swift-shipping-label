@@ -23,11 +23,14 @@ $snippet
 Return JSON only:
 {
   "document_kind": "order_ack" or "packing_list",
-  "customer_name": "Bill To company name only",
+  "customer_name": "Bill To company name only (no account number)",
   "sales_order": "Swift order number",
   "packing_slip": "Swift packing slip/list number if this is a packing list, else empty",
-  "po_number": "customer PO",
-  "project": "project number",
+  "po_number": "full customer PO exactly as printed (keep dots and hyphens)",
+  "project": "full project number exactly as printed",
+  "job_location": "Location column / site / LSD if present, else empty",
+  "requisitioner": "Requisitioner name if present, else empty",
+  "afe_number": "AFE # if present, else empty",
   "delivery_ship_to_name": "name from Delivery Instructions (c/o), else empty",
   "delivery_ship_to_address": "street/city from Delivery Instructions, else empty",
   "header_ship_to_name": "Ship To header name",
@@ -38,14 +41,12 @@ Return JSON only:
 Rules:
 - packing_slip is only on packing lists, never invent one for an OA.
 - Prefer Delivery Instructions over the Ship To header for the actual destination.
+- Never truncate PO or project (e.g. use 4460.168-016 not 4460).
 - Empty string when unknown.
 ''',
     );
     if (data == null) return parsed;
     String g(String k) => '${data[k] ?? ''}'.trim();
-
-    String pick(String current, String incoming) =>
-        current.isNotEmpty ? current : incoming;
 
     final kind = g('document_kind');
     final packing = g('packing_slip');
@@ -55,21 +56,40 @@ Rules:
       documentKind: kind == 'packing_list' || parsed.documentKind == 'packing_list'
           ? 'packing_list'
           : parsed.documentKind,
-      customerName: pick(parsed.customerName, g('customer_name')),
-      orderNumber: pick(parsed.orderNumber, g('sales_order')),
-      packingSlipNumber: pick(parsed.packingSlipNumber, packing),
-      poNumber: pick(parsed.poNumber, g('po_number')),
-      projectNumber: pick(parsed.projectNumber, g('project')),
-      deliveryShipToName: pick(parsed.deliveryShipToName, deliveryName),
-      deliveryShipToAddress: pick(parsed.deliveryShipToAddress, deliveryAddr),
-      headerShipToName: pick(parsed.headerShipToName, g('header_ship_to_name')),
+      customerName: preferField(parsed.customerName, g('customer_name')),
+      orderNumber: preferField(parsed.orderNumber, g('sales_order')),
+      packingSlipNumber: preferField(parsed.packingSlipNumber, packing),
+      poNumber: preferField(parsed.poNumber, g('po_number')),
+      projectNumber: preferField(parsed.projectNumber, g('project')),
+      jobLocation: preferField(parsed.jobLocation, g('job_location')),
+      requisitioner: preferField(parsed.requisitioner, g('requisitioner')),
+      afeNumber: preferField(parsed.afeNumber, g('afe_number')),
+      deliveryShipToName: preferField(parsed.deliveryShipToName, deliveryName),
+      deliveryShipToAddress:
+          preferField(parsed.deliveryShipToAddress, deliveryAddr),
+      headerShipToName:
+          preferField(parsed.headerShipToName, g('header_ship_to_name')),
       headerShipToAddress:
-          pick(parsed.headerShipToAddress, g('header_ship_to_address')),
-      deliveryCarrier: pick(parsed.deliveryCarrier, g('carrier')),
+          preferField(parsed.headerShipToAddress, g('header_ship_to_address')),
+      deliveryCarrier: preferField(parsed.deliveryCarrier, g('carrier')),
       hasDeliveryShipTo: parsed.hasDeliveryShipTo ||
           deliveryName.isNotEmpty ||
           deliveryAddr.isNotEmpty,
     );
+  }
+
+  /// Keep the better of regex vs Gemini: prefer non-empty, and prefer a value
+  /// that extends a truncated prefix (4460 → 4460.168-016).
+  static String preferField(String current, String incoming) {
+    final a = current.trim();
+    final b = incoming.trim();
+    if (b.isEmpty) return a;
+    if (a.isEmpty) return b;
+    final al = a.toLowerCase();
+    final bl = b.toLowerCase();
+    if (bl.startsWith(al) && b.length > a.length) return b;
+    if (al.startsWith(bl) && a.length > b.length) return a;
+    return a;
   }
 
   /// When two rows share a ship-to name but rules did not merge, ask Gemini.

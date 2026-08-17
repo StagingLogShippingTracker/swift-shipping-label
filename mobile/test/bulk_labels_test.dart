@@ -237,6 +237,71 @@ Packing Slip No. PS-88991
       expect(result.orderNumber, '1425965');
       expect(result.customerName, 'PROPAK SYSTEMS LTD.');
     });
+
+    test('Spartan-style PO Location Project keeps full dotted refs', () {
+      const text = '''
+ORDER ACKNOWLEDGEMENT
+1423246
+Order Date
+Order Number
+Swift Oilfield Supply Inc.
+08/04/2026
+Sales Rep CHRIS.ACORN
+Bill To: 11797 Ship To:
+SPARTAN DELTA CORP.
+350 - 7 AVENUE SW
+CALGARY, AB T2P 3N9
+CA
+403-265-8011
+SPARTAN DELTA CORP.
+350 - 7 AVENUE SW
+CALGARY, AB T2P 3N9
+CA
+Ordered By: Kyle Johnson
+PO Number Location Project
+4460.168-016	01-19-043-03W5M Riser Site	4460.168
+Requisitioner Approver AFE # Cost Center # Work Order # GL Code
+Kyle Johnson		26GAT609-O	351.04
+Item DescriptionQuantityNo. UOM Unit Price Extended Price
+9.00EA42.02 PRESSURE INDICATOR
+1
+''';
+      final result = const OrderAckParser().parseText(text);
+      expect(result.orderNumber, '1423246');
+      expect(result.customerName, 'SPARTAN DELTA CORP.');
+      expect(result.poNumber, '4460.168-016');
+      expect(result.projectNumber, '4460.168');
+      expect(result.jobLocation, contains('01-19-043-03W5M'));
+      expect(result.jobLocation.toLowerCase(), contains('riser'));
+      expect(result.requisitioner, 'Kyle Johnson');
+      expect(result.afeNumber, '26GAT609-O');
+      expect(result.specialInstructionsHint, contains('Riser'));
+      expect(result.specialInstructionsHint, contains('AFE'));
+      expect(result.headerShipToName, 'SPARTAN DELTA CORP.');
+    });
+
+    test('spaced PO Location Project row still splits dotted tokens', () {
+      const text = '''
+ORDER ACKNOWLEDGEMENT
+1423246
+PO Number Location Project
+4460.168-016 01-19-043-03W5M Riser Site 4460.168
+Bill To: 11797 Ship To:
+SPARTAN DELTA CORP.
+1 MAIN ST
+CALGARY, AB T2P 3N9
+CA
+403-265-8011
+SPARTAN DELTA CORP.
+1 MAIN ST
+CALGARY, AB T2P 3N9
+CA
+''';
+      final result = const OrderAckParser().parseText(text);
+      expect(result.poNumber, '4460.168-016');
+      expect(result.projectNumber, '4460.168');
+      expect(result.jobLocation, contains('Riser'));
+    });
   });
 
   group('Avery 5163 tiling', () {

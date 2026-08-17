@@ -21,6 +21,214 @@ class LogoImageProcessor {
   /// Extra pixels kept inside the crop so anti-aliased edges are not clipped.
   static const safeInset = 1;
 
+  /// Strip solid plate + crop for Gemini: raw raster first, restore second.
+  ///
+  /// Does not flatten fills — only removes canvas so Gemini sees true brand
+  /// colors on transparent alpha (never a baked checkerboard).
+  static Uint8List prepareRasterForRestore(Uint8List input) {
+    if (input.isEmpty) return input;
+    final decoded = img.decodeImage(input);
+    if (decoded == null) return input;
+
+    var image = decoded.numChannels == 4
+        ? decoded.clone()
+        : decoded.convert(numChannels: 4);
+
+    // Kill common transparency-preview checkerboards if a prior tool baked them.
+    _removeCheckerboardMatte(image);
+
+    final bg = _estimateBackgroundColor(image);
+    if (bg != null) {
+      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
+    }
+    _removeSolidBackground(image, (255, 255, 255), eightWay: true);
+    if (bg != null && _isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) {
+      _removeSolidBackground(image, (0, 0, 0), eightWay: true);
+    }
+    _punchEnclosedPlateHoles(image, bg);
+
+    image = _cropToContentBBox(image, null, minAlpha: 96);
+    image = _trimLowCoverageMargins(image);
+    image = addSafePad(image, fraction: 0.05);
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
+  /// Remap restored opaque pixels onto the nearest source brand fill so Gemini
+  /// cannot shift hues (green→brown, Shell yellow→neon, etc.).
+  static img.Image snapToSourceBrandColors(
+    img.Image restored,
+    Uint8List sourcePng,
+  ) {
+    final brands = dominantBrandColors(sourcePng, minFraction: 0.03);
+    if (brands.isEmpty) return restored;
+    final out = restored.numChannels == 4
+        ? restored.clone()
+        : restored.convert(numChannels: 4);
+    final palette = [
+      for (final b in brands) (b.r, b.g, b.b),
+    ];
+    for (var y = 0; y < out.height; y++) {
+      for (var x = 0; x < out.width; x++) {
+        final p = out.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (_isNearBlackCanvas(r, g, b)) {
+          // Keep black strokes; enclosed plate holes are punched below.
+          out.setPixelRgba(x, y, 0, 0, 0, a);
+          continue;
+        }
+        if (r >= 245 && g >= 245 && b >= 245) {
+          out.setPixelRgba(x, y, 0, 0, 0, 0);
+          continue;
+        }
+        var best = palette.first;
+        var bestD = 1 << 30;
+        for (final c in palette) {
+          final d = _colorDistance(r, g, b, c.$1, c.$2, c.$3);
+          if (d < bestD) {
+            bestD = d;
+            best = c;
+          }
+        }
+        if (a >= 180) {
+          // Solid ink → exact brand hex (no hue drift).
+          out.setPixelRgba(x, y, best.$1, best.$2, best.$3, a);
+        } else {
+          // Soft AA fringe: pull toward brand without hard posterize.
+          final t = a / 255.0;
+          out.setPixelRgba(
+            x,
+            y,
+            (r + (best.$1 - r) * t).round().clamp(0, 255),
+            (g + (best.$2 - g) * t).round().clamp(0, 255),
+            (b + (best.$3 - b) * t).round().clamp(0, 255),
+            a,
+          );
+        }
+      }
+    }
+    final srcImg = img.decodeImage(sourcePng);
+    final plate = srcImg == null ? null : _estimateBackgroundColor(srcImg);
+    _punchEnclosedPlateHoles(out, plate);
+    return out;
+  }
+
+  /// Hex list for Gemini: exact brand fills already measured on the cleaned raster.
+  static String brandColorPromptNote(Uint8List png) {
+    final brands = dominantBrandColors(png, minFraction: 0.03);
+    if (brands.isEmpty) return '';
+    final hexes = brands
+        .map(
+          (c) =>
+              '#${c.r.toRadixString(16).padLeft(2, '0')}'
+              '${c.g.toRadixString(16).padLeft(2, '0')}'
+              '${c.b.toRadixString(16).padLeft(2, '0')}',
+        )
+        .join(', ');
+    return '\nBRAND FILLS (exact — use these hex values only, do not shift hue '
+        'or invent new colors): $hexes.\n';
+  }
+
+  /// True when the bitmap looks like a UI transparency checkerboard (Gemini
+  /// sometimes redraws the matte as yellow/gray tiles).
+  static bool looksLikeCheckerboardMatte(Uint8List png) {
+    final image = img.decodeImage(png);
+    if (image == null || image.width < 16 || image.height < 16) return false;
+    final w = image.width;
+    final h = image.height;
+    var tileHits = 0;
+    var samples = 0;
+    const step = 8;
+    for (var y = 0; y < h - step; y += step) {
+      for (var x = 0; x < w - step; x += step) {
+        final a = image.getPixel(x, y);
+        final b = image.getPixel(x + step, y);
+        final c = image.getPixel(x, y + step);
+        final d = image.getPixel(x + step, y + step);
+        samples++;
+        final contrastAb = _colorDistance(
+          a.r.toInt(), a.g.toInt(), a.b.toInt(),
+          b.r.toInt(), b.g.toInt(), b.b.toInt(),
+        );
+        final contrastAc = _colorDistance(
+          a.r.toInt(), a.g.toInt(), a.b.toInt(),
+          c.r.toInt(), c.g.toInt(), c.b.toInt(),
+        );
+        final matchAd = _colorDistance(
+          a.r.toInt(), a.g.toInt(), a.b.toInt(),
+          d.r.toInt(), d.g.toInt(), d.b.toInt(),
+        );
+        if (contrastAb > 40 && contrastAc > 40 && matchAd < 28) {
+          tileHits++;
+        }
+      }
+    }
+    return samples > 20 && tileHits / samples > 0.18;
+  }
+
+  static void _removeCheckerboardMatte(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 8 || h < 8) return;
+    // Sample corner 2x2 blocks; classic light/dark alternating tiles.
+    var checker = 0;
+    for (final (cx, cy) in [(0, 0), (w - 2, 0), (0, h - 2), (w - 2, h - 2)]) {
+      final p00 = image.getPixel(cx, cy);
+      final p10 = image.getPixel(cx + 1, cy);
+      final d = _colorDistance(
+        p00.r.toInt(), p00.g.toInt(), p00.b.toInt(),
+        p10.r.toInt(), p10.g.toInt(), p10.b.toInt(),
+      );
+      if (d > 50) checker++;
+    }
+    if (checker < 2) return;
+
+    bool isMatteTile(int r, int g, int b, int a) {
+      if (a < 8) return true;
+      final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+      final lum = (r + g + b) / 3.0;
+      // Classic PNG preview: near-white + light-gray tiles (low chroma).
+      if (lum >= 205 && sat <= 45) return true;
+      if (lum >= 145 && lum <= 205 && sat <= 40) return true;
+      return false;
+    }
+
+    final visited = List<bool>.filled(w * h, false);
+    final queue = <int>[];
+    void tryEnqueue(int x, int y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      final i = y * w + x;
+      if (visited[i]) return;
+      final p = image.getPixel(x, y);
+      if (!isMatteTile(p.r.toInt(), p.g.toInt(), p.b.toInt(), p.a.toInt())) {
+        return;
+      }
+      visited[i] = true;
+      queue.add(i);
+    }
+
+    for (var x = 0; x < w; x++) {
+      tryEnqueue(x, 0);
+      tryEnqueue(x, h - 1);
+    }
+    for (var y = 0; y < h; y++) {
+      tryEnqueue(0, y);
+      tryEnqueue(w - 1, y);
+    }
+
+    while (queue.isNotEmpty) {
+      final i = queue.removeLast();
+      final x = i % w;
+      final y = i ~/ w;
+      image.setPixelRgba(x, y, 0, 0, 0, 0);
+      tryEnqueue(x - 1, y);
+      tryEnqueue(x + 1, y);
+      tryEnqueue(x, y - 1);
+      tryEnqueue(x, y + 1);
+    }
+  }
+
   /// Decode, trim empty margins, remove solid backgrounds, re-encode PNG.
   static Uint8List process(Uint8List input) =>
       processWithOptions(input, LogoImportOptions.standard());
@@ -31,6 +239,9 @@ class LogoImageProcessor {
   /// Edge flood removes white/black/transparent canvas first, then a true
   /// pixel bounding-box (not whole-row peeling) so a square icon on a large
   /// plate is sized by the mark, not the plate.
+  ///
+  /// Adds a small transparent safe-pad so flush-cropped wordmarks are not hard
+  /// against the PDF header rules (looks “cut off” even when scaled correctly).
   static Uint8List normalizeToVisibleContent(Uint8List input) {
     if (input.isEmpty) return input;
     final decoded = img.decodeImage(input);
@@ -42,10 +253,14 @@ class LogoImageProcessor {
 
     final bg = _estimateBackgroundColor(image);
     if (bg != null) {
-      _removeSolidBackground(image, bg);
+      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
     }
     // Punch leftover white plate from the edges even when corners were transparent.
-    _removeSolidBackground(image, (255, 255, 255));
+    _removeSolidBackground(image, (255, 255, 255), eightWay: true);
+    if (bg != null && _isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) {
+      _removeSolidBackground(image, (0, 0, 0), eightWay: true);
+    }
+    _punchEnclosedPlateHoles(image, bg);
 
     final beforeW = image.width;
     final beforeH = image.height;
@@ -55,6 +270,8 @@ class LogoImageProcessor {
     if (image.width == beforeW && image.height == beforeH) {
       image = _trimEmptyMargins(image, bg);
     }
+
+    image = addSafePad(image);
 
     // Always re-encode the flooded/cropped bitmap — never keep the padded original.
     return Uint8List.fromList(img.encodePng(image));
@@ -422,7 +639,8 @@ class LogoImageProcessor {
         : null;
 
     if (bg != null) {
-      _removeSolidBackground(image, bg);
+      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
+      _punchEnclosedPlateHoles(image, bg);
     }
 
     if (options.cropMode == LogoCropMode.auto) {
@@ -521,8 +739,9 @@ class LogoImageProcessor {
 
   static void _removeSolidBackground(
     img.Image image,
-    (int r, int g, int b) bg,
-  ) {
+    (int r, int g, int b) bg, {
+    bool eightWay = false,
+  }) {
     final w = image.width;
     final h = image.height;
     final visited = Uint8List(w * h);
@@ -554,7 +773,138 @@ class LogoImageProcessor {
       trySeed(x - 1, y);
       trySeed(x, y + 1);
       trySeed(x, y - 1);
+      if (eightWay) {
+        trySeed(x + 1, y + 1);
+        trySeed(x + 1, y - 1);
+        trySeed(x - 1, y + 1);
+        trySeed(x - 1, y - 1);
+      }
     }
+  }
+
+  /// Knock out letter counters / gaps that stayed filled with the canvas color
+  /// after the outer plate flood (holes in b/d, white counters, gray plates).
+  /// Does not strip brand strokes that sit against already-transparent canvas.
+  static void _punchEnclosedPlateHoles(
+    img.Image image,
+    (int r, int g, int b)? plate,
+  ) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 8 || h < 8) return;
+
+    final seen = Uint8List(w * h);
+    var inkCount = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 80) continue;
+        if (_isPlateFill(p, plate)) continue;
+        inkCount++;
+      }
+    }
+    if (inkCount < 40) return;
+
+    const dirs = [
+      (1, 0),
+      (-1, 0),
+      (0, 1),
+      (0, -1),
+      (1, 1),
+      (1, -1),
+      (-1, 1),
+      (-1, -1),
+    ];
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final start = y * w + x;
+        if (seen[start] != 0) continue;
+        final seed = image.getPixel(x, y);
+        if (seed.a.toInt() < alphaThreshold) continue;
+        if (!_isPlateFill(seed, plate)) continue;
+
+        final comp = <int>[];
+        final queue = <int>[start];
+        seen[start] = 1;
+        var touchesBorder = false;
+        while (queue.isNotEmpty) {
+          final i = queue.removeLast();
+          comp.add(i);
+          final cx = i % w;
+          final cy = i ~/ w;
+          if (cx == 0 || cy == 0 || cx == w - 1 || cy == h - 1) {
+            touchesBorder = true;
+          }
+          for (final d in dirs) {
+            final nx = cx + d.$1;
+            final ny = cy + d.$2;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            final ni = ny * w + nx;
+            if (seen[ni] != 0) continue;
+            final np = image.getPixel(nx, ny);
+            if (np.a.toInt() < alphaThreshold) continue;
+            if (!_isPlateFill(np, plate)) continue;
+            seen[ni] = 1;
+            queue.add(ni);
+          }
+        }
+        if (touchesBorder) continue;
+        // Counters are small vs the wordmark; skip large brand fills.
+        if (comp.length > inkCount * 0.22) continue;
+
+        var inkN = 0;
+        var clearN = 0;
+        for (final i in comp) {
+          final cx = i % w;
+          final cy = i ~/ w;
+          for (final d in dirs) {
+            final nx = cx + d.$1;
+            final ny = cy + d.$2;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              clearN++;
+              continue;
+            }
+            final p = image.getPixel(nx, ny);
+            if (p.a.toInt() < 80) {
+              clearN++;
+              continue;
+            }
+            if (_isPlateFill(p, plate)) continue;
+            inkN++;
+          }
+        }
+        final boundary = inkN + clearN;
+        if (boundary == 0) continue;
+        if (inkN < boundary * 0.7 || inkN <= clearN) continue;
+
+        for (final i in comp) {
+          image.setPixelRgba(i % w, i ~/ w, 0, 0, 0, 0);
+        }
+      }
+    }
+  }
+
+  /// Plate / canvas fill: achromatic black or white, or the estimated bg hue.
+  static bool _isPlateFill(img.Pixel pixel, (int r, int g, int b)? plate) {
+    final r = pixel.r.toInt();
+    final g = pixel.g.toInt();
+    final b = pixel.b.toInt();
+    if (_isNearBlackCanvas(r, g, b)) return true;
+    if (r >= 240 && g >= 240 && b >= 240) return true;
+    if (plate == null) return false;
+    if (_colorDistance(r, g, b, plate.$1, plate.$2, plate.$3) <= colorTolerance) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _isAchromaticPlate((int r, int g, int b) bg) {
+    if (_isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) return true;
+    if (bg.$1 >= 240 && bg.$2 >= 240 && bg.$3 >= 240) return true;
+    final sat =
+        math.max(bg.$1, math.max(bg.$2, bg.$3)) - math.min(bg.$1, math.min(bg.$2, bg.$3));
+    return sat <= 18;
   }
 
   /// Sample corner regions; return a shared bg color when corners agree.
@@ -604,6 +954,11 @@ class LogoImageProcessor {
   }
 
   /// Empty = transparent, matches known flat background, or near-white padding.
+  ///
+  /// Black canvases only match **achromatic** near-black pixels. Dark brand
+  /// greens/blues (high saturation) must never be treated as the plate — that
+  /// used to leave only a bright accent (e.g. orange swoosh) which then scaled
+  /// up to Swift height and looked huge / cut-off on the PDF.
   static bool _isEmptyPixel(img.Pixel pixel, (int r, int g, int b)? bg) {
     if (pixel.a.toInt() < alphaThreshold) return true;
     final r = pixel.r.toInt();
@@ -612,14 +967,26 @@ class LogoImageProcessor {
     // Square web logos often sit on opaque white; treat that as margin.
     if (r >= 240 && g >= 240 && b >= 240) return true;
     if (bg == null) return false;
+    final bgBlack = _isNearBlackCanvas(bg.$1, bg.$2, bg.$3);
+    if (bgBlack) {
+      // Chromatic ink on a black plate is never "empty".
+      if (!_isNearBlackCanvas(r, g, b)) return false;
+      if (_colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
+        return true;
+      }
+      return r <= 32 && g <= 32 && b <= 32;
+    }
     if (_colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
       return true;
     }
-    // Solid black (or near-black) canvas around a logo.
-    if (bg.$1 <= 32 && bg.$2 <= 32 && bg.$3 <= 32 && r <= 32 && g <= 32 && b <= 32) {
-      return true;
-    }
     return false;
+  }
+
+  /// Near-black canvas (not a dark brand fill): low luminance and low saturation.
+  static bool _isNearBlackCanvas(int r, int g, int b) {
+    final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+    final lum = (r + g + b) / 3.0;
+    return lum <= 40 && sat <= 16;
   }
 
   static int _colorDistance(int r1, int g1, int b1, int r2, int g2, int b2) {
@@ -627,6 +994,86 @@ class LogoImageProcessor {
       (r1 - r2).abs(),
       math.max((g1 - g2).abs(), (b1 - b2).abs()),
     );
+  }
+
+  /// Dominant chromatic brand fills (sat + area). Used to reject restores that
+  /// drop the wordmark and keep only a bright accent.
+  static List<({int r, int g, int b, double fraction})> dominantBrandColors(
+    Uint8List png, {
+    double minFraction = 0.06,
+  }) {
+    final image = img.decodeImage(png);
+    if (image == null) return const [];
+    var ink = 0;
+    final buckets = <int, int>{};
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (r >= 240 && g >= 240 && b >= 240) continue;
+        if (_isNearBlackCanvas(r, g, b)) continue;
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        if (sat < 28) continue;
+        ink++;
+        // Quantize so JPEG noise collapses.
+        final key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+        buckets[key] = (buckets[key] ?? 0) + 1;
+      }
+    }
+    if (ink < 40 || buckets.isEmpty) return const [];
+    final ranked = buckets.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final out = <({int r, int g, int b, double fraction})>[];
+    for (final e in ranked.take(6)) {
+      final fraction = e.value / ink;
+      if (fraction < minFraction) break;
+      final key = e.key;
+      out.add((
+        r: ((key >> 8) & 0xf) * 16 + 8,
+        g: ((key >> 4) & 0xf) * 16 + 8,
+        b: (key & 0xf) * 16 + 8,
+        fraction: fraction,
+      ));
+    }
+    return out;
+  }
+
+  /// True when [result] still carries the significant brand fills from [source].
+  static bool retainsBrandColors(Uint8List source, Uint8List result) {
+    final needed = dominantBrandColors(source);
+    if (needed.isEmpty) return true;
+    final present = dominantBrandColors(result, minFraction: 0.02);
+    if (present.isEmpty) return false;
+    var hits = 0;
+    for (final n in needed) {
+      final ok = present.any(
+        (p) => _colorDistance(n.r, n.g, n.b, p.r, p.g, p.b) <= 56,
+      );
+      if (ok) hits++;
+    }
+    // Keep every major fill when the source has 2+ (wordmark + accent).
+    if (needed.length >= 2) return hits >= needed.length;
+    return hits >= 1;
+  }
+
+  /// Transparent border so flush-cropped marks are not hard against PDF rules.
+  static img.Image addSafePad(img.Image image, {double fraction = 0.04}) {
+    if (image.width < 4 || image.height < 4) return image;
+    final pad = math
+        .max(
+          2,
+          (math.min(image.width, image.height) * fraction).round(),
+        )
+        .clamp(2, 48);
+    final out = img.Image(
+      width: image.width + pad * 2,
+      height: image.height + pad * 2,
+      numChannels: 4,
+    );
+    img.fill(out, color: img.ColorRgba8(0, 0, 0, 0));
+    img.compositeImage(out, image, dstX: pad, dstY: pad);
+    return out;
   }
 
   /// Pixel AABB of "solid" content (ignores faint fringe below [minAlpha]).
@@ -653,12 +1100,8 @@ class LogoImageProcessor {
           continue;
         }
         if (bg != null &&
-            bg.$1 <= 32 &&
-            bg.$2 <= 32 &&
-            bg.$3 <= 32 &&
-            r <= 32 &&
-            g <= 32 &&
-            b <= 32) {
+            _isNearBlackCanvas(bg.$1, bg.$2, bg.$3) &&
+            _isNearBlackCanvas(r, g, b)) {
           continue;
         }
         if (x < minX) minX = x;

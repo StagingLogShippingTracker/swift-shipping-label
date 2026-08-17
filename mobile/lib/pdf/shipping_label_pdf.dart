@@ -85,12 +85,15 @@ class ShippingLabelPdf {
     Uint8List? logoBytes;
     LogoInkMetrics? logoInk;
     try {
-      // Isolated lockup (transparent plate). Never use the black-plate orange
-      // PNG or [SwiftBrandAssets.logoOrangeSolid] — both hide black SUPPLY.
-      final data = await rootBundle.load(SwiftBrandAssets.logoDocument);
-      final prepared = LogoInkFit.prepare(data.buffer.asUint8List());
-      logoBytes = prepared.png;
-      logoInk = prepared.ink;
+      // Fixed Swift lockup. Do not run customer-logo bg-strip on this file —
+      // black SUPPLY / outlines / shadow are brand ink, not a plate. Re-encoding
+      // also opens white seams between the orange fill and black stroke.
+      final data = await rootBundle.load(SwiftBrandAssets.logoOrange);
+      logoBytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      logoInk = LogoInkFit.measure(logoBytes);
     } catch (_) {
       logoBytes = null;
       logoInk = null;
@@ -750,6 +753,12 @@ class ShippingLabelPdf {
     if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
 
     if (place == PdfLogoPlacement.left && logos.isNotEmpty) {
+      // Vertical clip only: keep Swift-height sizing, but stop a mangled
+      // accent-only mark from spilling into the form body.
+      c.saveContext();
+      c
+        ..drawRect(mx - 2, logoBottom, contentW + 4, bandH)
+        ..clipPath();
       _drawCustomerLogosMatchingHeight(
         c,
         logos,
@@ -757,11 +766,16 @@ class ShippingLabelPdf {
         yLogoBottom,
         customerTargetH,
       );
+      c.restoreContext();
     } else if (place == PdfLogoPlacement.right && logos.isNotEmpty) {
       final swiftRightEdge = mx + swiftW;
       final startX = swiftW > 0
           ? swiftRightEdge + customerLogoToSwiftGap
           : mx + contentW * 0.58;
+      c.saveContext();
+      c
+        ..drawRect(mx - 2, logoBottom, contentW + 4, bandH)
+        ..clipPath();
       _drawCustomerLogosMatchingHeight(
         c,
         logos,
@@ -769,6 +783,7 @@ class ShippingLabelPdf {
         yLogoBottom,
         customerTargetH,
       );
+      c.restoreContext();
     } else if (logos.isEmpty && place != PdfLogoPlacement.belowSwift) {
       c
         ..setStrokeColor(ruleSoft)

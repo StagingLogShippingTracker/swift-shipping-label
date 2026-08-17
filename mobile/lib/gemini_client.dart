@@ -498,14 +498,19 @@ Return JSON only:
         : '\nCRITICAL: The source has a dark RGB(${outline.r},${outline.g},${outline.b}) '
             'border around the letters. Recreate that stroke on every glyph, including '
             'inner holes. It is not background.\n';
+    final brandNote = LogoImageProcessor.brandColorPromptNote(bytes);
     final prompt = '''
 Recreate this exact company logo as a professional print-ready PNG.
 
-Preserve the brand exactly: letterforms, colors, icon, tagline, spacing, and proportions.
+The input already has a transparent background — keep true alpha. Never draw a
+transparency checkerboard, gray/white tile grid, paper plate, or any matte.
+
+Preserve the brand exactly: letterforms, icon, tagline, spacing, and proportions.
+COLORS: copy the source hues exactly — do not warm, cool, neon-shift, blend, or
+invent fills. One flat solid per brand color (no gradients, banding, JPEG
+mottling, or splotches).$brandNote
 If this is lettering: identify the typeface (or closest), reading, line breaks, and tilt/skew in degrees. Recreate the letters as vector-like shapes — do not upscale pixels. Edges must be smooth predicted curves, never muddy JPEG stairs.
 If the source letters have a dark/black border or outline, that stroke is part of the logo. Draw it on every glyph (including inner counters) as an even, continuous border in that same dark color. Do not drop it, and do not treat it as a background plate.$outlineNote
-Each brand color must be one flat fill (single hex per color) — no gradients, banding, JPEG mottling, paper texture, or splotches inside shapes or letters.
-Transparent background (alpha), no black or gray plate.
 No extra padding, mockups, watermarks, drop shadows, or new text.
 The lockup should fill the frame. High resolution for a 3000-pixel-tall label logo.
 Output the image only.

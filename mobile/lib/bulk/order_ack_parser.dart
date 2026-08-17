@@ -215,6 +215,9 @@ class OrderAckParser {
       projectNumber: header.projectNumber.isNotEmpty
           ? header.projectNumber
           : (poNumber ?? ''),
+      jobLocation: header.jobLocation,
+      requisitioner: header.requisitioner,
+      afeNumber: header.afeNumber,
       deliveryShipToName: header.deliveryShipToName,
       deliveryShipToAddress: header.deliveryShipToAddress,
       headerShipToName: header.headerShipToName,
@@ -291,28 +294,38 @@ class OrderAckParser {
     return null;
   }
 
-  static String? _extractPo(String text) {
-    final m = RegExp(
-      r'PO\s*Number\s*(P?\d{4,})',
-      caseSensitive: false,
-    ).firstMatch(text);
-    if (m != null) return m.group(1)!.trim();
+  /// Customer PO / project tokens: P612207, 4460.168-016, PCE-112124-03690.
+  static final _refToken = RegExp(
+    r'(?:P\d{4,}|(?:[A-Z]{1,6}-)?\d{3,}(?:[.\-/][A-Z0-9]+)*)',
+    caseSensitive: false,
+  );
 
-    final m2 = RegExp(
-      r'PO\s*Number[^\n]*\n\s*(P?\d{4,})',
+  static String? _extractPo(String text) {
+    final fromCols = OrderAckHeader.extractProjectLocationPo(text);
+    if (fromCols.po.isNotEmpty) return fromCols.po;
+
+    final token = _refToken.pattern;
+    final labeledSame = RegExp(
+      'PO\\s*Number\\s*[:#]?\\s*($token)',
       caseSensitive: false,
     ).firstMatch(text);
-    if (m2 != null) return m2.group(1)!.trim();
+    if (labeledSame != null) return labeledSame.group(1)!.trim();
+
+    final labeledNext = RegExp(
+      'PO\\s*Number[^\\n]*\\n\\s*($token)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (labeledNext != null) return labeledNext.group(1)!.trim();
 
     // "ProjectLocationPO Number\nP613120" mashed headers.
-    final m3 = RegExp(
-      r'PO\s*Number[\s\S]{0,40}?\b(P\d{5,})\b',
+    final mashed = RegExp(
+      'PO\\s*Number[\\s\\S]{0,80}?\\b($token)\\b',
       caseSensitive: false,
     ).firstMatch(text);
-    if (m3 != null) return m3.group(1);
+    if (mashed != null) return mashed.group(1)!.trim();
 
-    final m4 = RegExp(r'\b(P\d{5,})\b').firstMatch(text);
-    return m4?.group(1);
+    final loose = RegExp(r'\b(P\d{5,})\b').firstMatch(text);
+    return loose?.group(1);
   }
 
   static String? _extractOrderNumber(String text) {
@@ -339,6 +352,9 @@ class OrderAckHeader {
   const OrderAckHeader({
     this.customerName = '',
     this.projectNumber = '',
+    this.jobLocation = '',
+    this.requisitioner = '',
+    this.afeNumber = '',
     this.deliveryShipToName = '',
     this.deliveryShipToAddress = '',
     this.headerShipToName = '',
@@ -351,6 +367,16 @@ class OrderAckHeader {
 
   final String customerName;
   final String projectNumber;
+
+  /// Site / LSD from the Location column (e.g. 01-19-043-03W5M Riser Site).
+  final String jobLocation;
+
+  /// Requisitioner → Attn on shipping labels.
+  final String requisitioner;
+
+  /// AFE # when present on the OA header grid.
+  final String afeNumber;
+
   final String deliveryShipToName;
   final String deliveryShipToAddress;
   final String headerShipToName;
@@ -376,14 +402,19 @@ class OrderAckHeader {
   static OrderAckHeader parse(String raw) {
     final text = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final parties = _parseBillAndShip(text);
-    final project = _extractProject(text);
+    final cols = extractProjectLocationPo(text);
+    final project = cols.project.isNotEmpty ? cols.project : _extractProject(text);
+    final meta = _extractRequisitionerAfe(text);
     final delivery = _parseDeliveryInstructions(text);
     return OrderAckHeader(
-      customerName: parties.billName,
+      customerName: _stripAccountPrefix(parties.billName),
       projectNumber: project,
+      jobLocation: cols.location,
+      requisitioner: meta.requisitioner,
+      afeNumber: meta.afe,
       deliveryShipToName: delivery.name,
       deliveryShipToAddress: delivery.address,
-      headerShipToName: parties.shipName,
+      headerShipToName: _stripAccountPrefix(parties.shipName),
       headerShipToAddress: parties.shipAddress,
       deliveryCarrier: delivery.carrier,
       hasDeliveryShipTo:
@@ -391,6 +422,171 @@ class OrderAckHeader {
       packingSlipNumber: _extractPackingSlip(text),
       documentKind: _documentKind(text),
     );
+  }
+
+  static String _stripAccountPrefix(String name) {
+    final t = name.trim();
+    if (t.isEmpty) return t;
+    return t.replaceFirst(RegExp(r'^\d{4,6}\s+'), '').trim();
+  }
+
+  /// Parse Project/Location/PO or PO/Location/Project value row.
+  static ({String project, String location, String po})
+      extractProjectLocationPo(String text) {
+    // Propak: Project Location PO Number
+    final projectFirst = RegExp(
+      r'Project\s*Location\s*PO\s*Number\s*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (projectFirst != null) {
+      return _splitProjectLocationPoRow(
+        projectFirst.group(1)!,
+        poLast: true,
+      );
+    }
+
+    // Spartan / many OAs: PO Number Location Project
+    final poFirst = RegExp(
+      r'PO\s*Number\s*Location\s*Project\s*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (poFirst != null) {
+      return _splitProjectLocationPoRow(
+        poFirst.group(1)!,
+        poLast: false,
+      );
+    }
+
+    // Tab-separated header on one line.
+    final tabbed = RegExp(
+      r'(Project|PO\s*Number)[ \t]+Location[ \t]+(PO\s*Number|Project)\s*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (tabbed != null) {
+      final firstIsProject =
+          tabbed.group(1)!.toLowerCase().startsWith('project');
+      return _splitProjectLocationPoRow(
+        tabbed.group(3)!,
+        poLast: firstIsProject,
+      );
+    }
+
+    return (project: '', location: '', po: '');
+  }
+
+  static ({String project, String location, String po})
+      _splitProjectLocationPoRow(String raw, {required bool poLast}) {
+    var line = raw.trim();
+    if (line.isEmpty || RegExp(r'^AFE\b', caseSensitive: false).hasMatch(line)) {
+      return (project: '', location: '', po: '');
+    }
+
+    final cols = line
+        .split(RegExp(r'\t+|\s{2,}'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .where((s) => !RegExp(r'^AFE\b', caseSensitive: false).hasMatch(s))
+        .toList();
+
+    if (cols.length >= 3) {
+      if (poLast) {
+        return (
+          project: cols.first,
+          location: cols.sublist(1, cols.length - 1).join(' '),
+          po: cols.last,
+        );
+      }
+      return (
+        po: cols.first,
+        location: cols.sublist(1, cols.length - 1).join(' '),
+        project: cols.last,
+      );
+    }
+
+    // Single spaced line: "4460.168-016 01-19-043-03W5M Riser Site 4460.168"
+    final tokens = OrderAckParser._refToken.allMatches(line).toList();
+    if (tokens.isEmpty) {
+      return (
+        project: cols.isNotEmpty ? cols.first : '',
+        location: '',
+        po: '',
+      );
+    }
+    if (tokens.length == 1) {
+      final only = tokens.first.group(0)!;
+      return (project: only, location: '', po: only);
+    }
+
+    final first = tokens.first.group(0)!;
+    final last = tokens.last.group(0)!;
+    final locStart = poLast ? tokens.first.end : tokens.first.end;
+    final locEnd = poLast ? tokens.last.start : tokens.last.start;
+    var location = '';
+    if (locEnd > locStart) {
+      location = line.substring(locStart, locEnd).trim();
+    }
+    // Drop leading LSD fragment that was captured as middle of PO/project.
+    if (poLast) {
+      return (project: first, location: location, po: last);
+    }
+    return (po: first, location: location, project: last);
+  }
+
+  static ({String requisitioner, String afe}) _extractRequisitionerAfe(
+    String text,
+  ) {
+    var requisitioner = '';
+    var afe = '';
+
+    final row = RegExp(
+      r'Requisitioner\s+Approver\s+AFE\s*#[^\n]*\n\s*([^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (row != null) {
+      final cols = row
+          .group(1)!
+          .split(RegExp(r'\t+|\s{2,}'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (cols.isNotEmpty &&
+          !RegExp(r'^(AFE|Cost|Work|GL)\b', caseSensitive: false)
+              .hasMatch(cols.first)) {
+        // Name-like first cell (not a code-only AFE).
+        if (RegExp(r'[A-Za-z]{2,}').hasMatch(cols.first) &&
+            !RegExp(r'^\d').hasMatch(cols.first)) {
+          requisitioner = cols.first;
+        }
+      }
+      for (final c in cols) {
+        if (RegExp(r'^[A-Z0-9]{2,}\d[A-Z0-9\-]*$', caseSensitive: false)
+            .hasMatch(c)) {
+          afe = c;
+          break;
+        }
+      }
+    }
+
+    if (afe.isEmpty) {
+      final labeled = RegExp(
+        r'AFE\s*#\s*([A-Z0-9][A-Z0-9\-]{2,})',
+        caseSensitive: false,
+      ).firstMatch(text);
+      if (labeled != null) afe = labeled.group(1)!.trim();
+    }
+
+    // Fallback: first person-like line under Approver mash (Propak SHAWN EPP).
+    if (requisitioner.isEmpty) {
+      final mash = RegExp(
+        r"AFE\s*#\s*GL\s*Code[^\n]*\n\s*([A-Z][A-Za-z .'\-]{2,})",
+        caseSensitive: false,
+      ).firstMatch(text);
+      if (mash != null) {
+        requisitioner = mash.group(1)!.trim();
+      }
+    }
+
+    return (requisitioner: requisitioner, afe: afe);
   }
 
   static String _documentKind(String text) {
@@ -428,6 +624,9 @@ class OrderAckHeader {
   }
 
   static String _extractProject(String text) {
+    final cols = extractProjectLocationPo(text);
+    if (cols.project.isNotEmpty) return cols.project;
+
     final mashed = RegExp(
       r'Project\s*Location\s*PO\s*Number\s*\n\s*([^\n]+)',
       caseSensitive: false,
@@ -449,9 +648,9 @@ class OrderAckHeader {
       caseSensitive: false,
     ).firstMatch(text);
     if (tabbed != null) {
-      final cols = tabbed.group(1)!.split(RegExp(r'\t+|\s{2,}'));
-      if (cols.isNotEmpty && cols.first.trim().isNotEmpty) {
-        return cols.first.trim();
+      final cols2 = tabbed.group(1)!.split(RegExp(r'\t+|\s{2,}'));
+      if (cols2.isNotEmpty && cols2.first.trim().isNotEmpty) {
+        return cols2.first.trim();
       }
     }
     return '';

@@ -2385,6 +2385,9 @@ class _HomeScreenState extends State<HomeScreen>
       sourceFileName: items.map((e) => e.sourceFileName).join(', '),
       customerName: j((e) => e.customerName),
       projectNumber: j((e) => e.projectNumber),
+      jobLocation: j((e) => e.jobLocation),
+      requisitioner: j((e) => e.requisitioner),
+      afeNumber: j((e) => e.afeNumber),
       deliveryShipToName: j((e) => e.deliveryShipToName),
       deliveryShipToAddress: j((e) => e.deliveryShipToAddress),
       headerShipToName: j((e) => e.headerShipToName),
@@ -2414,6 +2417,13 @@ class _HomeScreenState extends State<HomeScreen>
     }
     if (parsed.poNumber.isNotEmpty) {
       _setField(LabelFields.poNum, parsed.poNumber);
+    }
+    if (parsed.requisitioner.isNotEmpty && _kind == LabelKind.shipping) {
+      _setField(LabelFields.attn, parsed.requisitioner);
+    }
+    final special = parsed.specialInstructionsHint;
+    if (special.isNotEmpty) {
+      _setField(LabelFields.specialInstructions, special);
     }
     if (parsed.packingSlipNumber.isNotEmpty) {
       _setField(LabelFields.packingSlip, parsed.packingSlipNumber);
@@ -4155,7 +4165,7 @@ class _HomeScreenState extends State<HomeScreen>
             label: 'Restore low-resolution logos for print',
             subtitle: _restoringLogo
                 ? 'Restoring logo…'
-                : 'Gemini redraw: solid fills, clean edges, keep letter outlines',
+                : 'Strip background first, then Gemini redraw with exact brand colors',
             onChanged: _restoringLogo
                 ? null
                 : (v) => _setRestoreLowResLogos(v ?? false),
