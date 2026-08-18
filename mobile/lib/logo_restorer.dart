@@ -8,23 +8,32 @@ import 'package:path/path.dart' as p;
 
 import 'gemini_client.dart';
 import 'logo_image_process.dart';
+import 'restore_catalog.dart';
 
 /// Print-ready customer logo restore.
 ///
-/// Order (critical for color fidelity):
-/// 1. Strip solid / checkerboard plate from the **raw** raster.
-/// 2. Gemini redraws edges on that cleaned transparent PNG (exact brand hexes).
-/// 3. Snap fills back to source brand colors, crop, optional outline, scale.
-///
-/// Never send a raw plate/checkerboard to Gemini and flatten afterward — that
-/// blends and invents hues. Offline: local predictive rebuild, then same finish.
+/// Gemini (`restoreLogoPng`) is the primary conservator whenever a key is
+/// configured: enhance existing pixels, repair edges, even blotchy solids.
+/// Do not unwire it. A light studio finish always follows (plate/halo knockout,
+/// color lock, interior flatten, 3000px PNG). Every pass is scored into
+/// [lessonsFileName] so winning techniques replay on later restores.
 class LogoRestorer {
   LogoRestorer._();
 
   static const minDimension = 3000;
-  static const pipelineVersion = 'print-ready-v5-plate-counters';
+  static const pipelineVersion = 'print-ready-v8-studio';
   static const cacheFileName = 'logo_restore_cache.json';
+  static const lessonsFileName = 'logo_restore_lessons.json';
   static final Map<String, Future<File>> _inFlight = {};
+  static int _epoch = 0;
+
+  static int get epoch => _epoch;
+
+  /// Abort in-flight restores. Completions after this are discarded.
+  static void cancelAll() {
+    _epoch++;
+    _inFlight.clear();
+  }
 
   static Future<File> ensureHighRes(
     File source, {
@@ -37,10 +46,12 @@ class LogoRestorer {
     final existing = _inFlight[identity];
     if (existing != null) return existing;
 
+    final started = _epoch;
     final future = _ensureHighResUncapped(
       source,
       logosDir: logosDir,
       identity: identity,
+      startedEpoch: started,
       onLog: onLog,
     );
     _inFlight[identity] = future;
@@ -55,8 +66,11 @@ class LogoRestorer {
     File source, {
     required Directory logosDir,
     required String identity,
+    required int startedEpoch,
     void Function(String)? onLog,
   }) async {
+    bool cancelled() => startedEpoch != _epoch;
+
     await logosDir.create(recursive: true);
     final cache = await _loadCache(logosDir);
     final cachedPath = cache[identity];
@@ -69,6 +83,7 @@ class LogoRestorer {
     }
 
     final sourceBytes = await source.readAsBytes();
+    if (cancelled()) return source;
     if (_isPrintReadyRestored(source, sourceBytes)) {
       onLog?.call('logo_restorer: already print-ready ${source.path}');
       cache[identity] = source.absolute.path;
@@ -76,64 +91,83 @@ class LogoRestorer {
       return source;
     }
 
-    // 1) Background off the raw raster BEFORE any recreate.
     final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
-    onLog?.call('logo_restorer: prepared transparent raster for restore');
+    onLog?.call('logo_restorer: prepared transparent raster for enhance');
+    final workBytes = prepared.isNotEmpty ? prepared : sourceBytes;
 
-    Uint8List? png;
-    Object? lastError;
+    final catalog = await _loadCatalog(logosDir);
+    final addenda = catalog.winningAddenda();
+
+    var usedGemini = false;
+    Uint8List png;
     if (GeminiClient.isConfigured) {
       try {
-        onLog?.call('logo_restorer: Gemini restore ${source.path}');
-        png = await GeminiClient().restoreLogoPng(prepared);
-      } catch (e) {
-        lastError = e;
-        onLog?.call('logo_restorer: Gemini failed ($e); local rebuild');
-      }
-    }
-    if (png == null || png.isEmpty) {
-      try {
-        onLog?.call('logo_restorer: local predictive rebuild');
-        final decoded = img.decodeImage(prepared);
-        if (decoded != null) {
-          final rebuilt = LogoImageProcessor.rebuildPredictedEdges(
-            decoded,
-            targetHeight: minDimension,
-          );
-          png = Uint8List.fromList(img.encodePng(rebuilt));
+        onLog?.call('logo_restorer: Gemini restoreLogoPng');
+        png = await GeminiClient().restoreLogoPng(
+          workBytes,
+          addenda: addenda,
+        );
+        usedGemini = png.isNotEmpty;
+        if (!usedGemini) {
+          throw StateError('Gemini returned empty image');
         }
       } catch (e) {
-        lastError = e;
+        onLog?.call('logo_restorer: Gemini failed ($e); cubic fallback');
+        png = LogoImageProcessor.upscaleForPrint(
+          workBytes,
+          minHeight: minDimension,
+        );
       }
-    }
-    if (png != null &&
-        png.isNotEmpty &&
-        LogoImageProcessor.looksLikeCheckerboardMatte(png)) {
-      onLog?.call(
-        'logo_restorer: restore looks like checkerboard matte; rejecting',
+    } else {
+      onLog?.call('logo_restorer: Gemini unconfigured; cubic raster enhance');
+      png = LogoImageProcessor.upscaleForPrint(
+        workBytes,
+        minHeight: minDimension,
       );
-      png = null;
     }
-    if (png != null &&
-        png.isNotEmpty &&
-        !LogoImageProcessor.retainsBrandColors(prepared, png) &&
-        !LogoImageProcessor.retainsBrandColors(sourceBytes, png)) {
-      onLog?.call(
-        'logo_restorer: restore lost brand colors; using cleaned source',
-      );
-      png = null;
+
+    final fingerprint = _cheapFingerprint(workBytes);
+    catalog.successCount[fingerprint] =
+        (catalog.successCount[fingerprint] ?? 0) + 1;
+
+    if (cancelled()) return source;
+
+    final decoded = img.decodeImage(png);
+    if (decoded != null) {
+      LogoImageProcessor.stripForeignMarks(decoded);
+      png = Uint8List.fromList(img.encodePng(decoded));
     }
-    if (png == null || png.isEmpty) {
-      // Clean source fallback (still print-ready height via finalize).
-      png = prepared.isNotEmpty ? prepared : sourceBytes;
-      if (lastError != null) {
-        onLog?.call('logo_restorer: fallback after errors ($lastError)');
-      }
-    }
+
     final finalized = finalizeRestoredPng(
       png,
-      sourceBytes: prepared.isNotEmpty ? prepared : sourceBytes,
+      sourceBytes: workBytes,
+      enhanceOnly: !usedGemini,
     );
+
+    final quality = RestoreQuality.measure(
+      geminiOk: usedGemini,
+      source: workBytes,
+      restored: finalized,
+      hadCornerMark: false,
+    );
+    catalog.record(
+      sourceName: p.basename(source.path),
+      grade: quality.grade,
+      used: [
+        if (usedGemini) 'gemini_primary',
+        'plate_knockout',
+        'no_watermark',
+        'halo_strip',
+        'solid_fills',
+        'color_lock',
+        'aspect_match',
+        'studio_finish',
+      ],
+      notes: RestoreCatalog.lessonsFrom(quality),
+    );
+    await _saveCatalog(logosDir, catalog);
+    if (cancelled()) return source;
+
     final dest = await _restoredDestFile(source, logosDir);
     await dest.writeAsBytes(finalized, flush: true);
     cache[identity] = dest.absolute.path;
@@ -142,7 +176,6 @@ class LogoRestorer {
     return dest;
   }
 
-  /// Skip a second Gemini pass on a file this pipeline already finished.
   static bool _isPrintReadyRestored(File source, Uint8List bytes) {
     final name = p.basename(source.path).toLowerCase();
     if (!name.contains('restored')) return false;
@@ -155,23 +188,36 @@ class LogoRestorer {
     return decoded.height;
   }
 
-  /// Crop empty plate, snap fills to source brand colors, restore outline,
-  /// then scale to [minDimension] px tall.
+  static String _cheapFingerprint(Uint8List bytes) {
+    var h = bytes.length;
+    final step = math.max(1, bytes.length ~/ 512);
+    for (var i = 0; i < bytes.length; i += step) {
+      h = 0x1fffffff & (h * 31 + bytes[i]);
+    }
+    return '$h:${bytes.length}:$pipelineVersion';
+  }
+
+  /// Studio finish after Gemini (or cubic fallback): plate/halo out, lock
+  /// brand colors, even blotchy interiors, PNG at [minDimension] px tall.
   ///
-  /// If the restore dropped a major brand fill (e.g. green wordmark kept only
-  /// the orange accent), fall back to a normalized source so PDFs do not show
-  /// a huge cut-off fragment scaled to Swift height.
+  /// Does not re-trace or cartoon edges — Gemini already repaired them.
   static Uint8List finalizeRestoredPng(
     Uint8List bytes, {
     Uint8List? sourceBytes,
+    bool enhanceOnly = false,
   }) {
     if (bytes.isEmpty) return bytes;
     final cropped = LogoImageProcessor.normalizeToVisibleContent(bytes);
     var image = img.decodeImage(cropped.isNotEmpty ? cropped : bytes);
-    if (image == null || image.height <= 0) return bytes;
+    if (image == null || image.height <= 0) {
+      return LogoImageProcessor.upscaleForPrint(
+        bytes,
+        minHeight: minDimension,
+      );
+    }
+    LogoImageProcessor.stripHaloFringe(image);
 
-    if (sourceBytes != null && sourceBytes.isNotEmpty) {
-      // Color lock first — do not flatten before snap (that blends hues).
+    if (!enhanceOnly && sourceBytes != null && sourceBytes.isNotEmpty) {
       image = LogoImageProcessor.snapToSourceBrandColors(image, sourceBytes);
       final srcImg = img.decodeImage(sourceBytes);
       if (srcImg != null) {
@@ -181,21 +227,18 @@ class LogoRestorer {
       if (!LogoImageProcessor.retainsBrandColors(sourceBytes, locked)) {
         return _finalizeFromSourceFallback(sourceBytes);
       }
-    } else {
-      image = LogoImageProcessor.flattenSolidBrandFills(image);
     }
+
+    image = LogoImageProcessor.flattenSolidBrandFills(image);
 
     if (image.height < minDimension) {
       final scale = minDimension / image.height;
       final w = math.max(1, (image.width * scale).round());
-      // Nearest after color-lock keeps exact brand hexes (no cubic bleed).
       image = img.copyResize(
         image,
         width: w,
         height: minDimension,
-        interpolation: sourceBytes != null && sourceBytes.isNotEmpty
-            ? img.Interpolation.nearest
-            : img.Interpolation.cubic,
+        interpolation: img.Interpolation.cubic,
       );
     }
     return Uint8List.fromList(img.encodePng(image));
@@ -242,6 +285,9 @@ class LogoRestorer {
   static File _cacheFile(Directory logosDir) =>
       File(p.join(logosDir.path, cacheFileName));
 
+  static File _lessonsFile(Directory logosDir) =>
+      File(p.join(logosDir.path, lessonsFileName));
+
   static Future<Map<String, String>> _loadCache(Directory logosDir) async {
     final file = _cacheFile(logosDir);
     if (!await file.exists()) return {};
@@ -265,6 +311,28 @@ class LogoRestorer {
     final file = _cacheFile(logosDir);
     await file.writeAsBytes(
       utf8.encode(const JsonEncoder.withIndent('  ').convert(cache)),
+    );
+  }
+
+  static Future<RestoreCatalog> _loadCatalog(Directory logosDir) async {
+    final file = _lessonsFile(logosDir);
+    if (!await file.exists()) return RestoreCatalog();
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return RestoreCatalog();
+      return RestoreCatalog.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return RestoreCatalog();
+    }
+  }
+
+  static Future<void> _saveCatalog(
+    Directory logosDir,
+    RestoreCatalog catalog,
+  ) async {
+    final file = _lessonsFile(logosDir);
+    await file.writeAsBytes(
+      utf8.encode(prettyJson(catalog.toJson())),
     );
   }
 }

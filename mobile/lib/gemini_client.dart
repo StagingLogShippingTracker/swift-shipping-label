@@ -437,7 +437,10 @@ Return JSON only:
   /// Recreate a low-res logo as a sharp high-resolution PNG (online Gemini).
   ///
   /// Throws if offline, unconfigured, or the model returns no image.
-  Future<Uint8List> restoreLogoPng(Uint8List bytes) async {
+  Future<Uint8List> restoreLogoPng(
+    Uint8List bytes, {
+    List<String> addenda = const [],
+  }) async {
     final key = resolveApiKey();
     if (key.isEmpty) {
       throw StateError('Logo restore needs internet and a Gemini API key.');
@@ -462,7 +465,12 @@ Return JSON only:
       final id = modelId.trim();
       if (id.isEmpty || !seen.add(id)) continue;
       try {
-        final png = await _restoreLogoPngWithModel(key: key, modelId: id, bytes: bytes);
+        final png = await _restoreLogoPngWithModel(
+          key: key,
+          modelId: id,
+          bytes: bytes,
+          addenda: addenda,
+        );
         if (png != null && png.isNotEmpty) return png;
       } catch (e) {
         lastError = e;
@@ -482,10 +490,46 @@ Return JSON only:
     return defined.isEmpty ? 'gemini-3.1-flash-image' : defined;
   }
 
+  /// Prompt used by [restoreLogoPng]. Kept in one place so lessons can append.
+  static String restorePrompt({
+    String brandNote = '',
+    String outlineNote = '',
+    List<String> addenda = const [],
+  }) {
+    final extra = addenda.isEmpty
+        ? ''
+        : '\n${addenda.map((e) => e.trim()).where((e) => e.isNotEmpty).join('\n')}\n';
+    return '''
+Restore this company logo the way a conservator restores a photograph: enhance
+what is already there into a clean, high-resolution PNG. Do not invent a new
+design.
+
+Enhance the existing pixels — super-resolve and de-blur. Keep every letterform,
+icon, curve, thickness, and proportion identical to the source.
+
+Repair edges: remove JPEG stair-steps, pixelation, frayed rims, and white/gray
+compression halo. Do not over-sharpen, cartoon, outline, or thicken strokes.
+
+Repair blotchy patches: where a region is meant to be one solid brand color,
+even it out. Do not posterize real gradients, photos, or intentional texture.
+
+True alpha — never bake a black, white, gray, or checkerboard plate.
+COLORS: copy the source hues exactly — do not warm, cool, neon-shift, or invent
+fills.$brandNote
+If the source letters have a dark/black border or outline, keep that stroke.$outlineNote
+No extra padding, mockups, drop shadows, or new text.
+Never add Gemini, Google, Spark, Imagen, or any AI watermark, badge, sparkle,
+or wordmark. The logo is unbranded — do not stamp a generator mark.
+Do not invent a company name, tagline, or second lockup that is not in the source.
+Output a high-definition PNG, 3000 pixels tall. Image only.
+$extra''';
+  }
+
   Future<Uint8List?> _restoreLogoPngWithModel({
     required String key,
     required String modelId,
     required Uint8List bytes,
+    List<String> addenda = const [],
   }) async {
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/'
@@ -495,26 +539,14 @@ Return JSON only:
     final outline = src == null ? null : LogoImageProcessor.detectLetterOutline(src);
     final outlineNote = outline == null
         ? ''
-        : '\nCRITICAL: The source has a dark RGB(${outline.r},${outline.g},${outline.b}) '
-            'border around the letters. Recreate that stroke on every glyph, including '
-            'inner holes. It is not background.\n';
+        : '\nKeep the dark RGB(${outline.r},${outline.g},${outline.b}) '
+            'border around the letters. It is not background.\n';
     final brandNote = LogoImageProcessor.brandColorPromptNote(bytes);
-    final prompt = '''
-Recreate this exact company logo as a professional print-ready PNG.
-
-The input already has a transparent background — keep true alpha. Never draw a
-transparency checkerboard, gray/white tile grid, paper plate, or any matte.
-
-Preserve the brand exactly: letterforms, icon, tagline, spacing, and proportions.
-COLORS: copy the source hues exactly — do not warm, cool, neon-shift, blend, or
-invent fills. One flat solid per brand color (no gradients, banding, JPEG
-mottling, or splotches).$brandNote
-If this is lettering: identify the typeface (or closest), reading, line breaks, and tilt/skew in degrees. Recreate the letters as vector-like shapes — do not upscale pixels. Edges must be smooth predicted curves, never muddy JPEG stairs.
-If the source letters have a dark/black border or outline, that stroke is part of the logo. Draw it on every glyph (including inner counters) as an even, continuous border in that same dark color. Do not drop it, and do not treat it as a background plate.$outlineNote
-No extra padding, mockups, watermarks, drop shadows, or new text.
-The lockup should fill the frame. High resolution for a 3000-pixel-tall label logo.
-Output the image only.
-''';
+    final prompt = restorePrompt(
+      brandNote: brandNote,
+      outlineNote: outlineNote,
+      addenda: addenda,
+    );
     final aspect = (src != null && src.height > 0)
         ? src.width / src.height
         : 1.0;

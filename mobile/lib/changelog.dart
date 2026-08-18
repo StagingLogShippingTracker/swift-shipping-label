@@ -10,17 +10,27 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.80.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.81.
 class AppChangelog {
   AppChangelog._();
 
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.80)";
+  static const title = "What's new (v1.1.68 – v1.1.81)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.81',
+      bullets: [
+        'BOL: wide customer logos shrink to stay left of Probill instead of clipping behind the sticker box',
+        'Shipping / Receiving: dual C/O logos share a bounded frame so wide marks do not overlap',
+        'Logo restore: Gemini enhances the existing pixels, then a studio finish; later restores reuse what worked',
+        'Restore runs from Edit logo (with Cancel), not automatically on Generate',
+        'BOL line dimensions: length × width × height with a unit',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.80',
       bullets: [
@@ -52,7 +62,7 @@ class AppChangelog {
     ChangelogSection(
       version: 'v1.1.76',
       bullets: [
-        'MORE APPS on the side rail: open Staging & Shipping Log if installed, or download and install it',
+        'MORE APPS on the side rail: open Swift Staging & Shipping Log if installed, or download and install it',
         'Delivery Address book fills missing city/province/postal from OpenStreetMap; same ship-to keeps separate courier rows',
         'History prune removes snapshot-less rows and their PDFs from Supabase Storage',
       ],
@@ -116,7 +126,7 @@ class AppChangelog {
         'Shipping freight / 3rd-party billing + Carrier ↔ ATTN PDF layout',
         'Blank piece counts treated as 0',
         'Per-kind History with cloud PDF storage and local cache',
-        'Shared contact memory (Document Generator only — not SLST roster)',
+        'Shared contact memory (Document Generator only — not Swift Staging & Shipping Log roster)',
         'Solid orange chrome logo in the app UI',
         'Android dark mode: Update sheet contrast fix',
       ],

@@ -46,6 +46,7 @@ class LogoImageProcessor {
       _removeSolidBackground(image, (0, 0, 0), eightWay: true);
     }
     _punchEnclosedPlateHoles(image, bg);
+    stripHaloFringe(image);
 
     image = _cropToContentBBox(image, null, minAlpha: 96);
     image = _trimLowCoverageMargins(image);
@@ -79,7 +80,8 @@ class LogoImageProcessor {
           continue;
         }
         if (r >= 245 && g >= 245 && b >= 245) {
-          out.setPixelRgba(x, y, 0, 0, 0, 0);
+          // Keep white brand marks (snow lines, wordmark fills). Letter
+          // counters are punched as enclosed plate holes below.
           continue;
         }
         var best = palette.first;
@@ -165,6 +167,61 @@ class LogoImageProcessor {
       }
     }
     return samples > 20 && tileHits / samples > 0.18;
+  }
+
+  /// Cubic upscale of the existing raster — recovers pixelation without
+  /// redrawing or warping letterforms.
+  static Uint8List upscaleForPrint(Uint8List png, {required int minHeight}) {
+    if (png.isEmpty) return png;
+    final decoded = img.decodeImage(png);
+    if (decoded == null || decoded.height <= 0) return png;
+    if (decoded.height >= minHeight) return png;
+    final scale = minHeight / decoded.height;
+    final w = math.max(1, (decoded.width * scale).round());
+    final out = img.copyResize(
+      decoded,
+      width: w,
+      height: minHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+    return Uint8List.fromList(img.encodePng(out));
+  }
+
+  /// True when [result] is a super-resolution of [source], not a redraw.
+  /// Downscales the result to the source size and compares opaque pixels.
+  static bool matchesSourceGeometry(
+    Uint8List source,
+    Uint8List result, {
+    double maxMeanAbs = 28,
+  }) {
+    final src = img.decodeImage(source);
+    final dst = img.decodeImage(result);
+    if (src == null || dst == null) return false;
+    if (src.width < 4 || src.height < 4) return true;
+    final scaled = img.copyResize(
+      dst,
+      width: src.width,
+      height: src.height,
+      interpolation: img.Interpolation.cubic,
+    );
+    var abs = 0;
+    var n = 0;
+    for (var y = 0; y < src.height; y++) {
+      for (var x = 0; x < src.width; x++) {
+        final a = src.getPixel(x, y);
+        final b = scaled.getPixel(x, y);
+        final aa = a.a.toInt();
+        final ba = b.a.toInt();
+        if (aa < 40 && ba < 40) continue;
+        n++;
+        abs += (a.r.toInt() - b.r.toInt()).abs();
+        abs += (a.g.toInt() - b.g.toInt()).abs();
+        abs += (a.b.toInt() - b.b.toInt()).abs();
+        abs += (aa - ba).abs();
+      }
+    }
+    if (n == 0) return false;
+    return abs / (n * 4) <= maxMeanAbs;
   }
 
   static void _removeCheckerboardMatte(img.Image image) {
@@ -261,6 +318,8 @@ class LogoImageProcessor {
       _removeSolidBackground(image, (0, 0, 0), eightWay: true);
     }
     _punchEnclosedPlateHoles(image, bg);
+    stripForeignMarks(image);
+    stripHaloFringe(image);
 
     final beforeW = image.width;
     final beforeH = image.height;
@@ -275,6 +334,157 @@ class LogoImageProcessor {
 
     // Always re-encode the flooded/cropped bitmap — never keep the padded original.
     return Uint8List.fromList(img.encodePng(image));
+  }
+
+  /// Punch JPEG / Gemini white-gray halo that frays ink against the plate.
+  ///
+  /// Light, low-chroma pixels sitting between brand ink and empty canvas are
+  /// compression fringe — not part of the lockup. Enclosed white fills (letter
+  /// counters, snow marks) do not touch empty canvas and are kept.
+  static void stripHaloFringe(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 4 || h < 4) return;
+
+    bool nearBlack(int r, int g, int b) {
+      final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+      return (r + g + b) / 3.0 <= 40 && sat <= 16;
+    }
+
+    bool chromaticInk(img.Pixel p) {
+      if (p.a.toInt() < 80) return false;
+      final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+      if (nearBlack(r, g, b)) return false;
+      final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+      return sat > 45;
+    }
+
+    final punch = Uint8List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        final lum = (r + g + b) / 3.0;
+        final fringe = (sat < 42 && lum > 88) || (sat < 28 && lum > 70);
+        if (!fringe) continue;
+        var hasInk = false;
+        var hasEmpty = false;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            final nx = x + dx;
+            final ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              hasEmpty = true;
+              continue;
+            }
+            final n = image.getPixel(nx, ny);
+            if (n.a.toInt() < 40 ||
+                nearBlack(n.r.toInt(), n.g.toInt(), n.b.toInt())) {
+              hasEmpty = true;
+            } else if (chromaticInk(n)) {
+              hasInk = true;
+            }
+          }
+        }
+        if (hasInk && hasEmpty) punch[y * w + x] = 1;
+      }
+    }
+    for (var i = 0; i < punch.length; i++) {
+      if (punch[i] == 0) continue;
+      image.setPixelRgba(i % w, i ~/ w, 0, 0, 0, 0);
+    }
+  }
+
+  /// Clear Gemini/Google watermarks and extra wordmarks that are not the logo.
+  ///
+  /// The largest ink component is the brand. Small disconnected blobs in the
+  /// corners or along the bottom edge (Spark / "Gemini" marks) are punched
+  /// to transparent. Brand ® marks that sit next to the lockup are kept.
+  static void stripForeignMarks(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 16 || h < 16) return;
+
+    const minA = 80;
+    final seen = Uint8List(w * h);
+    final comps = <_InkBlob>[];
+    const dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final start = y * w + x;
+        if (seen[start] != 0) continue;
+        if (image.getPixel(x, y).a.toInt() < minA) continue;
+
+        var minX = x, minY = y, maxX = x, maxY = y, area = 0;
+        final queue = <int>[start];
+        seen[start] = 1;
+        while (queue.isNotEmpty) {
+          final i = queue.removeLast();
+          area++;
+          final cx = i % w;
+          final cy = i ~/ w;
+          if (cx < minX) minX = cx;
+          if (cy < minY) minY = cy;
+          if (cx > maxX) maxX = cx;
+          if (cy > maxY) maxY = cy;
+          for (final d in dirs) {
+            final nx = cx + d.$1;
+            final ny = cy + d.$2;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            final ni = ny * w + nx;
+            if (seen[ni] != 0) continue;
+            if (image.getPixel(nx, ny).a.toInt() < minA) continue;
+            seen[ni] = 1;
+            queue.add(ni);
+          }
+        }
+        comps.add(
+          _InkBlob(
+            minX: minX,
+            minY: minY,
+            maxX: maxX,
+            maxY: maxY,
+            area: area,
+          ),
+        );
+      }
+    }
+    if (comps.length < 2) return;
+    comps.sort((a, b) => b.area.compareTo(a.area));
+    final main = comps.first;
+    final mainArea = math.max(1, main.area);
+    final padX = math.max(8, (w * 0.08).round());
+    final padY = math.max(8, (h * 0.08).round());
+
+    bool nearMain(_InkBlob b) {
+      return b.maxX >= main.minX - padX &&
+          b.minX <= main.maxX + padX &&
+          b.maxY >= main.minY - padY &&
+          b.minY <= main.maxY + padY;
+    }
+
+    for (final b in comps.skip(1)) {
+      if (b.area > mainArea * 0.12) continue;
+      if (nearMain(b)) continue;
+      final cx = (b.minX + b.maxX) / 2;
+      final cy = (b.minY + b.maxY) / 2;
+      final inCorner = (cx < w * 0.22 || cx > w * 0.78) &&
+          (cy < h * 0.22 || cy > h * 0.78);
+      final alongBottom = cy > h * 0.86 && b.area < mainArea * 0.08;
+      if (!inCorner && !alongBottom) continue;
+
+      for (var y = b.minY; y <= b.maxY; y++) {
+        for (var x = b.minX; x <= b.maxX; x++) {
+          if (image.getPixel(x, y).a.toInt() < minA) continue;
+          image.setPixelRgba(x, y, 0, 0, 0, 0);
+        }
+      }
+    }
   }
 
   /// Collapse JPEG / upscale mottling and weak interior gradients to a single
@@ -509,9 +719,19 @@ class LogoImageProcessor {
   /// blur-threshold so stair-stepped JPEG edges become curves, then paints
   /// dark outline first and fills after.
   static img.Image rebuildPredictedEdges(img.Image source, {int? targetHeight}) {
-    final src = source.numChannels == 4
+    var src = source.numChannels == 4
         ? source.clone()
         : source.convert(numChannels: 4);
+    const maxWork = 400;
+    if (math.max(src.width, src.height) > maxWork) {
+      final scale = maxWork / math.max(src.width, src.height);
+      src = img.copyResize(
+        src,
+        width: math.max(1, (src.width * scale).round()),
+        height: math.max(1, (src.height * scale).round()),
+        interpolation: img.Interpolation.average,
+      );
+    }
     final sw = src.width;
     final sh = src.height;
     if (sw < 4 || sh < 4) return src;
@@ -521,14 +741,30 @@ class LogoImageProcessor {
       for (var x = 0; x < sw; x++) {
         final p = src.getPixel(x, y);
         if (p.a.toInt() < 40) continue;
-        final r = p.r.toInt();
-        final g = p.g.toInt();
-        final b = p.b.toInt();
-        if (r + g + b >= 720 && (r - b).abs() < 36 && (r - g).abs() < 36) {
-          continue;
-        }
-        samples.add([r, g, b, x, y]);
+        samples.add([p.r.toInt(), p.g.toInt(), p.b.toInt(), x, y]);
       }
+    }
+    if (samples.length < 40) return src;
+
+    var whiteN = 0, blackN = 0;
+    for (final s in samples) {
+      final sat = math.max(s[0], math.max(s[1], s[2])) -
+          math.min(s[0], math.min(s[1], s[2]));
+      final lum = (s[0] + s[1] + s[2]) / 3.0;
+      if (lum >= 232 && sat <= 36) whiteN++;
+      if (lum <= 40 && sat <= 16) blackN++;
+    }
+    final skipWhitePlate = whiteN / samples.length > 0.35;
+    final skipBlackPlate = blackN / samples.length > 0.35;
+    if (skipWhitePlate || skipBlackPlate) {
+      samples.removeWhere((s) {
+        final sat = math.max(s[0], math.max(s[1], s[2])) -
+            math.min(s[0], math.min(s[1], s[2]));
+        final lum = (s[0] + s[1] + s[2]) / 3.0;
+        if (skipWhitePlate && lum >= 232 && sat <= 36) return true;
+        if (skipBlackPlate && lum <= 40 && sat <= 16) return true;
+        return false;
+      });
     }
     if (samples.length < 40) return src;
 
@@ -598,14 +834,14 @@ class LogoImageProcessor {
         height: th,
         interpolation: img.Interpolation.cubic,
       );
-      scaled = img.gaussianBlur(scaled, radius: math.max(1, th ~/ 900));
       final cr = centers[ci][0];
       final cg = centers[ci][1];
       final cb = centers[ci][2];
       for (var y = 0; y < th; y++) {
         for (var x = 0; x < tw; x++) {
-          if (scaled.getPixel(x, y).r.toInt() < 128) continue;
-          out.setPixelRgba(x, y, cr, cg, cb, 255);
+          final cov = scaled.getPixel(x, y).r.toInt();
+          if (cov <= out.getPixel(x, y).a.toInt()) continue;
+          out.setPixelRgba(x, y, cr, cg, cb, cov);
         }
       }
     }
@@ -828,11 +1064,16 @@ class LogoImageProcessor {
         final queue = <int>[start];
         seen[start] = 1;
         var touchesBorder = false;
+        var minX = w, minY = h, maxX = 0, maxY = 0;
         while (queue.isNotEmpty) {
           final i = queue.removeLast();
           comp.add(i);
           final cx = i % w;
           final cy = i ~/ w;
+          if (cx < minX) minX = cx;
+          if (cy < minY) minY = cy;
+          if (cx > maxX) maxX = cx;
+          if (cy > maxY) maxY = cy;
           if (cx == 0 || cy == 0 || cx == w - 1 || cy == h - 1) {
             touchesBorder = true;
           }
@@ -852,6 +1093,13 @@ class LogoImageProcessor {
         if (touchesBorder) continue;
         // Counters are small vs the wordmark; skip large brand fills.
         if (comp.length > inkCount * 0.22) continue;
+        final bw = maxX - minX + 1;
+        final bh = maxY - minY + 1;
+        if (bw <= 0 || bh <= 0) continue;
+        // Thin highlight strokes (mountain snow, underlines) are elongated.
+        if (bw > bh * 3.5 || bh > bw * 3.5) continue;
+        final compactness = comp.length / (bw * bh);
+        if (compactness < 0.32) continue;
 
         var inkN = 0;
         var clearN = 0;
@@ -885,18 +1133,16 @@ class LogoImageProcessor {
     }
   }
 
-  /// Plate / canvas fill: achromatic black or white, or the estimated bg hue.
+  /// Plate / canvas fill: only the estimated outer plate hue.
+  /// Do not treat every near-black or near-white pixel as plate — that
+  /// strips brand snow lines, black wordmarks, and interior highlights.
   static bool _isPlateFill(img.Pixel pixel, (int r, int g, int b)? plate) {
+    if (plate == null) return false;
     final r = pixel.r.toInt();
     final g = pixel.g.toInt();
     final b = pixel.b.toInt();
-    if (_isNearBlackCanvas(r, g, b)) return true;
-    if (r >= 240 && g >= 240 && b >= 240) return true;
-    if (plate == null) return false;
-    if (_colorDistance(r, g, b, plate.$1, plate.$2, plate.$3) <= colorTolerance) {
-      return true;
-    }
-    return false;
+    return _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3) <=
+        colorTolerance;
   }
 
   static bool _isAchromaticPlate((int r, int g, int b) bg) {
@@ -1273,4 +1519,20 @@ class LogoImageProcessor {
     img.compositeImage(out, image, dstX: pad, dstY: pad);
     return out;
   }
+}
+
+class _InkBlob {
+  const _InkBlob({
+    required this.minX,
+    required this.minY,
+    required this.maxX,
+    required this.maxY,
+    required this.area,
+  });
+
+  final int minX;
+  final int minY;
+  final int maxX;
+  final int maxY;
+  final int area;
 }

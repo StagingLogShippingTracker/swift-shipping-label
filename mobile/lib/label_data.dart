@@ -115,7 +115,7 @@ class LabelFields {
 
   static final formDefs = <(String key, String label, bool multiline)>[
     (customer, 'Customer', false),
-    (salesOrder, 'Swift Sales Order No.', false),
+    (salesOrder, 'Swift Sales Order No.', true),
     (poNum, 'PO No.', true),
     (project, 'Project', true),
     (specialInstructions, 'Special Instructions', true),

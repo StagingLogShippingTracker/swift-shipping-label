@@ -1,4 +1,9 @@
-"""Compose high-res Staging Log promo stills from real brand assets."""
+"""DEPRECATED: fabricated PIL mockups — do not run for shipping assets.
+
+Real promo stills come from Windows captures processed by
+`process_slst_promo_stills.py` (see `.cache/slst/shots/`).
+
+Compose high-res Staging Log promo stills from real brand assets."""
 
 from pathlib import Path
 

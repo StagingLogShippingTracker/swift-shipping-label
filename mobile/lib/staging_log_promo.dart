@@ -90,7 +90,7 @@ class _StagingLogPromoDialogState extends State<_StagingLogPromoDialog> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final maxW = size.width < 720 ? size.width - 28 : 560.0;
+    final maxW = size.width < 720 ? size.width - 28 : 680.0;
     final maxH = size.height * 0.88;
 
     return Dialog(
@@ -186,26 +186,8 @@ class _StagingLogPromoDialogState extends State<_StagingLogPromoDialog> {
                           'notification — the book matches what left the dock.',
                     ),
                     const SizedBox(height: 14),
-                    SizedBox(
-                      height: size.height < 700 ? 132 : 168,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: slstPromoStills.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemBuilder: (context, i) {
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: AspectRatio(
-                              aspectRatio: 16 / 10,
-                              child: Image.asset(
-                                slstPromoStills[i],
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.high,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                    _PromoScreenshotCarousel(
+                      height: (size.height * 0.52).clamp(320.0, 520.0),
                     ),
                     if (_busy || _status != null) ...[
                       const SizedBox(height: 12),
@@ -263,6 +245,86 @@ class _StagingLogPromoDialogState extends State<_StagingLogPromoDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PromoScreenshotCarousel extends StatefulWidget {
+  const _PromoScreenshotCarousel({required this.height});
+
+  final double height;
+
+  @override
+  State<_PromoScreenshotCarousel> createState() =>
+      _PromoScreenshotCarouselState();
+}
+
+class _PromoScreenshotCarouselState extends State<_PromoScreenshotCarousel> {
+  late final PageController _pageController;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: widget.height,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: slstPromoStills.length,
+            onPageChanged: (index) => setState(() => _page = index),
+            itemBuilder: (context, index) {
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: SwiftColors.darkBorder),
+                  color: const Color(0xFF121417),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: Image.asset(
+                    slstPromoStills[index],
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    filterQuality: FilterQuality.high,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(slstPromoStills.length, (index) {
+            final active = index == _page;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: active ? 18 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: active ? SwiftColors.accent : SwiftColors.darkBorder,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }

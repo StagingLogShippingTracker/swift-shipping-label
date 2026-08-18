@@ -15,9 +15,9 @@ import 'app_storage.dart';
 import 'app_theme_scope.dart';
 import 'address_suggest_field.dart';
 import 'bol_document_number.dart';
+import 'bol_dimensions.dart';
 import 'bol_item_type.dart';
 import 'brand_assets.dart';
-import 'carrier_logos.dart';
 import 'bulk/bulk_label_models.dart';
 import 'bulk/order_ack_pdf_text.dart';
 import 'bulk/order_ack_parser.dart';
@@ -369,15 +369,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _applyUiSettings(AppUiSettings s) {
-    final turningOnRestore =
-        s.restoreLowResLogos && !_uiSettings.restoreLowResLogos;
     setState(() => _uiSettings = s);
     _syncAppTheme(s);
-    if (turningOnRestore) {
-      for (final path in List<String>.from(_logoPaths)) {
-        unawaited(_prefetchLogoRestore(path));
-      }
-    }
   }
 
   void _syncAppTheme(AppUiSettings s) {
@@ -664,7 +657,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted || _mappingDialogOpen) return;
     final raw = _controllers[key]?.text ?? '';
     if (_isSalesOrderKey(key)) {
-      _applyFormattedField(key, formatSalesOrders(raw, finalize: true));
+      _applyFormattedField(key, formatNamedSegments(raw, finalize: true));
       return;
     }
     if (!_isNamedMultiKey(key)) return;
@@ -854,9 +847,6 @@ class _HomeScreenState extends State<HomeScreen>
     _presetName = displayName;
     _markTemplatePromptResolved();
     if (notify) setState(() {});
-    for (final path in List<String>.from(_logoPaths)) {
-      unawaited(_prefetchLogoRestore(path));
-    }
   }
 
   void _applyPresetLogos(CustomerPreset preset) {
@@ -868,9 +858,6 @@ class _HomeScreenState extends State<HomeScreen>
             .where((path) => File(path).existsSync())
             .take(maxCustomerLogos),
       );
-    for (final path in List<String>.from(_logoPaths)) {
-      unawaited(_prefetchLogoRestore(path));
-    }
   }
 
   void _applyPresetCore(CustomerPreset preset) {
@@ -1430,10 +1417,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
     if (options == null || !mounted) return;
 
-    if (options.restoreHighRes != _uiSettings.restoreLowResLogos) {
-      await _setRestoreLowResLogos(options.restoreHighRes);
-    }
-
     try {
       final result = await widget.storage.importLogoBytes(
         bytes,
@@ -1608,15 +1591,11 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
     if (picked == null || !mounted) return;
-
-    // Attach an existing stored logo without re-importing a duplicate file.
-    setState(() {
-      if (_logoPaths.length < maxCustomerLogos &&
-          !_logoPaths.contains(picked.path)) {
-        _logoPaths.add(picked.path);
-      }
-    });
-    unawaited(_prefetchLogoRestore(picked.path));
+    final bytes = await picked.readAsBytes();
+    await _importBytesWithPrompt(
+      bytes,
+      preferredName: p.basename(picked.path),
+    );
   }
 
   Future<void> _showUploadManuallyMenu() async {
@@ -1948,10 +1927,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _prefetchLogoRestore(String path) async {
-    if (!_uiSettings.restoreLowResLogos) return;
+    final started = LogoRestorer.epoch;
     try {
       final restored = await _ensureRestoredLogo(File(path));
       if (!mounted) return;
+      if (started != LogoRestorer.epoch) return;
       final i = _logoPaths.indexOf(path);
       if (i >= 0 && restored.path != path) {
         setState(() => _logoPaths[i] = restored.path);
@@ -1962,7 +1942,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<File> _ensureRestoredLogo(File source) async {
-    if (!_uiSettings.restoreLowResLogos) return source;
     if (!await source.exists()) return source;
 
     if (mounted) setState(() => _restoreInFlight++);
@@ -1973,7 +1952,7 @@ class _HomeScreenState extends State<HomeScreen>
         onLog: debugPrint,
       );
     } catch (e) {
-      debugPrint('[logo_restore] Gemini restore failed: $e');
+      debugPrint('[logo_restore] restore failed: $e');
       if (mounted) {
         showAppSnack(
           context,
@@ -1988,15 +1967,17 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  void _abortLogoRestore() {
+    LogoRestorer.cancelAll();
+    if (mounted) setState(() => _restoreInFlight = 0);
+  }
+
   Future<List<Uint8List>> _loadSelectedLogoBytes() async {
     final out = <Uint8List>[];
     final paths = _logoPaths.take(maxCustomerLogos).toList();
     for (final path in paths) {
-      var file = File(path);
+      final file = File(path);
       if (await file.exists()) {
-        file = await _ensureRestoredLogo(file);
-        final idx = _logoPaths.indexOf(path);
-        if (idx >= 0) _logoPaths[idx] = file.path;
         out.add(await file.readAsBytes());
       }
     }
@@ -2977,7 +2958,6 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                 ],
                 customerLogoBytes: logoBytes,
-                carrierLogoBytes: _carrierLogoBytesFor(shipBase),
                 options: _pdfOptionsForGenerate,
               );
               shippingPages = perSoPlans.values.fold<int>(
@@ -2988,7 +2968,6 @@ class _HomeScreenState extends State<HomeScreen>
               shipBytes = await widget.pdf.build(
                 data: shipBase,
                 customerLogoBytes: logoBytes,
-                carrierLogoBytes: _carrierLogoBytesFor(shipBase),
                 piecePlan: piecePlan!,
                 options: _pdfOptionsForGenerate,
               );
@@ -3006,7 +2985,6 @@ class _HomeScreenState extends State<HomeScreen>
             bytes: await widget.pdf.build(
               data: data,
               customerLogoBytes: logoBytes,
-              carrierLogoBytes: _carrierLogoBytesFor(data),
               piecePlan: piecePlan!,
               options: _pdfOptionsForGenerate,
             ),
@@ -3050,12 +3028,6 @@ class _HomeScreenState extends State<HomeScreen>
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Uint8List? _carrierLogoBytesFor(ShippingLabelData data) {
-    final id = CarrierLogos.matchId(data.get(LabelFields.carrier));
-    if (id == null) return null;
-    return widget.pdf.carrierLogoPngs[id];
   }
 
   Future<void> _generateBulkLabels() async {
@@ -3420,6 +3392,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (key.endsWith('_item_type')) {
       return _buildItemTypeField(key);
     }
+    if (key.endsWith('_dimensions')) {
+      return BolDimensionsFields(controller: _controllers[key]!);
+    }
     if (appDateFieldKeys.contains(key)) {
       return _buildDateField(key);
     }
@@ -3443,9 +3418,7 @@ class _HomeScreenState extends State<HomeScreen>
             : 3;
     void onLiveChanged(String v) {
       if (!isMulti) return;
-      if (_isSalesOrderKey(key) && (v.contains(',') || v.contains('/'))) {
-        _applyFormattedField(key, formatSalesOrders(v, finalize: false));
-      } else if (_isNamedMultiKey(key) && v.contains(',')) {
+      if (v.contains(',')) {
         _applyFormattedField(key, formatNamedSegments(v, finalize: false));
       }
     }
@@ -3525,6 +3498,23 @@ class _HomeScreenState extends State<HomeScreen>
                 : (_controllers[LabelFields.shipTo]?.text ?? ''),
             customer: () => _controllers[LabelFields.customer]?.text ?? '',
             labelText: m.$2.toUpperCase(),
+            onPicked: (s) {
+              final name = s.placeName.trim();
+              if (name.isEmpty) return;
+              if (_kind == LabelKind.shipping) {
+                if ((_controllers[LabelFields.shipTo]?.text ?? '')
+                    .trim()
+                    .isEmpty) {
+                  _setField(LabelFields.shipTo, name);
+                }
+              } else if (_kind == LabelKind.bol) {
+                if ((_controllers[BolFields.consigneeName]?.text ?? '')
+                    .trim()
+                    .isEmpty) {
+                  _setField(BolFields.consigneeName, name);
+                }
+              }
+            },
             onPickedBookEntry: (e) {
               if (_kind == LabelKind.shipping) {
                 if ((_controllers[LabelFields.shipTo]?.text ?? '').trim().isEmpty) {
@@ -4100,64 +4090,76 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < _logoPaths.length; i++) ...[
-            if (i > 0) SizedBox(height: dense ? 6 : 8),
-            Container(
-              padding: EdgeInsets.all(dense ? 8 : 10),
-              decoration: BoxDecoration(
-                color: SwiftColors.bg,
-                borderRadius: BorderRadius.circular(dense ? 6 : 10),
-                border: Border.all(color: SwiftColors.border),
-              ),
-              child: Row(
-                children: [
+          if (_logoPaths.isNotEmpty) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < _logoPaths.length; i++) ...[
+                  if (i > 0) SizedBox(width: dense ? 6 : 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          i == 0 ? 'CUSTOMER' : 'C/O',
-                          style: TextStyle(
-                            fontFamily: swiftUiFont(context),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: SwiftColors.muted,
-                            letterSpacing: 0.6,
+                    child: Container(
+                      padding: EdgeInsets.all(dense ? 8 : 10),
+                      decoration: BoxDecoration(
+                        color: SwiftColors.bg,
+                        borderRadius: BorderRadius.circular(dense ? 6 : 10),
+                        border: Border.all(color: SwiftColors.border),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  i == 0 ? 'CUSTOMER' : 'C/O',
+                                  style: TextStyle(
+                                    fontFamily: swiftUiFont(context),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: SwiftColors.muted,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                if (File(_logoPaths[i]).existsSync())
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Image.file(
+                                      File(_logoPaths[i]),
+                                      height: dense ? 40 : 48,
+                                      filterQuality: FilterQuality.medium,
+                                      gaplessPlayback: true,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    p.basename(_logoPaths[i]),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        if (File(_logoPaths[i]).existsSync())
-                          Image.file(
-                            File(_logoPaths[i]),
-                            height: dense ? 36 : 44,
-                            cacheWidth: 220,
-                            filterQuality: FilterQuality.medium,
-                            gaplessPlayback: true,
-                            fit: BoxFit.contain,
-                          )
-                        else
-                          Text(
-                            p.basename(_logoPaths[i]),
-                            style: const TextStyle(fontSize: 12),
+                          IconButton(
+                            tooltip: 'Replace',
+                            onPressed: () => _replaceLogoAt(i),
+                            icon: const Icon(Icons.swap_horiz, size: 20),
                           ),
-                      ],
+                          IconButton(
+                            tooltip: 'Remove',
+                            onPressed: () => _removeLogoAt(i),
+                            icon: const Icon(Icons.close, size: 20),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Replace',
-                    onPressed: () => _replaceLogoAt(i),
-                    icon: const Icon(Icons.swap_horiz, size: 20),
-                  ),
-                  IconButton(
-                    tooltip: 'Remove',
-                    onPressed: () => _removeLogoAt(i),
-                    icon: const Icon(Icons.close, size: 20),
-                  ),
                 ],
-              ),
+              ],
             ),
+            SizedBox(height: dense ? 10 : 12),
           ],
-          if (_logoPaths.isNotEmpty) SizedBox(height: dense ? 10 : 12),
           SwiftCircleCheckbox(
             value: _uiSettings.restoreLowResLogos,
             dense: dense,
@@ -4165,7 +4167,7 @@ class _HomeScreenState extends State<HomeScreen>
             label: 'Restore low-resolution logos for print',
             subtitle: _restoringLogo
                 ? 'Restoring logo…'
-                : 'Strip background first, then Gemini redraw with exact brand colors',
+                : 'Default for the Edit logo dialog. Restore runs only when you choose it while selecting a logo — not when generating.',
             onChanged: _restoringLogo
                 ? null
                 : (v) => _setRestoreLowResLogos(v ?? false),
@@ -5161,6 +5163,14 @@ class _HomeScreenState extends State<HomeScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: 'Cancel restore',
+                      onPressed: _abortLogoRestore,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
                   const SizedBox(
                     width: 36,
                     height: 36,
@@ -5173,7 +5183,8 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Gemini is redrawing a sharp logo. Needs internet.',
+                    'Enhancing the raster for print. Press X to abort.',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

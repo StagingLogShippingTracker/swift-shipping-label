@@ -204,6 +204,13 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.81)
+- **BOL logos:** wide customer marks scale down to stay left of Probill (no clip behind the sticker box)
+- **Shipping / Receiving:** dual C/O logos share a bounded frame so wide lockups do not overlap
+- **Logo restore:** Gemini enhances existing pixels, then studio finish; later restores reuse winning techniques
+- **Restore UX:** runs from Edit logo with Cancel — not automatically on Generate
+- **BOL dimensions:** length × width × height with a unit
+
 ### What's new (v1.1.80)
 - **Logos:** remove the background plate first, then restore — brand colors stay true; letter holes (black or filled) punch to transparent on every similar mark
 - **Swift lockup:** generated PDFs embed swift_supply_logo_orange.png (no white seams in SWIFT)

@@ -5,27 +5,15 @@ import 'dart:convert';
 /// Join token used in the form and on PDFs: `NUMBER / NUMBER / NUMBER`.
 const multiValueJoin = ' / ';
 
-final _salesOrderToken = RegExp(r'\d+');
 final _namedSplit = RegExp(r'\s*/\s*|,\s*');
 
-/// Extract numeric-looking tokens and format as `n / n / n`.
-/// Does not invent numbers; empty when none found.
+/// Extract tokens and format as `n / n / n` — same rules as PO / project.
 String formatSalesOrders(String raw, {bool finalize = true}) {
-  final tokens = parseSalesOrders(raw);
-  if (tokens.isEmpty) {
-    return finalize ? raw.trim() : raw;
-  }
-  return tokens.join(multiValueJoin);
+  return formatNamedSegments(raw, finalize: finalize);
 }
 
 List<String> parseSalesOrders(String raw) {
-  final out = <String>[];
-  for (final m in _salesOrderToken.allMatches(raw)) {
-    final t = m.group(0)!.trim();
-    if (t.isEmpty) continue;
-    out.add(t);
-  }
-  return out;
+  return parseNamedSegments(raw, finalize: true);
 }
 
 /// PO / packing list / project: never split on spaces.

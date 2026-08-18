@@ -21,8 +21,18 @@ void main() {
         '1422989 / 1423363 / 1423168',
       );
     });
-    test('does not invent numbers', () {
-      expect(parseSalesOrders('abc / def'), isEmpty);
+    test('keeps dotted and hyphenated values like PO', () {
+      expect(
+        formatSalesOrders('4460.168 / SO-88421'),
+        '4460.168 / SO-88421',
+      );
+      expect(
+        parseSalesOrders('4460.168, SO-88421'),
+        ['4460.168', 'SO-88421'],
+      );
+    });
+    test('named tokens split on slash the same as PO', () {
+      expect(parseSalesOrders('abc / def'), ['abc', 'def']);
       expect(formatSalesOrders('no numbers here'), 'no numbers here');
     });
   });

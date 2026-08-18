@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -34,8 +35,33 @@ class LogoInkMetrics {
   /// Drawn bitmap width so the ink box is [targetH] points tall.
   double drawWidth(double targetH) => canvasW * scaleForHeight(targetH);
 
-  /// Drawn bitmap height (may be taller than [targetH] if residual pad remains).
+  /// Drawn bitmap height (may exceed [targetH] when canvas pad remains).
   double drawHeight(double targetH) => canvasH * scaleForHeight(targetH);
+
+  /// Lower [targetH] uniformly so draw width fits [maxW] (never upscale).
+  static double fitHeightToWidth(
+    LogoInkMetrics ink,
+    double targetH,
+    double maxW,
+  ) {
+    if (!ink.isValid || maxW <= 0 || targetH <= 0) return targetH;
+    final w = ink.drawWidth(targetH);
+    if (w <= maxW) return targetH;
+    return targetH * maxW / w;
+  }
+
+  /// Shared ink height for dual-logo cells — same pt height, each fits its cell.
+  static double sharedHeightForCells(
+    Iterable<LogoInkMetrics> inks,
+    double targetH,
+    double cellW,
+  ) {
+    var h = targetH;
+    for (final ink in inks) {
+      h = math.min(h, fitHeightToWidth(ink, targetH, cellW));
+    }
+    return h;
+  }
 
   /// PDF y (bitmap bottom-left) so the ink bottom sits on [inkBottomY].
   double bitmapBottomY(double inkBottomY, double targetH) {
@@ -50,8 +76,8 @@ class LogoInkFit {
   LogoInkFit._();
 
   static ({Uint8List png, LogoInkMetrics ink}) prepare(Uint8List input) {
-    final png = LogoImageProcessor.normalizeToVisibleContent(input);
-    final ink = measure(png) ??
+    final normalized = LogoImageProcessor.normalizeToVisibleContent(input);
+    var ink = measure(normalized) ??
         LogoInkMetrics(
           canvasW: 1,
           canvasH: 1,
@@ -60,7 +86,37 @@ class LogoInkFit {
           width: 1,
           height: 1,
         );
-    return (png: png, ink: ink);
+    final cropped = _cropToInkBounds(normalized, ink);
+    ink = measure(cropped) ?? ink;
+    return (png: cropped, ink: ink);
+  }
+
+  /// Trim canvas to visible ink (+ tiny pad) so PDF scale uses artwork bounds.
+  static Uint8List _cropToInkBounds(Uint8List png, LogoInkMetrics ink) {
+    if (!ink.isValid || png.isEmpty) return png;
+    final image = img.decodeImage(png);
+    if (image == null) return png;
+    const pad = 2;
+    final x = math.max(0, ink.left - pad);
+    final y = math.max(0, ink.top - pad);
+    final w = math.min(
+      image.width - x,
+      ink.width + pad * 2,
+    );
+    final h = math.min(
+      image.height - y,
+      ink.height + pad * 2,
+    );
+    if (w <= 0 || h <= 0) return png;
+    if (x == 0 &&
+        y == 0 &&
+        w == image.width &&
+        h == image.height) {
+      return png;
+    }
+    return Uint8List.fromList(
+      img.encodePng(img.copyCrop(image, x: x, y: y, width: w, height: h)),
+    );
   }
 
   /// Bounding box of opaque, non-white pixels (full artwork AABB — not a

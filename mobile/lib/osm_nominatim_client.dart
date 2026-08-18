@@ -11,6 +11,7 @@ class NominatimHit {
     this.city = '',
     this.province = '',
     this.postal = '',
+    this.placeName = '',
   });
 
   final String streetLine;
@@ -20,6 +21,8 @@ class NominatimHit {
   final String city;
   final String province;
   final String postal;
+  /// Business / POI name when Nominatim attached one; empty for street-only hits.
+  final String placeName;
 }
 
 /// Leading civic number plus the rest of the street (e.g. 2971 + 130 avenue).
@@ -309,6 +312,12 @@ class OsmNominatimClient {
       city: city,
       province: prov,
       postal: postal,
+      placeName: _poiName(
+        name: _str(p['name']),
+        osmKey: _str(p['osm_key']),
+        osmValue: _str(p['osm_value']),
+        road: road,
+      ),
     );
   }
 
@@ -398,6 +407,7 @@ class OsmNominatimClient {
       city: city,
       province: prov,
       postal: postal,
+      placeName: _nominatimPlaceName(item, address, road),
     );
   }
 
@@ -507,6 +517,54 @@ class OsmNominatimClient {
       if (v.isNotEmpty) return v;
     }
     return '';
+  }
+
+  static const _poiKeys = {
+    'amenity',
+    'shop',
+    'office',
+    'tourism',
+    'craft',
+    'industrial',
+    'building',
+    'leisure',
+    'healthcare',
+    'company',
+  };
+
+  static String _poiName({
+    required String name,
+    required String osmKey,
+    required String osmValue,
+    required String road,
+  }) {
+    final n = name.trim();
+    if (n.isEmpty) return '';
+    if (road.isNotEmpty && n.toLowerCase() == road.toLowerCase()) return '';
+    final key = osmKey.toLowerCase();
+    if (_poiKeys.contains(key)) return n;
+    if (key == 'highway' || key == 'place' || key == 'railway') return '';
+    if (osmValue.isNotEmpty && _poiKeys.contains(osmValue.toLowerCase())) {
+      return n;
+    }
+    return '';
+  }
+
+  static String _nominatimPlaceName(
+    Map<String, dynamic> item,
+    Map<String, dynamic> address,
+    String road,
+  ) {
+    for (final k in _poiKeys) {
+      final v = _str(address[k]);
+      if (v.isNotEmpty && v.toLowerCase() != road.toLowerCase()) return v;
+    }
+    return _poiName(
+      name: _str(item['name']),
+      osmKey: _str(item['class']),
+      osmValue: _str(item['type']),
+      road: road,
+    );
   }
 
   static String _str(Object? v) {

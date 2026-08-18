@@ -4,14 +4,13 @@ import 'package:swift_shipping_label/sibling_apps.dart';
 import 'package:swift_shipping_label/staging_log_promo.dart';
 
 void main() {
-  test('v1.1.78 campaign is three launches and lists the Staging Log intro', () {
+  test('changelog campaign lists Swift Staging & Shipping Log intro', () {
     expect(AppChangelog.campaignId, 'whats_new_1_1_78');
     expect(AppChangelog.maxShows, 3);
-    expect(AppChangelog.sections.first.version, 'v1.1.78');
-    expect(
-      AppChangelog.sections.first.bullets.join(' '),
-      contains('Staging & Shipping Log'),
-    );
+    final bullets = AppChangelog.sections
+        .expand((s) => s.bullets)
+        .join(' ');
+    expect(bullets, contains('Swift Staging & Shipping Log'));
   });
 
   test('promo Try it today targets the same sibling app as MORE APPS', () {

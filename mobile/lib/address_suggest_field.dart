@@ -109,10 +109,12 @@ List<AddressSuggestion> mergeAddressSuggestions({
 
   // Nominatim ranking — keep hits even if they do not substring-match [raw].
   for (final p in osmHits) {
+    final name = p.placeName.trim();
     add(
       AddressSuggestion(
         address: p.displayAddress,
-        caption: 'Suggested address',
+        caption: name.isEmpty ? 'Suggested address' : name,
+        placeName: name,
       ),
     );
   }
@@ -193,6 +195,7 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
       _scheduleSuggest(widget.controller.text);
       _syncOverlay();
     } else {
+      _tryAttachBusinessName();
       _hideTimer?.cancel();
       _hideTimer = Timer(const Duration(milliseconds: 150), () {
         if (!_focus.hasFocus) _removeOverlay();
@@ -296,6 +299,22 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
     _overlay = null;
   }
 
+  void _tryAttachBusinessName() {
+    final addr = widget.controller.text.trim();
+    if (addr.isEmpty) return;
+    final lower = addr.toLowerCase();
+    for (final s in _options(addr)) {
+      if (s.placeName.trim().isEmpty) continue;
+      final hit = s.address.trim().toLowerCase();
+      if (hit == lower ||
+          lower.contains(hit.split('\n').first) ||
+          hit.contains(lower.split('\n').first)) {
+        widget.onPicked?.call(s);
+        return;
+      }
+    }
+  }
+
   Widget _buildOverlay(BuildContext overlayContext) {
     final options = _options(widget.controller.text);
     if (options.isEmpty) return const SizedBox.shrink();
@@ -304,90 +323,108 @@ class _AddressSuggestFieldState extends State<AddressSuggestField> {
     final chromeHint = theme.hintColor;
     final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
     final width = box?.size.width ?? 520;
-    return CompositedTransformFollower(
-      link: _layerLink,
-      showWhenUnlinked: false,
-      targetAnchor: Alignment.bottomLeft,
-      followerAnchor: Alignment.topLeft,
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Material(
-          elevation: 4,
-          borderRadius: BorderRadius.circular(8),
-          clipBehavior: Clip.antiAlias,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: 360, maxWidth: width),
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              itemCount: rows.length,
-              itemBuilder: (context, i) {
-                final row = rows[i];
-                if (row.isHeader) {
-                  return Padding(
-                    padding: EdgeInsets.fromLTRB(16, i == 0 ? 8 : 10, 16, 4),
-                    child: Text(
-                      row.header!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.35,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  );
-                }
-                final s = row.suggestion!;
-                final portrait =
-                    MediaQuery.orientationOf(context) == Orientation.portrait;
-                final android =
-                    Theme.of(context).platform == TargetPlatform.android;
-                final addrSize = android && portrait ? 16.0 : 14.0;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: () => _pick(s),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+    return Positioned(
+      left: 0,
+      top: 0,
+      child: CompositedTransformFollower(
+        link: _layerLink,
+        showWhenUnlinked: false,
+        targetAnchor: Alignment.bottomLeft,
+        followerAnchor: Alignment.topLeft,
+        child: SizedBox(
+          width: width,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: rows.length,
+                      itemBuilder: (context, i) {
+                        final row = rows[i];
+                        if (row.isHeader) {
+                          return Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              i == 0 ? 8 : 10,
+                              16,
+                              4,
+                            ),
+                            child: Text(
+                              row.header!,
+                              textAlign: TextAlign.left,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.35,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          );
+                        }
+                        final s = row.suggestion!;
+                        final portrait = MediaQuery.orientationOf(context) ==
+                            Orientation.portrait;
+                        final android =
+                            Theme.of(context).platform == TargetPlatform.android;
+                        final addrSize = android && portrait ? 16.0 : 14.0;
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              s.address,
-                              maxLines: 4,
-                              softWrap: true,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: addrSize,
-                                height: 1.35,
+                            InkWell(
+                              onTap: () => _pick(s),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  10,
+                                  16,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s.address,
+                                      maxLines: 4,
+                                      softWrap: true,
+                                      textAlign: TextAlign.left,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: addrSize,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      s.caption,
+                                      maxLines: 2,
+                                      softWrap: true,
+                                      textAlign: TextAlign.left,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: chromeHint,
+                                        fontSize: addrSize - 1.5,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              s.caption,
-                              maxLines: 2,
-                              softWrap: true,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: chromeHint,
-                                fontSize: addrSize - 1.5,
-                                height: 1.3,
-                              ),
-                            ),
+                            if (i < rows.length - 1 && !rows[i + 1].isHeader)
+                              const Divider(height: 1),
                           ],
-                        ),
-                      ),
+                        );
+                      },
                     ),
-                    if (i < rows.length - 1 && !rows[i + 1].isHeader)
-                      const Divider(height: 1),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 

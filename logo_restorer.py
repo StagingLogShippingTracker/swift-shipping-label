@@ -1,10 +1,10 @@
 """Restore low-resolution logos to a clean ultra-high-resolution PNG.
 
 Pipeline:
-  1. RealESRGAN (PyTorch) 4x upscale to remove pixelation / compression artifacts
-  2. If the longest edge is still under min_dimension, Lanczos-resize up to it
-  3. OpenCV cleanup: edge denoise, flatten solid fills, unsharp mask
-  4. Save PNG only (no SVG / vectorization)
+  1. Predictive trace (smooth masks + optional font/tilt recreate)
+  2. Else RealESRGAN 4x upscale
+  3. Lanczos to min height if needed
+  4. Flatten solid fills last
 
 Dependencies:
   pip install torch torchvision realesrgan basicsr opencv-python-headless numpy Pillow
@@ -86,7 +86,14 @@ def _save_png(output_path: str, bgr: np.ndarray, alpha: np.ndarray | None) -> No
 
 def _realesrgan_upscale_4x(bgr: np.ndarray) -> np.ndarray:
     """4x RealESRGAN upscale. Input/output BGR uint8."""
+    import sys
+
     import torch
+    import torchvision.transforms.functional as tvF
+
+    # basicsr still imports the removed torchvision.transforms.functional_tensor.
+    sys.modules.setdefault("torchvision.transforms.functional_tensor", tvF)
+
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from realesrgan import RealESRGANer
 
@@ -135,24 +142,21 @@ def _ensure_min_height(
 def _flatten_solid_areas(bgr: np.ndarray) -> np.ndarray:
     """Collapse near-uniform fills while keeping edges."""
     # Bilateral keeps edges; a light mean-shift-style blur flattens poster noise.
-    smoothed = cv2.bilateralFilter(bgr, d=9, sigmaColor=40, sigmaSpace=40)
+    smoothed = cv2.bilateralFilter(bgr, d=9, sigmaColor=70, sigmaSpace=50)
     gray = cv2.cvtColor(smoothed, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 40, 120)
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
     edge_mask = edges > 0
 
-    # Quantize mildly so solid brand colors collapse to a few levels.
+    # Cluster every near-uniform fill (any hue) down to a few solid colors.
     data = smoothed.reshape((-1, 3)).astype(np.float32)
-    k = 16
+    k = 8
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
     _, labels, centers = cv2.kmeans(
         data, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS
     )
     quantized = centers[labels.flatten()].reshape(smoothed.shape).astype(np.uint8)
-
-    out = quantized.copy()
-    out[edge_mask] = bgr[edge_mask]
-    return out
+    return quantized
 
 
 def _clean_edge_noise(bgr: np.ndarray) -> np.ndarray:
@@ -178,8 +182,7 @@ def _unsharp_mask(bgr: np.ndarray, amount: float = 1.15, radius: int = 3) -> np.
 
 def _opencv_cleanup(bgr: np.ndarray) -> np.ndarray:
     cleaned = _clean_edge_noise(bgr)
-    flattened = _flatten_solid_areas(cleaned)
-    return _unsharp_mask(flattened)
+    return _unsharp_mask(cleaned)
 
 
 def restore_logo(
@@ -198,6 +201,20 @@ def restore_logo(
 
     bgr, alpha = _load_bgr_alpha(input_path)
 
+    try:
+        from logo_trace import predictive_trace_rebuild, write_meta
+
+        traced = predictive_trace_rebuild(bgr, alpha, min_dimension)
+        if traced is not None:
+            tbgr, talpha, meta = traced
+            tbgr = _flatten_solid_areas(tbgr)
+            _save_png(output_path, tbgr, talpha)
+            write_meta(str(Path(output_path).with_suffix(".json")), meta)
+            print(f"trace rebuild: {meta}", file=sys.stderr)
+            return output_path
+    except Exception as e:
+        print(f"trace rebuild skipped ({e}); falling back to RealESRGAN", file=sys.stderr)
+
     # Super-resolve in 4x steps until we are close to target height, then
     # Lanczos to exact min height. A single 4x on a 100px-tall logo only
     # reaches 400px — that looked like "sharper" without a real size jump.
@@ -206,7 +223,9 @@ def restore_logo(
         before_h = bgr.shape[0]
         try:
             bgr = _realesrgan_upscale_4x(bgr)
-        except Exception:
+            print(f"RealESRGAN pass {esrgan_passes + 1}: {before_h} -> {bgr.shape[0]}px", file=sys.stderr)
+        except Exception as e:
+            print(f"RealESRGAN unavailable ({e}); continuing without it", file=sys.stderr)
             break
         if alpha is not None:
             h, w = bgr.shape[:2]
@@ -217,6 +236,8 @@ def restore_logo(
 
     bgr = _opencv_cleanup(bgr)
     bgr, alpha = _ensure_min_height(bgr, alpha, min_dimension)
+    # Flatten last so denoise / unsharp / Lanczos cannot reintroduce splotch.
+    bgr = _flatten_solid_areas(bgr)
     _save_png(output_path, bgr, alpha)
     return output_path
 

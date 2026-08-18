@@ -536,7 +536,7 @@ class BolLabelPdf {
     final lineCols = [
       ('pieces', 'QTY', 0.55),
       ('item_type', 'ITEM TYPE', 1.05),
-      ('dimensions', 'DIMENSIONS (in)', 0.95),
+      ('dimensions', 'DIMENSIONS', 0.95),
       ('description', 'DESCRIPTION OF GOODS', 2.2),
       ('weight', 'WEIGHT (LBS)', 0.8),
     ];
@@ -1231,8 +1231,8 @@ class BolLabelPdf {
     c.drawImage(img, dx, dy, w, h);
   }
 
-  /// Scale so visible ink is [targetH] tall. Width follows aspect; the header
-  /// clip keeps wide marks out of the Swift/Probill zone.
+  /// Scale so visible ink is [targetH] tall. Width follows aspect.
+  /// Clip is a safety net; logos are scaled to fit the left frame first.
   ({double w, double h, double y}) _inkDraw(
     LogoInkMetrics ink,
     double inkBottomY,
@@ -1254,18 +1254,21 @@ class BolLabelPdf {
     double cellH,
     double targetH,
   ) {
-    final h = math.min(targetH, cellH);
-    if (h <= 0 || !logo.ink.isValid) return;
+    if (!logo.ink.isValid) return;
+    final h = math.min(
+      LogoInkMetrics.fitHeightToWidth(logo.ink, targetH, cellW),
+      cellH,
+    );
+    if (h <= 0) return;
     final draw = _inkDraw(logo.ink, cellY, h);
-    // Left-align in the cell so a wide mark starts at the frame, not centered
-    // into Swift. Height is never reduced to fit leftover width.
     c.drawImage(logo.image, cellX, draw.y, draw.w, draw.h);
   }
 
   /// Uploaded logos only — left of the locked Probill / Swift static zone.
   ///
-  /// Ink height matches [customerLogoTargetH] (same as Swift). Wide logos may
-  /// clip at [frameRightLimit] instead of shrinking the mark.
+  /// Target ink height matches Swift. If the mark is too wide for the left
+  /// frame, height scales down uniformly so the whole logo stays left of
+  /// Probill (never clipped into the cut-out).
   void _drawCustomerLogosLeft(
     PdfGraphics c,
     List<_BolInkLogo> customerLogos, {
@@ -1314,16 +1317,21 @@ class BolLabelPdf {
       return;
     }
 
-    // Dual logos: equal-width grid cells, shared equal pt height.
+    // Dual logos: equal-width cells, one shared height that fits both.
     final cellW = (frameW - customerStackGap) / 2;
     if (cellW < 4) {
       c.restoreContext();
       return;
     }
 
-    // Dual logos: same ink height; width follows each mark.
-    var sharedH = customerLogoTargetH;
-    if (sharedH > frameH) sharedH = frameH;
+    final sharedH = math.min(
+      LogoInkMetrics.sharedHeightForCells(
+        logos.map((l) => l.ink),
+        customerLogoTargetH,
+        cellW,
+      ),
+      frameH,
+    );
     if (sharedH < 1) {
       c.restoreContext();
       return;

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -10,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import 'label_data.dart';
 import 'logo_image_process.dart';
 import 'logo_import_options.dart';
-import 'logo_restorer.dart';
 import 'pdf_render_options.dart';
 
 /// Result of [AppStorage.importLogoBytes] / [AppStorage.importLogo].
@@ -391,15 +389,6 @@ class AppStorage {
     );
 
     await dest.writeAsBytes(finalBytes, flush: true);
-    if (importOptions.restoreHighRes) {
-      unawaited(
-        LogoRestorer.ensureHighRes(
-          dest,
-          logosDir: logosDir,
-          onLog: onLog,
-        ),
-      );
-    }
     return ImportLogoResult(file: dest);
   }
 

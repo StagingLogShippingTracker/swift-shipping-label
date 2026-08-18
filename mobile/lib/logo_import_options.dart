@@ -94,10 +94,18 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final title = 'Edit logo';
     final maxW = MediaQuery.sizeOf(context).width;
     return AlertDialog(
-      title: Text(title),
+      title: Row(
+        children: [
+          const Expanded(child: Text('Edit logo')),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: maxW < 520 ? maxW - 48 : 480,
         child: Scrollbar(
@@ -264,7 +272,7 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                 onChanged: (v) => setState(() => _restoreHighRes = v ?? false),
                 title: const Text('Restore low-resolution logo for print'),
                 subtitle: const Text(
-                  'Gemini redraw: solid fills, clean edges, keep letter outlines. Internet required.',
+                  'Enhance the raster (recover pixelation). Does not redraw or warp the logo. Optional internet pass is rejected if it changes the artwork.',
                   style: TextStyle(fontSize: 12, color: SwiftColors.muted),
                 ),
                 controlAffinity: ListTileControlAffinity.leading,

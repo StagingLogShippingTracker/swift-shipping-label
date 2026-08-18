@@ -73,6 +73,27 @@ void main() {
     );
   });
 
+  test('wide wordmark shrinks uniformly to fit a BOL left frame', () {
+    final canvas = img.Image(width: 500, height: 120, numChannels: 4);
+    img.fill(canvas, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      canvas,
+      x1: 10,
+      y1: 20,
+      x2: 489,
+      y2: 99,
+      color: img.ColorRgba8(160, 30, 30, 255),
+    );
+    final ink = LogoInkFit.prepare(_png(canvas)).ink;
+    const targetH = 59.0;
+    const frameW = 220.0;
+    expect(ink.drawWidth(targetH), greaterThan(frameW));
+
+    final fittedH = LogoInkMetrics.fitHeightToWidth(ink, targetH, frameW);
+    expect(fittedH, lessThan(targetH));
+    expect(ink.drawWidth(fittedH), lessThanOrEqualTo(frameW + 0.01));
+  });
+
   test('wide wordmark is not sliced into a thin strip', () {
     final canvas = img.Image(width: 500, height: 120, numChannels: 4);
     img.fill(canvas, color: img.ColorRgba8(0, 0, 0, 0));

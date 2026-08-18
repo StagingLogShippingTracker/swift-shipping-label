@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swift_shipping_label/label_data.dart';
+import 'package:swift_shipping_label/logo_ink_fit.dart';
 import 'package:swift_shipping_label/pdf/bol_label_pdf.dart';
 import 'package:swift_shipping_label/pdf/shipping_label_pdf.dart';
 
@@ -61,25 +62,10 @@ void main() {
     expect(frameRight, lessThan(probillX));
     expect(frameW, greaterThan(8));
 
-    // MasTec 1024x269 → at 59pt wants ~224.6 wide; must fit frameW.
-    const mastecAspect = 1024 / 269;
-    final naturalW = targetH * mastecAspect;
-    final scale = [
-      frameW / (1024),
-      targetH / 269,
-      (targetH < 59 ? targetH : 59) / 269,
-    ].reduce((a, b) => a < b ? a : b);
-    // Use same formula as production:
-    final fitScale = [
-      frameW / 1024.0,
-      targetH / 269.0,
-      targetH / 269.0,
-    ].reduce((a, b) => a < b ? a : b);
-    final fittedW = 1024 * fitScale;
-    final fittedH = 269 * fitScale;
-    expect(fittedW, lessThanOrEqualTo(frameW + 0.01));
-    expect(fittedH, lessThanOrEqualTo(targetH + 0.01));
-    expect(naturalW, greaterThan(frameW)); // proves we actually downscaled
-    expect(scale, greaterThan(0));
+    final ink = LogoInkFit.prepare(Uint8List.fromList(logoBytes)).ink;
+    expect(ink.drawWidth(targetH), greaterThan(frameW));
+    final fittedH = LogoInkMetrics.fitHeightToWidth(ink, targetH, frameW);
+    expect(fittedH, lessThan(targetH));
+    expect(ink.drawWidth(fittedH), lessThanOrEqualTo(frameW + 0.01));
   });
 }

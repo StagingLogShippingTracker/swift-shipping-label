@@ -41,7 +41,7 @@ class SiblingApp {
 
 const siblingStagingTracker = SiblingApp(
   id: 'staging-tracker',
-  name: 'Staging & Shipping Log',
+  name: 'Swift Staging & Shipping Log',
   blurb: 'Warehouse staging, shipping log, and tracker.',
   iconAsset: 'assets/images/slst_app_icon.png',
   githubLatestApi: AppConfig.stagingTrackerLatestReleaseApi,

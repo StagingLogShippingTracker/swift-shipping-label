@@ -439,4 +439,75 @@ void main() {
     }
     expect(green, greaterThan(10));
   });
+
+  test('thin enclosed white highlight is not punched as a letter hole', () {
+    final src = img.Image(width: 120, height: 80, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));
+    img.fillRect(
+      src,
+      x1: 10,
+      y1: 10,
+      x2: 109,
+      y2: 69,
+      color: img.ColorRgba8(40, 150, 70, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 20,
+      y1: 36,
+      x2: 99,
+      y2: 39,
+      color: img.ColorRgba8(255, 255, 255, 255),
+    );
+    final out = LogoImageProcessor.normalizeToVisibleContent(
+      Uint8List.fromList(img.encodePng(src)),
+    );
+    final decoded = img.decodeImage(out)!;
+    var white = 0;
+    var green = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (r >= 240 && g >= 240 && b >= 240) white++;
+        if (g > r + 20 && g > b + 20) green++;
+      }
+    }
+    expect(green, greaterThan(80));
+    expect(white, greaterThan(20));
+  });
+
+  test('cubic enhance matches source geometry after downscale', () {
+    final src = img.Image(width: 40, height: 20, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      src,
+      x1: 4,
+      y1: 4,
+      x2: 35,
+      y2: 15,
+      color: img.ColorRgba8(20, 40, 160, 255),
+    );
+    final bytes = Uint8List.fromList(img.encodePng(src));
+    final up = LogoImageProcessor.upscaleForPrint(bytes, minHeight: 80);
+    expect(LogoImageProcessor.matchesSourceGeometry(bytes, up), isTrue);
+
+    final warped = img.Image(width: 80, height: 40, numChannels: 4);
+    img.fill(warped, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillCircle(
+      warped,
+      x: 40,
+      y: 20,
+      radius: 16,
+      color: img.ColorRgba8(20, 40, 160, 255),
+    );
+    expect(
+      LogoImageProcessor.matchesSourceGeometry(
+        bytes,
+        Uint8List.fromList(img.encodePng(warped)),
+      ),
+      isFalse,
+    );
+  });
 }

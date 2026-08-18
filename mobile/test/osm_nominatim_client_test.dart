@@ -69,6 +69,31 @@ void main() {
       expect(hits.single.houseNumber, isEmpty);
       expect(hits.single.streetLine, '130 Avenue');
     });
+
+    test('attaches a business name from amenity / name', () {
+      const body = '''
+[
+  {
+    "name": "Whitecap Resources Inc",
+    "class": "office",
+    "type": "company",
+    "display_name": "Whitecap Resources Inc, 500 4 Avenue SW, Calgary, Alberta, Canada",
+    "address": {
+      "office": "Whitecap Resources Inc",
+      "house_number": "500",
+      "road": "4 Avenue SW",
+      "city": "Calgary",
+      "ISO3166-2-lvl4": "CA-AB",
+      "postcode": "T2P 2V6",
+      "country_code": "ca"
+    }
+  }
+]
+''';
+      final hits = OsmNominatimClient.parseSearchBody(body);
+      expect(hits.single.placeName, 'Whitecap Resources Inc');
+      expect(hits.single.streetLine, '500 4 Avenue SW');
+    });
   });
 
   group('OsmNominatimClient.biasCanada', () {
