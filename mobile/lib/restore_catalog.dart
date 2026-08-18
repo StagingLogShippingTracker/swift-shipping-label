@@ -27,7 +27,7 @@ class RestoreCatalog {
   final Map<String, int> successCount;
   final Map<String, int> warpCount;
 
-  static const version = 2;
+  static const version = 3;
   static const maxHistory = 80;
 
   static const _seedAddenda = [
@@ -36,6 +36,8 @@ class RestoreCatalog {
     'Keep true alpha — never bake a black, white, gray, or checkerboard plate.',
     'Enhance existing pixels; repair frayed edges and blotchy solids without redrawing or over-sharpening.',
     'Leave real gradients and texture; only even regions that should be one brand fill.',
+    'Keep grey, silver, black, and white letter fills — never recolor them to a brighter accent.',
+    'Outer plate only: dark letters on a dark plate are ink, not background.',
   ];
 
   static final Map<String, RestoreTechnique> _seedTechniques = {
@@ -98,6 +100,13 @@ class RestoreCatalog {
       id: 'studio_finish',
       notes:
           'Every restore: plate/halo knockout, color lock, interior flatten, 3000px PNG. Do not re-trace over Gemini.',
+      uses: 0,
+      wins: 0,
+    ),
+    'raster_conservator': RestoreTechnique(
+      id: 'raster_conservator',
+      notes:
+          'Cubic enhance of the source raster when Gemini is skipped, rejected, or the source is already high-res.',
       uses: 0,
       wins: 0,
     ),

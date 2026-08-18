@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 import 'package:swift_shipping_label/logo_image_process.dart';
+import 'package:swift_shipping_label/logo_import_options.dart';
 import 'package:swift_shipping_label/logo_restorer.dart';
 
 void main() {
@@ -375,7 +378,7 @@ void main() {
       y1: 8,
       x2: 75,
       y2: 35,
-      color: img.ColorRgba8(120, 90, 40, 255),
+      color: img.ColorRgba8(18, 128, 62, 255),
     );
     final snapped = LogoImageProcessor.snapToSourceBrandColors(bad, sourceBytes);
     final mid = snapped.getPixel(40, 20);
@@ -509,5 +512,418 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('isFaithfulRestore rejects a different lockup and a checker matte', () {
+    final src = img.Image(width: 80, height: 40, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      src,
+      x1: 6,
+      y1: 8,
+      x2: 74,
+      y2: 32,
+      color: img.ColorRgba8(0, 90, 180, 255),
+    );
+    final srcPng = Uint8List.fromList(img.encodePng(src));
+
+    final other = img.Image(width: 80, height: 40, numChannels: 4);
+    img.fill(other, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillCircle(
+      other,
+      x: 40,
+      y: 20,
+      radius: 14,
+      color: img.ColorRgba8(0, 90, 180, 255),
+    );
+    expect(
+      LogoImageProcessor.isFaithfulRestore(
+        srcPng,
+        Uint8List.fromList(img.encodePng(other)),
+      ),
+      isFalse,
+    );
+
+    final check = img.Image(width: 64, height: 64, numChannels: 4);
+    for (var y = 0; y < 64; y++) {
+      for (var x = 0; x < 64; x++) {
+        final on = ((x ~/ 8) + (y ~/ 8)).isEven;
+        check.setPixelRgba(x, y, on ? 230 : 40, on ? 230 : 40, on ? 230 : 40, 255);
+      }
+    }
+    expect(
+      LogoImageProcessor.looksLikeCheckerboardMatte(
+        Uint8List.fromList(img.encodePng(check)),
+      ),
+      isTrue,
+    );
+  });
+
+  test('grey metallic letters on a black plate survive knockout', () {
+    final src = img.Image(width: 220, height: 90, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 0, 0, 255));
+    img.fillRect(
+      src,
+      x1: 12,
+      y1: 18,
+      x2: 100,
+      y2: 48,
+      color: img.ColorRgba8(96, 96, 96, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 108,
+      y1: 18,
+      x2: 208,
+      y2: 48,
+      color: img.ColorRgba8(0, 190, 70, 255),
+    );
+    for (var y = 56; y <= 76; y++) {
+      final lum = 70 + ((y - 56) * 5);
+      for (var x = 30; x <= 190; x++) {
+        src.setPixelRgba(x, y, lum, lum, lum, 255);
+      }
+    }
+    final out = LogoImageProcessor.processWithOptions(
+      Uint8List.fromList(img.encodePng(src)),
+      LogoImportOptions.standard(restoreHighRes: false),
+    );
+    final decoded = img.decodeImage(out)!;
+    var grey = 0, green = 0, gradient = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final sat = [r, g, b].reduce((a, c) => a > c ? a : c) -
+            [r, g, b].reduce((a, c) => a < c ? a : c);
+        final lum = (r + g + b) / 3.0;
+        if (g > r + 20 && g > b + 20) {
+          green++;
+        } else if (sat < 28 && lum >= 85) {
+          gradient++;
+        } else if (sat < 28 && lum >= 48) {
+          grey++;
+        }
+      }
+    }
+    expect(decoded.getPixel(0, 0).a.toInt(), lessThan(40));
+    expect(green, greaterThan(80));
+    expect(grey, greaterThan(40));
+    expect(gradient, greaterThan(40));
+  });
+
+  test('black letter bodies on a white plate survive knockout', () {
+    final src = img.Image(width: 160, height: 80, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));
+    img.fillRect(
+      src,
+      x1: 16,
+      y1: 16,
+      x2: 70,
+      y2: 64,
+      color: img.ColorRgba8(10, 10, 10, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 30,
+      y1: 28,
+      x2: 48,
+      y2: 46,
+      color: img.ColorRgba8(255, 255, 255, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 86,
+      y1: 20,
+      x2: 140,
+      y2: 58,
+      color: img.ColorRgba8(12, 12, 12, 255),
+    );
+    final out = LogoImageProcessor.processWithOptions(
+      Uint8List.fromList(img.encodePng(src)),
+      LogoImportOptions.standard(),
+    );
+    final decoded = img.decodeImage(out)!;
+    var black = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        if (p.r.toInt() < 40 && p.g.toInt() < 40 && p.b.toInt() < 40) black++;
+      }
+    }
+    expect(decoded.getPixel(0, 0).a.toInt(), lessThan(40));
+    expect(black, greaterThan(200));
+    var punched = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        if (decoded.getPixel(x, y).a.toInt() < 40) punched++;
+      }
+    }
+    expect(punched, greaterThan(20));
+  });
+
+  test('snap does not recolor grey fills to a chromatic accent', () {
+    final source = img.Image(width: 120, height: 40, numChannels: 4);
+    img.fill(source, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      source,
+      x1: 4,
+      y1: 8,
+      x2: 58,
+      y2: 32,
+      color: img.ColorRgba8(110, 110, 110, 255),
+    );
+    img.fillRect(
+      source,
+      x1: 64,
+      y1: 8,
+      x2: 114,
+      y2: 32,
+      color: img.ColorRgba8(0, 180, 70, 255),
+    );
+    final sourceBytes = Uint8List.fromList(img.encodePng(source));
+
+    final mixed = img.decodeImage(sourceBytes)!;
+    final snapped = LogoImageProcessor.snapToSourceBrandColors(
+      mixed,
+      sourceBytes,
+    );
+    final grey = snapped.getPixel(20, 20);
+    final green = snapped.getPixel(90, 20);
+    expect(grey.g.toInt() - grey.r.toInt(), lessThan(20));
+    expect(green.g.toInt(), greaterThan(green.r.toInt() + 40));
+  });
+
+  test('redrawn lockup is not a faithful restore', () {
+    final source = img.Image(width: 80, height: 40, numChannels: 4);
+    img.fill(source, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      source,
+      x1: 4,
+      y1: 8,
+      x2: 38,
+      y2: 32,
+      color: img.ColorRgba8(100, 100, 100, 255),
+    );
+    img.fillRect(
+      source,
+      x1: 42,
+      y1: 8,
+      x2: 76,
+      y2: 32,
+      color: img.ColorRgba8(0, 180, 70, 255),
+    );
+    final srcBytes = Uint8List.fromList(img.encodePng(source));
+
+    final redraw = img.Image(width: 80, height: 40, numChannels: 4);
+    img.fill(redraw, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      redraw,
+      x1: 4,
+      y1: 6,
+      x2: 76,
+      y2: 34,
+      color: img.ColorRgba8(0, 200, 80, 255),
+    );
+    final redBytes = Uint8List.fromList(img.encodePng(redraw));
+    expect(LogoImageProcessor.isFaithfulRestore(srcBytes, redBytes), isFalse);
+    expect(LogoImageProcessor.retainsBrandColors(srcBytes, redBytes), isFalse);
+  });
+
+  test('generative restore is skipped for already high-res sources', () {
+    expect(LogoRestorer.usesGenerativeRestore(200), isTrue);
+    expect(LogoRestorer.usesGenerativeRestore(1599), isTrue);
+    expect(LogoRestorer.usesGenerativeRestore(1600), isFalse);
+    expect(LogoRestorer.usesGenerativeRestore(6000), isFalse);
+  });
+
+  test('palette PNG knockout keeps ink (Apex Valves crawl cache)', () {
+    final repo = Directory.current.path.endsWith('mobile')
+        ? Directory.current.parent
+        : Directory.current;
+    final apex = File(
+      p.join(
+        repo.path,
+        'qa_logs',
+        'logo_restore_marathon',
+        'crawl_cache',
+        'apex_valves.png',
+      ),
+    );
+    if (!apex.existsSync()) return;
+    final bytes = apex.readAsBytesSync();
+    final out = LogoImageProcessor.processWithOptions(
+      bytes,
+      LogoImportOptions.standard(restoreHighRes: false),
+    );
+    final decoded = img.decodeImage(out)!;
+    expect(decoded.width, greaterThan(200));
+    expect(decoded.height, greaterThan(80));
+    var ink = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (r >= 250 && g >= 250 && b >= 250) continue;
+        ink++;
+      }
+    }
+    expect(ink, greaterThan(5000));
+  });
+
+  test('aspectDrift rejects a square Gemini hallucination on a wide lockup', () {
+    final wide = img.Image(width: 80, height: 20, numChannels: 4);
+    img.fill(wide, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      wide,
+      x1: 4,
+      y1: 4,
+      x2: 76,
+      y2: 15,
+      color: img.ColorRgba8(0, 90, 180, 255),
+    );
+    final widePng = Uint8List.fromList(img.encodePng(wide));
+
+    final square = img.Image(width: 40, height: 40, numChannels: 4);
+    img.fill(square, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillCircle(
+      square,
+      x: 20,
+      y: 20,
+      radius: 16,
+      color: img.ColorRgba8(80, 80, 80, 255),
+    );
+    final squarePng = Uint8List.fromList(img.encodePng(square));
+
+    expect(LogoImageProcessor.aspectDrift(widePng, squarePng), greaterThan(0.32));
+    expect(
+      LogoImageProcessor.isFaithfulRestore(widePng, squarePng),
+      isFalse,
+    );
+  });
+
+  test('conservator finalize does not hollow grey letter fills', () {
+    final src = img.Image(width: 120, height: 40, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      src,
+      x1: 8,
+      y1: 10,
+      x2: 112,
+      y2: 30,
+      color: img.ColorRgba8(120, 120, 120, 255),
+    );
+    final bytes = Uint8List.fromList(img.encodePng(src));
+    final up = LogoImageProcessor.upscaleForPrint(bytes, minHeight: 120);
+    final out = LogoRestorer.finalizeRestoredPng(
+      up,
+      sourceBytes: bytes,
+      enhanceOnly: true,
+    );
+    final decoded = img.decodeImage(out)!;
+    var grey = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 180) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final sat = [r, g, b].reduce((a, c) => a > c ? a : c) -
+            [r, g, b].reduce((a, c) => a < c ? a : c);
+        if (sat < 28 && (r + g + b) / 3.0 >= 70) grey++;
+      }
+    }
+    expect(grey, greaterThan(800));
+    expect(
+      LogoImageProcessor.isFaithfulRestore(bytes, out),
+      isTrue,
+    );
+  });
+
+  test('grey tagline wider than the chromatic wordmark is not cropped', () {
+    final src = img.Image(width: 220, height: 120, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));
+    img.fillRect(
+      src,
+      x1: 70,
+      y1: 20,
+      x2: 150,
+      y2: 70,
+      color: img.ColorRgba8(200, 30, 30, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 10,
+      y1: 92,
+      x2: 209,
+      y2: 104,
+      color: img.ColorRgba8(90, 90, 90, 255),
+    );
+    final out = LogoImageProcessor.processWithOptions(
+      Uint8List.fromList(img.encodePng(src)),
+      LogoImportOptions.standard(restoreHighRes: false),
+    );
+    final decoded = img.decodeImage(out)!;
+    var grey = 0;
+    var red = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (r > 150 && g < 80 && b < 80) red++;
+        if ((r - g).abs() < 20 && (r - b).abs() < 20 && r >= 60 && r <= 140) {
+          grey++;
+        }
+      }
+    }
+    expect(red, greaterThan(80));
+    expect(grey, greaterThan(80));
+    expect(decoded.width / decoded.height, greaterThan(1.4));
+  });
+
+  test('letterboxed restore still matches knockout geometry', () {
+    final mark = img.Image(width: 80, height: 24, numChannels: 4);
+    img.fill(mark, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      mark,
+      x1: 4,
+      y1: 4,
+      x2: 75,
+      y2: 19,
+      color: img.ColorRgba8(0, 90, 180, 255),
+    );
+    final tight = Uint8List.fromList(img.encodePng(mark));
+
+    final plate = img.Image(width: 80, height: 70, numChannels: 4);
+    img.fill(plate, color: img.ColorRgba8(0, 0, 0, 0));
+    img.compositeImage(plate, mark, dstX: 0, dstY: 23);
+    final padded = Uint8List.fromList(img.encodePng(plate));
+
+    expect(LogoImageProcessor.matchesSourceGeometry(tight, padded), isTrue);
+    expect(LogoImageProcessor.aspectDrift(tight, padded), lessThan(0.12));
+    expect(LogoImageProcessor.isFaithfulRestore(tight, padded), isTrue);
+  });
+
+  test('black script keeps brand color after knockout', () {
+    final src = img.Image(width: 160, height: 50, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));
+    img.fillRect(
+      src,
+      x1: 12,
+      y1: 14,
+      x2: 148,
+      y2: 36,
+      color: img.ColorRgba8(8, 8, 8, 255),
+    );
+    final srcBytes = Uint8List.fromList(img.encodePng(src));
+    final knockout = LogoImageProcessor.processWithOptions(
+      srcBytes,
+      LogoImportOptions.standard(restoreHighRes: false),
+    );
+    expect(LogoImageProcessor.retainsBrandColors(srcBytes, knockout), isTrue);
+    expect(LogoImageProcessor.retainsBrandColors(knockout, knockout), isTrue);
   });
 }

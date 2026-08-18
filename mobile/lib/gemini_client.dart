@@ -514,6 +514,9 @@ Repair blotchy patches: where a region is meant to be one solid brand color,
 even it out. Do not posterize real gradients, photos, or intentional texture.
 
 True alpha — never bake a black, white, gray, or checkerboard plate.
+Keep every existing fill: grey, silver, black, white, and chromatic. Do not
+recolor a lockup to its brightest accent.
+If letters sit on a dark plate, they are ink — do not erase them.
 COLORS: copy the source hues exactly — do not warm, cool, neon-shift, or invent
 fills.$brandNote
 If the source letters have a dark/black border or outline, keep that stroke.$outlineNote

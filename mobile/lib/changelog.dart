@@ -10,17 +10,25 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.81.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.82.
 class AppChangelog {
   AppChangelog._();
 
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.81)";
+  static const title = "What's new (v1.1.68 – v1.1.82)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.82',
+      bullets: [
+        'Logo restore: keep grey taglines and black script; crop to the mark instead of the source plate',
+        'Logo restore: drop milky JPEG/cubic halos without hollowing silver type',
+        'Find logo: Gemini may sharpen low-res rasters; redraws are discarded and the photo is enhanced instead',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.81',
       bullets: [

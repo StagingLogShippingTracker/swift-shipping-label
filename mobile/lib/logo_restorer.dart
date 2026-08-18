@@ -12,16 +12,19 @@ import 'restore_catalog.dart';
 
 /// Print-ready customer logo restore.
 ///
-/// Gemini (`restoreLogoPng`) is the primary conservator whenever a key is
-/// configured: enhance existing pixels, repair edges, even blotchy solids.
-/// Do not unwire it. A light studio finish always follows (plate/halo knockout,
-/// color lock, interior flatten, 3000px PNG). Every pass is scored into
-/// [lessonsFileName] so winning techniques replay on later restores.
+/// Gemini (`restoreLogoPng`) may super-resolve low-res rasters when a key is
+/// configured. Output that changes geometry or brand fills is discarded and
+/// the source raster is cubic-enhanced instead. Sources already at/above
+/// [generativeMaxHeight] skip Gemini (knockout + cubic scale only).
+/// Do not unwire Gemini. Every pass is scored into [lessonsFileName].
 class LogoRestorer {
   LogoRestorer._();
 
   static const minDimension = 3000;
-  static const pipelineVersion = 'print-ready-v8-studio';
+  static const pipelineVersion = 'print-ready-v11-ink-crop';
+  /// Below this source height, Gemini may super-resolve. At or above it, only
+  /// a gentle raster conservator (knockout + cubic scale) runs.
+  static const generativeMaxHeight = 1600;
   static const cacheFileName = 'logo_restore_cache.json';
   static const lessonsFileName = 'logo_restore_lessons.json';
   static final Map<String, Future<File>> _inFlight = {};
@@ -91,39 +94,58 @@ class LogoRestorer {
       return source;
     }
 
-    final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
-    onLog?.call('logo_restorer: prepared transparent raster for enhance');
-    final workBytes = prepared.isNotEmpty ? prepared : sourceBytes;
-
+    final sourceHeight = heightOfBytes(sourceBytes);
     final catalog = await _loadCatalog(logosDir);
     final addenda = catalog.winningAddenda();
 
     var usedGemini = false;
-    Uint8List png;
-    if (GeminiClient.isConfigured) {
-      try {
-        onLog?.call('logo_restorer: Gemini restoreLogoPng');
-        png = await GeminiClient().restoreLogoPng(
-          workBytes,
-          addenda: addenda,
-        );
-        usedGemini = png.isNotEmpty;
-        if (!usedGemini) {
-          throw StateError('Gemini returned empty image');
-        }
-      } catch (e) {
-        onLog?.call('logo_restorer: Gemini failed ($e); cubic fallback');
-        png = LogoImageProcessor.upscaleForPrint(
-          workBytes,
-          minHeight: minDimension,
-        );
-      }
-    } else {
-      onLog?.call('logo_restorer: Gemini unconfigured; cubic raster enhance');
-      png = LogoImageProcessor.upscaleForPrint(
-        workBytes,
-        minHeight: minDimension,
+    late Uint8List png;
+    final referenceBytes = sourceBytes;
+    late Uint8List workBytes;
+
+    if (!usesGenerativeRestore(sourceHeight)) {
+      onLog?.call(
+        'logo_restorer: high-res conservator (${sourceHeight}px, no generative redraw)',
       );
+      png = _conservatorRaster(sourceBytes);
+      workBytes = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
+      if (workBytes.isEmpty) workBytes = sourceBytes;
+    } else {
+      final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
+      onLog?.call('logo_restorer: prepared transparent raster for enhance');
+      workBytes = prepared.isNotEmpty ? prepared : sourceBytes;
+
+      if (GeminiClient.isConfigured) {
+        try {
+          onLog?.call('logo_restorer: Gemini restoreLogoPng');
+          png = await GeminiClient().restoreLogoPng(
+            workBytes,
+            addenda: addenda,
+          );
+          usedGemini = png.isNotEmpty;
+          if (!usedGemini) {
+            throw StateError('Gemini returned empty image');
+          }
+          if (!LogoImageProcessor.isFaithfulRestore(workBytes, png) ||
+              !LogoImageProcessor.isFaithfulRestore(sourceBytes, png) ||
+              LogoImageProcessor.aspectDrift(sourceBytes, png) > 0.32) {
+            onLog?.call(
+              'logo_restorer: Gemini changed the artwork; cubic enhance',
+            );
+            usedGemini = false;
+            // Source-anchored conservator fallback avoids geometry/color drift
+            // introduced by aggressive prep rasters.
+            png = _conservatorRaster(sourceBytes);
+          }
+        } catch (e) {
+          onLog?.call('logo_restorer: Gemini failed ($e); cubic fallback');
+          usedGemini = false;
+          png = _conservatorRaster(sourceBytes);
+        }
+      } else {
+        onLog?.call('logo_restorer: Gemini unconfigured; cubic raster enhance');
+        png = _conservatorRaster(sourceBytes);
+      }
     }
 
     final fingerprint = _cheapFingerprint(workBytes);
@@ -140,13 +162,15 @@ class LogoRestorer {
 
     final finalized = finalizeRestoredPng(
       png,
-      sourceBytes: workBytes,
+      sourceBytes: referenceBytes,
       enhanceOnly: !usedGemini,
     );
+    // Keep the ink-cropped canvas. Letterboxing back to the source plate
+    // made contact sheets shrink the mark and failed knockout-relative IoU.
 
     final quality = RestoreQuality.measure(
       geminiOk: usedGemini,
-      source: workBytes,
+      source: referenceBytes,
       restored: finalized,
       hadCornerMark: false,
     );
@@ -155,12 +179,13 @@ class LogoRestorer {
       grade: quality.grade,
       used: [
         if (usedGemini) 'gemini_primary',
+        if (!usedGemini) 'raster_conservator',
         'plate_knockout',
         'no_watermark',
         'halo_strip',
         'solid_fills',
         'color_lock',
-        'aspect_match',
+        'ink_crop',
         'studio_finish',
       ],
       notes: RestoreCatalog.lessonsFrom(quality),
@@ -174,6 +199,31 @@ class LogoRestorer {
     await _saveCache(logosDir, cache);
     onLog?.call('logo_restorer: wrote ${dest.path}');
     return dest;
+  }
+
+  static bool usesGenerativeRestore(int sourceHeight) =>
+      sourceHeight > 0 && sourceHeight < generativeMaxHeight;
+
+  static Uint8List _conservatorRaster(Uint8List sourceBytes) {
+    final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
+    final bytes = prepared.isNotEmpty ? prepared : sourceBytes;
+    final decoded = LogoImageProcessor.decodeToRgba(bytes);
+    if (decoded == null || decoded.height <= 0) return bytes;
+    // Punch milky cubic/JPEG rim before upscale so it does not become a
+    // white outline at 3000px. Grey/silver letter bodies stay protected.
+    LogoImageProcessor.stripHaloFringe(decoded);
+    if (decoded.height == minDimension) {
+      return Uint8List.fromList(img.encodePng(decoded));
+    }
+    final scale = minDimension / decoded.height;
+    final w = math.max(1, (decoded.width * scale).round());
+    final out = img.copyResize(
+      decoded,
+      width: w,
+      height: minDimension,
+      interpolation: img.Interpolation.cubic,
+    );
+    return Uint8List.fromList(img.encodePng(out));
   }
 
   static bool _isPrintReadyRestored(File source, Uint8List bytes) {
@@ -207,6 +257,11 @@ class LogoRestorer {
     bool enhanceOnly = false,
   }) {
     if (bytes.isEmpty) return bytes;
+
+    if (enhanceOnly) {
+      return _finalizeConservatorOnly(bytes);
+    }
+
     final cropped = LogoImageProcessor.normalizeToVisibleContent(bytes);
     var image = img.decodeImage(cropped.isNotEmpty ? cropped : bytes);
     if (image == null || image.height <= 0) {
@@ -229,7 +284,19 @@ class LogoRestorer {
       }
     }
 
-    image = LogoImageProcessor.flattenSolidBrandFills(image);
+    if (!enhanceOnly) {
+      // Flatten at working size — k-means/flood at 3000px hangs and over-edges.
+      if (image.height > 1600) {
+        final s = 1600 / image.height;
+        image = img.copyResize(
+          image,
+          width: math.max(1, (image.width * s).round()),
+          height: 1600,
+          interpolation: img.Interpolation.cubic,
+        );
+      }
+      image = LogoImageProcessor.flattenSolidBrandFills(image);
+    }
 
     if (image.height < minDimension) {
       final scale = minDimension / image.height;
@@ -242,6 +309,25 @@ class LogoRestorer {
       );
     }
     return Uint8List.fromList(img.encodePng(image));
+  }
+
+  /// Cubic conservator: strip milky fringe, then scale. Grey/silver fills stay.
+  static Uint8List _finalizeConservatorOnly(Uint8List bytes) {
+    final image = LogoImageProcessor.decodeToRgba(bytes);
+    if (image == null || image.height <= 0) return bytes;
+    LogoImageProcessor.stripHaloFringe(image);
+    if (image.height >= minDimension) {
+      return Uint8List.fromList(img.encodePng(image));
+    }
+    final scale = minDimension / image.height;
+    final w = math.max(1, (image.width * scale).round());
+    final out = img.copyResize(
+      image,
+      width: w,
+      height: minDimension,
+      interpolation: img.Interpolation.cubic,
+    );
+    return Uint8List.fromList(img.encodePng(out));
   }
 
   static Uint8List _finalizeFromSourceFallback(Uint8List sourceBytes) {

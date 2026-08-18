@@ -204,6 +204,10 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.82)
+- **Logo restore:** keep grey taglines and black script; crop to the mark (not the source plate); drop milky JPEG/cubic halos without hollowing silver type
+- **Find logo:** Gemini still super-resolves low-res rasters, but redraws are rejected and the source is cubic-enhanced instead
+
 ### What's new (v1.1.81)
 - **BOL logos:** wide customer marks scale down to stay left of Probill (no clip behind the sticker box)
 - **Shipping / Receiving:** dual C/O logos share a bounded frame so wide lockups do not overlap

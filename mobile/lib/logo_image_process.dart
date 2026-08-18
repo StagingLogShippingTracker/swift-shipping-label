@@ -21,36 +21,113 @@ class LogoImageProcessor {
   /// Extra pixels kept inside the crop so anti-aliased edges are not clipped.
   static const safeInset = 1;
 
+  /// Decode PNG/JPEG bytes to a true RGBA bitmap.
+  ///
+  /// Palette/indexed sources (mode P) sometimes decode with missing alpha so
+  /// edge floods eat every pixel — Apex Valves knockout collapsed to 1×1.
+  static img.Image? decodeToRgba(Uint8List input) {
+    final decoded = img.decodeImage(input);
+    if (decoded == null) return null;
+
+    img.Image image;
+    if (decoded.numChannels == 4) {
+      image = decoded.clone();
+    } else {
+      image = decoded.convert(numChannels: 4, format: img.Format.uint8);
+    }
+
+    var opaque = 0;
+    for (var y = 0; y < image.height; y += math.max(1, image.height ~/ 12)) {
+      for (var x = 0; x < image.width; x += math.max(1, image.width ~/ 12)) {
+        if (image.getPixel(x, y).a.toInt() > 200) opaque++;
+      }
+    }
+    if (opaque == 0) {
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          final p = image.getPixel(x, y);
+          final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+          if (r >= 250 && g >= 250 && b >= 250) continue;
+          if (r + g + b < 24) continue;
+          image.setPixelRgba(x, y, r, g, b, 255);
+        }
+      }
+    }
+    return image;
+  }
+
+  /// Aspect drift between two rasters (0 = identical, 1 = unrelated).
+  ///
+  /// Compares the **ink bounding box**, not the outer canvas. A wide wordmark
+  /// on a square plate vs the same mark tightly cropped is not a warp.
+  static double aspectDrift(Uint8List a, Uint8List b) {
+    final sa = decodeToRgba(a);
+    final sb = decodeToRgba(b);
+    if (sa == null || sb == null || sa.height <= 0 || sb.height <= 0) {
+      return 1.0;
+    }
+    final ba = _opaqueInkBounds(sa);
+    final bb = _opaqueInkBounds(sb);
+    final aspectA = ba == null
+        ? sa.width / sa.height
+        : (ba.$3 - ba.$1 + 1) / math.max(1, ba.$4 - ba.$2 + 1);
+    final aspectB = bb == null
+        ? sb.width / sb.height
+        : (bb.$3 - bb.$1 + 1) / math.max(1, bb.$4 - bb.$2 + 1);
+    return (aspectA - aspectB).abs() / math.max(aspectA, 0.01);
+  }
+
+  /// Pad [output] with transparency so its outer canvas aspect matches [source].
+  ///
+  /// This never stretches or redraws logo ink; it only adds transparent margin.
+  static Uint8List padToSourceAspect(
+    Uint8List output,
+    Uint8List source, {
+    double maxDrift = 0.30,
+  }) {
+    final out = decodeToRgba(output);
+    final src = decodeToRgba(source);
+    if (out == null || src == null || out.height <= 0 || src.height <= 0) {
+      return output;
+    }
+    final srcAspect = src.width / src.height;
+    final outAspect = out.width / out.height;
+    final drift = (srcAspect - outAspect).abs() / math.max(srcAspect, 0.01);
+    if (drift <= maxDrift) return output;
+
+    var targetW = out.width;
+    var targetH = out.height;
+    if (outAspect < srcAspect) {
+      targetW = math.max(out.width, (out.height * srcAspect).round());
+    } else {
+      targetH = math.max(out.height, (out.width / srcAspect).round());
+    }
+    if (targetW == out.width && targetH == out.height) return output;
+
+    final canvas = img.Image(width: targetW, height: targetH, numChannels: 4);
+    img.fill(canvas, color: img.ColorRgba8(0, 0, 0, 0));
+    final dx = ((targetW - out.width) / 2).round();
+    final dy = ((targetH - out.height) / 2).round();
+    img.compositeImage(canvas, out, dstX: dx, dstY: dy);
+    return Uint8List.fromList(img.encodePng(canvas));
+  }
+
   /// Strip solid plate + crop for Gemini: raw raster first, restore second.
   ///
-  /// Does not flatten fills — only removes canvas so Gemini sees true brand
-  /// colors on transparent alpha (never a baked checkerboard).
+  /// Same knockout/crop as `processWithOptions(... cropMode: auto)` so the
+  /// conservator path cannot clip taglines the knockout kept.
   static Uint8List prepareRasterForRestore(Uint8List input) {
     if (input.isEmpty) return input;
-    final decoded = img.decodeImage(input);
-    if (decoded == null) return input;
+    var image = decodeToRgba(input);
+    if (image == null) return input;
 
-    var image = decoded.numChannels == 4
-        ? decoded.clone()
-        : decoded.convert(numChannels: 4);
-
-    // Kill common transparency-preview checkerboards if a prior tool baked them.
-    _removeCheckerboardMatte(image);
-
-    final bg = _estimateBackgroundColor(image);
-    if (bg != null) {
-      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
+    if (!_hasMeaningfulTransparency(image)) {
+      _knockOutOuterPlate(image);
     }
-    _removeSolidBackground(image, (255, 255, 255), eightWay: true);
-    if (bg != null && _isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) {
-      _removeSolidBackground(image, (0, 0, 0), eightWay: true);
-    }
-    _punchEnclosedPlateHoles(image, bg);
-    stripHaloFringe(image);
 
-    image = _cropToContentBBox(image, null, minAlpha: 96);
+    image = _cropToContentBBox(image, null, minAlpha: 48);
     image = _trimLowCoverageMargins(image);
-    image = addSafePad(image, fraction: 0.05);
+    image = addSafePad(image);
     return Uint8List.fromList(img.encodePng(image));
   }
 
@@ -86,18 +163,21 @@ class LogoImageProcessor {
         }
         var best = palette.first;
         var bestD = 1 << 30;
+        final pixelGrey = _isGreyFill(r, g, b);
         for (final c in palette) {
+          if (pixelGrey != _isGreyFill(c.$1, c.$2, c.$3)) continue;
           final d = _colorDistance(r, g, b, c.$1, c.$2, c.$3);
           if (d < bestD) {
             bestD = d;
             best = c;
           }
         }
+        // Only correct nearby hue drift. Never map grey/black/silver ink
+        // onto the nearest chromatic accent.
+        if (bestD > 48) continue;
         if (a >= 180) {
-          // Solid ink → exact brand hex (no hue drift).
           out.setPixelRgba(x, y, best.$1, best.$2, best.$3, a);
         } else {
-          // Soft AA fringe: pull toward brand without hard posterize.
           final t = a / 255.0;
           out.setPixelRgba(
             x,
@@ -110,9 +190,6 @@ class LogoImageProcessor {
         }
       }
     }
-    final srcImg = img.decodeImage(sourcePng);
-    final plate = srcImg == null ? null : _estimateBackgroundColor(srcImg);
-    _punchEnclosedPlateHoles(out, plate);
     return out;
   }
 
@@ -166,7 +243,7 @@ class LogoImageProcessor {
         }
       }
     }
-    return samples > 20 && tileHits / samples > 0.18;
+    return samples > 20 && tileHits / samples > 0.08;
   }
 
   /// Cubic upscale of the existing raster — recovers pixelation without
@@ -188,15 +265,20 @@ class LogoImageProcessor {
   }
 
   /// True when [result] is a super-resolution of [source], not a redraw.
-  /// Downscales the result to the source size and compares opaque pixels.
+  ///
+  /// Crops both rasters to opaque ink first so transparent letterboxing /
+  /// source-plate padding cannot fail IoU against a tight knockout crop.
   static bool matchesSourceGeometry(
     Uint8List source,
     Uint8List result, {
     double maxMeanAbs = 28,
+    double minAlphaIou = 0.90,
   }) {
-    final src = img.decodeImage(source);
-    final dst = img.decodeImage(result);
-    if (src == null || dst == null) return false;
+    final srcRaw = decodeToRgba(source);
+    final dstRaw = decodeToRgba(result);
+    if (srcRaw == null || dstRaw == null) return false;
+    final src = _cropToOpaqueInk(srcRaw) ?? srcRaw;
+    final dst = _cropToOpaqueInk(dstRaw) ?? dstRaw;
     if (src.width < 4 || src.height < 4) return true;
     final scaled = img.copyResize(
       dst,
@@ -206,13 +288,19 @@ class LogoImageProcessor {
     );
     var abs = 0;
     var n = 0;
+    var inter = 0;
+    var union = 0;
     for (var y = 0; y < src.height; y++) {
       for (var x = 0; x < src.width; x++) {
         final a = src.getPixel(x, y);
         final b = scaled.getPixel(x, y);
         final aa = a.a.toInt();
         final ba = b.a.toInt();
-        if (aa < 40 && ba < 40) continue;
+        final aOn = aa >= 40;
+        final bOn = ba >= 40;
+        if (aOn && bOn) inter++;
+        if (aOn || bOn) union++;
+        if (!aOn && !bOn) continue;
         n++;
         abs += (a.r.toInt() - b.r.toInt()).abs();
         abs += (a.g.toInt() - b.g.toInt()).abs();
@@ -220,8 +308,20 @@ class LogoImageProcessor {
         abs += (aa - ba).abs();
       }
     }
-    if (n == 0) return false;
+    if (n == 0 || union == 0) return false;
+    if (inter / union < minAlphaIou) return false;
     return abs / (n * 4) <= maxMeanAbs;
+  }
+
+  /// True when [result] still has the source lockup — geometry, fills, no matte.
+  static bool isFaithfulRestore(Uint8List source, Uint8List result) {
+    if (result.isEmpty || source.isEmpty) return false;
+    if (looksLikeCheckerboardMatte(result)) return false;
+    if (aspectDrift(source, result) > 0.32) return false;
+    if (!matchesSourceGeometry(source, result, maxMeanAbs: 22, minAlphaIou: 0.90)) {
+      return false;
+    }
+    return retainsBrandColors(source, result);
   }
 
   static void _removeCheckerboardMatte(img.Image image) {
@@ -301,33 +401,20 @@ class LogoImageProcessor {
   /// against the PDF header rules (looks “cut off” even when scaled correctly).
   static Uint8List normalizeToVisibleContent(Uint8List input) {
     if (input.isEmpty) return input;
-    final decoded = img.decodeImage(input);
-    if (decoded == null) return input;
+    var image = decodeToRgba(input);
+    if (image == null) return input;
 
-    var image = decoded.numChannels == 4
-        ? decoded.clone()
-        : decoded.convert(numChannels: 4);
-
-    final bg = _estimateBackgroundColor(image);
-    if (bg != null) {
-      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
-    }
-    // Punch leftover white plate from the edges even when corners were transparent.
-    _removeSolidBackground(image, (255, 255, 255), eightWay: true);
-    if (bg != null && _isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) {
-      _removeSolidBackground(image, (0, 0, 0), eightWay: true);
-    }
-    _punchEnclosedPlateHoles(image, bg);
+    _knockOutOuterPlate(image);
     stripForeignMarks(image);
     stripHaloFringe(image);
 
     final beforeW = image.width;
     final beforeH = image.height;
-    image = _cropToContentBBox(image, null, minAlpha: 96);
+    image = _cropToContentBBox(image, null, minAlpha: 48);
     image = _trimLowCoverageMargins(image);
 
     if (image.width == beforeW && image.height == beforeH) {
-      image = _trimEmptyMargins(image, bg);
+      image = _trimEmptyMargins(image, null);
     }
 
     image = addSafePad(image);
@@ -368,8 +455,11 @@ class LogoImageProcessor {
         final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
         final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
         final lum = (r + g + b) / 3.0;
+        // Grey/silver letter bodies are ink, not JPEG halo.
+        if (sat < 30 && lum >= 48 && lum <= 215) continue;
         final fringe = (sat < 42 && lum > 88) || (sat < 28 && lum > 70);
         if (!fringe) continue;
+        var opaqueN = 0;
         var hasInk = false;
         var hasEmpty = false;
         for (var dy = -1; dy <= 1; dy++) {
@@ -382,14 +472,17 @@ class LogoImageProcessor {
               continue;
             }
             final n = image.getPixel(nx, ny);
-            if (n.a.toInt() < 40 ||
-                nearBlack(n.r.toInt(), n.g.toInt(), n.b.toInt())) {
+            if (n.a.toInt() < 40) {
               hasEmpty = true;
-            } else if (chromaticInk(n)) {
-              hasInk = true;
+            } else {
+              opaqueN++;
+              if (chromaticInk(n)) hasInk = true;
             }
           }
         }
+        // Fills (grey/silver letter bodies) have many opaque neighbors.
+        // JPEG halo is a 1px rim between ink and empty canvas.
+        if (opaqueN >= 6) continue;
         if (hasInk && hasEmpty) punch[y * w + x] = 1;
       }
     }
@@ -475,8 +568,7 @@ class LogoImageProcessor {
       final cy = (b.minY + b.maxY) / 2;
       final inCorner = (cx < w * 0.22 || cx > w * 0.78) &&
           (cy < h * 0.22 || cy > h * 0.78);
-      final alongBottom = cy > h * 0.86 && b.area < mainArea * 0.08;
-      if (!inCorner && !alongBottom) continue;
+      if (!inCorner) continue;
 
       for (var y = b.minY; y <= b.maxY; y++) {
         for (var x = b.minX; x <= b.maxX; x++) {
@@ -858,29 +950,23 @@ class LogoImageProcessor {
       return input;
     }
 
-    final decoded = img.decodeImage(input);
-    if (decoded == null) return input;
-
-    var image = decoded.numChannels == 4
-        ? decoded.clone()
-        : decoded.convert(numChannels: 4);
+    var image = decodeToRgba(input);
+    if (image == null) return input;
 
     if (options.cropMode == LogoCropMode.manual &&
         options.manualCropRect != null) {
       image = _applyManualCrop(image, options.manualCropRect!);
     }
 
-    final bg = options.removeBackground && !_hasMeaningfulTransparency(image)
-        ? _estimateBackgroundColor(image)
-        : null;
-
-    if (bg != null) {
-      _removeSolidBackground(image, bg, eightWay: _isAchromaticPlate(bg));
-      _punchEnclosedPlateHoles(image, bg);
+    if (options.removeBackground && !_hasMeaningfulTransparency(image)) {
+      _knockOutOuterPlate(image);
     }
 
     if (options.cropMode == LogoCropMode.auto) {
-      return normalizeToVisibleContent(Uint8List.fromList(img.encodePng(image)));
+      image = _cropToContentBBox(image, null, minAlpha: 48);
+      image = _trimLowCoverageMargins(image);
+      image = addSafePad(image);
+      return Uint8List.fromList(img.encodePng(image));
     }
 
     return Uint8List.fromList(img.encodePng(image));
@@ -973,10 +1059,78 @@ class LogoImageProcessor {
     return total > 0 && transparent / total >= 0.35;
   }
 
+  /// Edge-flood the outer canvas only. Letter fills — including dark/grey
+  /// ink on a dark plate and black bodies on a light plate — stay opaque.
+  static void _knockOutOuterPlate(img.Image image) {
+    _removeCheckerboardMatte(image);
+    final plate = _estimateBackgroundColor(image);
+    final protect = _protectedInkMask(image, plate);
+    if (plate != null) {
+      final dark = _isNearBlackCanvas(plate.$1, plate.$2, plate.$3);
+      _removeSolidBackground(
+        image,
+        plate,
+        eightWay: !dark,
+        protect: protect,
+      );
+    } else {
+      _removeSolidBackground(
+        image,
+        (255, 255, 255),
+        eightWay: true,
+        protect: protect,
+      );
+    }
+    _punchEnclosedPlateHoles(image, plate);
+  }
+
+  /// Pixels that differ from the outer plate, dilated one pixel so
+  /// anti-aliased rims are not eaten by the edge flood.
+  static Uint8List _protectedInkMask(
+    img.Image image,
+    (int r, int g, int b)? plate,
+  ) {
+    final w = image.width;
+    final h = image.height;
+    final raw = Uint8List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < alphaThreshold) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (plate != null) {
+          final d = _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3);
+          if (d <= 10) continue;
+        }
+        raw[y * w + x] = 1;
+      }
+    }
+    return _dilateMask(raw, w, h);
+  }
+
+  static Uint8List _dilateMask(Uint8List src, int w, int h) {
+    final out = Uint8List.fromList(src);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (src[y * w + x] == 0) continue;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            final nx = x + dx;
+            final ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            out[ny * w + nx] = 1;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   static void _removeSolidBackground(
     img.Image image,
     (int r, int g, int b) bg, {
     bool eightWay = false,
+    Uint8List? protect,
   }) {
     final w = image.width;
     final h = image.height;
@@ -987,6 +1141,7 @@ class LogoImageProcessor {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       final idx = y * w + x;
       if (visited[idx] != 0) return;
+      if (protect != null && protect[idx] != 0) return;
       if (!_isEmptyPixel(image.getPixel(x, y), bg)) return;
       visited[idx] = 1;
       queue.add((x, y));
@@ -1141,16 +1296,11 @@ class LogoImageProcessor {
     final r = pixel.r.toInt();
     final g = pixel.g.toInt();
     final b = pixel.b.toInt();
-    return _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3) <=
-        colorTolerance;
-  }
-
-  static bool _isAchromaticPlate((int r, int g, int b) bg) {
-    if (_isNearBlackCanvas(bg.$1, bg.$2, bg.$3)) return true;
-    if (bg.$1 >= 240 && bg.$2 >= 240 && bg.$3 >= 240) return true;
-    final sat =
-        math.max(bg.$1, math.max(bg.$2, bg.$3)) - math.min(bg.$1, math.min(bg.$2, bg.$3));
-    return sat <= 18;
+    final d = _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3);
+    if (_isNearBlackCanvas(plate.$1, plate.$2, plate.$3)) {
+      return _isNearBlackCanvas(r, g, b) && d <= 14;
+    }
+    return d <= colorTolerance;
   }
 
   /// Sample corner regions; return a shared bg color when corners agree.
@@ -1210,25 +1360,25 @@ class LogoImageProcessor {
     final r = pixel.r.toInt();
     final g = pixel.g.toInt();
     final b = pixel.b.toInt();
-    // Square web logos often sit on opaque white; treat that as margin.
-    if (r >= 240 && g >= 240 && b >= 240) return true;
-    if (bg == null) return false;
+    if (bg == null) {
+      return r >= 240 && g >= 240 && b >= 240;
+    }
     final bgBlack = _isNearBlackCanvas(bg.$1, bg.$2, bg.$3);
     if (bgBlack) {
-      // Chromatic ink on a black plate is never "empty".
+      // Dark letter fills and metallic rims are ink, not canvas.
       if (!_isNearBlackCanvas(r, g, b)) return false;
-      if (_colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
-        return true;
-      }
-      return r <= 32 && g <= 32 && b <= 32;
+      return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= 14;
     }
-    if (_colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
-      return true;
-    }
-    return false;
+    if (r >= 240 && g >= 240 && b >= 240) return true;
+    return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance;
   }
 
   /// Near-black canvas (not a dark brand fill): low luminance and low saturation.
+  static bool _isGreyFill(int r, int g, int b) {
+    final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+    return sat < 28;
+  }
+
   static bool _isNearBlackCanvas(int r, int g, int b) {
     final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
     final lum = (r + g + b) / 3.0;
@@ -1242,14 +1392,23 @@ class LogoImageProcessor {
     );
   }
 
-  /// Dominant chromatic brand fills (sat + area). Used to reject restores that
-  /// drop the wordmark and keep only a bright accent.
+  /// Dominant brand fills (chromatic and grey/silver). Plate pixels omitted.
   static List<({int r, int g, int b, double fraction})> dominantBrandColors(
     Uint8List png, {
     double minFraction = 0.06,
   }) {
     final image = img.decodeImage(png);
     if (image == null) return const [];
+    // After knockout the corners are transparent pad sitting on ink, not a
+    // new plate. Estimating a plate from those ink corners would skip black
+    // script (Flexitallic) as "background".
+    final plate = _hasMeaningfulTransparency(image)
+        ? null
+        : _estimateBackgroundColor(image);
+    final plateLight = plate != null &&
+        plate.$1 >= 230 &&
+        plate.$2 >= 230 &&
+        plate.$3 >= 230;
     var ink = 0;
     final buckets = <int, int>{};
     for (var y = 0; y < image.height; y++) {
@@ -1257,12 +1416,24 @@ class LogoImageProcessor {
         final p = image.getPixel(x, y);
         if (p.a.toInt() < 96) continue;
         final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
-        if (r >= 240 && g >= 240 && b >= 240) continue;
-        if (_isNearBlackCanvas(r, g, b)) continue;
+        if (plate != null &&
+            _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3) <= 18) {
+          continue;
+        }
+        if (plateLight && r >= 240 && g >= 240 && b >= 240) continue;
+        if (plate == null && r >= 240 && g >= 240 && b >= 240) continue;
         final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
-        if (sat < 28) continue;
+        final lum = (r + g + b) / 3.0;
+        final chromatic = sat >= 22;
+        final greyFill = !chromatic && lum >= 48 && lum <= 230;
+        // Black script on a knocked-out / light plate is brand ink. Do not
+        // require the source canvas to still be an opaque white JPEG.
+        final blackMark = _isNearBlackCanvas(r, g, b) &&
+            (plate == null ||
+                plateLight ||
+                !_isNearBlackCanvas(plate.$1, plate.$2, plate.$3));
+        if (!chromatic && !greyFill && !blackMark) continue;
         ink++;
-        // Quantize so JPEG noise collapses.
         final key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
         buckets[key] = (buckets[key] ?? 0) + 1;
       }
@@ -1320,6 +1491,43 @@ class LogoImageProcessor {
     img.fill(out, color: img.ColorRgba8(0, 0, 0, 0));
     img.compositeImage(out, image, dstX: pad, dstY: pad);
     return out;
+  }
+
+  /// Opaque ink AABB, or null when the bitmap is empty.
+  static (int minX, int minY, int maxX, int maxY)? _opaqueInkBounds(
+    img.Image image, {
+    int minAlpha = 40,
+  }) {
+    var minX = image.width;
+    var minY = image.height;
+    var maxX = -1;
+    var maxY = -1;
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < minAlpha) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (r >= 250 && g >= 250 && b >= 250) continue;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (maxX < minX || maxY < minY) return null;
+    return (minX, minY, maxX, maxY);
+  }
+
+  static img.Image? _cropToOpaqueInk(img.Image image) {
+    final b = _opaqueInkBounds(image);
+    if (b == null) return null;
+    return img.copyCrop(
+      image,
+      x: b.$1,
+      y: b.$2,
+      width: b.$3 - b.$1 + 1,
+      height: b.$4 - b.$2 + 1,
+    );
   }
 
   /// Pixel AABB of "solid" content (ignores faint fringe below [minAlpha]).
@@ -1446,29 +1654,48 @@ class LogoImageProcessor {
       return true;
     }
 
+    // Any letter ink — chromatic, grey, silver, or black. Peeling only
+    // "non-chromatic" columns clips grey taglines that sit wider than the
+    // main wordmark (Quest "SEALING SOLUTIONS" → "LING SOLUT").
+    bool rowHasLetterInk(int y) {
+      for (var x = 0; x < image.width; x++) {
+        if (isInk(x, y)) return true;
+      }
+      return false;
+    }
+
+    bool colHasLetterInk(int x) {
+      for (var y = 0; y < image.height; y++) {
+        if (isInk(x, y)) return true;
+      }
+      return false;
+    }
+
     var top = 0;
     var left = 0;
     var bottom = image.height - 1;
     var right = image.width - 1;
 
     bool rowWeak(int y) {
+      if (rowHasLetterInk(y)) return false;
       var n = 0;
       final span = right - left + 1;
       if (span <= 0) return true;
       for (var x = left; x <= right; x++) {
         if (isInk(x, y)) n++;
       }
-      return n / span < 0.02;
+      return n / span < 0.015;
     }
 
     bool colWeak(int x) {
+      if (colHasLetterInk(x)) return false;
       var n = 0;
       final span = bottom - top + 1;
       if (span <= 0) return true;
       for (var y = top; y <= bottom; y++) {
         if (isInk(x, y)) n++;
       }
-      return n / span < 0.02;
+      return n / span < 0.015;
     }
 
     while (top < bottom && rowWeak(top)) {
