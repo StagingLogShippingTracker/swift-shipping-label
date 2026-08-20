@@ -92,6 +92,12 @@ class SignatureSync {
       '${AppConfig.supabaseUrl}/rest/v1/signatures?id=eq.$idEnc',
     );
     await http.delete(uri, headers: _headers).timeout(_timeout);
+    try {
+      final storageUri = Uri.parse(
+        '${AppConfig.supabaseUrl}/storage/v1/object/$bucket/${_storagePath(sig.id)}',
+      );
+      await http.delete(storageUri, headers: _headers).timeout(_timeout);
+    } catch (_) {}
   }
 
   Future<List<_RemoteSignature>> _fetchRemote() async {

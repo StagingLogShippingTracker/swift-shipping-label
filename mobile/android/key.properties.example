@@ -1,6 +1,10 @@
 # Copy to android/key.properties (gitignored) and point storeFile at your .jks.
-# Same layout as staging-tracker / SLST. Until this file exists, release APKs
-# continue to use the debug keystore so existing installs can still update.
+# Same layout as staging-tracker / SLST.
+#
+# CAPABILITY LIMIT: Until this file exists, release APKs intentionally keep the
+# debug keystore so existing in-app Update installs continue to work. That is
+# not Play Store / enterprise-grade signing — add a release keystore before
+# distributing outside the closed Swift update channel.
 storePassword=your-store-password
 keyPassword=your-key-password
 keyAlias=upload

@@ -10,17 +10,26 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.82.
+/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.83.
 class AppChangelog {
   AppChangelog._();
 
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.82)";
+  static const title = "What's new (v1.1.68 – v1.1.83)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.83',
+      bullets: [
+        'History: opens instantly, never wipes cloud rows on open; Bulk History archives too',
+        'History Template: warns if form snapshot upload fails (PDF still archives)',
+        'Logo restore: Real-ESRGAN is primary on Windows (invents lost detail); Gemini stays gated',
+        'Address Book works on Receiving; PDF font scale applies; page orientation is fixed by doc type',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.82',
       bullets: [

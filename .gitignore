@@ -70,6 +70,15 @@ mobile/assets/fonts/Calibri-Bold.ttf
 *.iml
 .cursor/
 
+# QA / restore scratch (do not commit customer logo batches)
+qa_logs/
+.cache/
+customer_logos/gemini_restored/
+customer_logos/restored_batch/
+signatures/
+changelog_prompt.json
+scripts/__pycache__/
+
 # Flutter (mobile/)
 mobile/.dart_tool/
 mobile/.flutter-plugins-dependencies

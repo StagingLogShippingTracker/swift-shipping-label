@@ -138,7 +138,8 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                             'Restore low-resolution logos for print',
                           ),
                           subtitle: const Text(
-                            'Gemini redraw: solid fills, clean edges, keep letter outlines.',
+                            'Logo restore: Real-ESRGAN (Windows) invents lost '
+                            'detail; Gemini assist only if faithful; else cubic.',
                           ),
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
@@ -294,8 +295,7 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                           )),
                         ),
                         Text(
-                          'PDF FONT SCALE (${(pdf.fontScale * 100).round()}%) — '
-                          'stored only; PDF builders do not apply this yet',
+                          'PDF FONT SCALE (${(pdf.fontScale * 100).round()}%)',
                           style: const TextStyle(
                             fontFamily: 'Oswald',
                             fontSize: 11,
@@ -341,28 +341,26 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                             ));
                           },
                         ),
-                        const SizedBox(height: 8),
-                          DropdownButtonFormField<PdfPageOrientation>(
-                          // ignore: deprecated_member_use
-                          value: pdf.pageOrientation,
-                          decoration: const InputDecoration(
-                            labelText: 'PAGE ORIENTATION (STORED)',
-                            helperText:
-                                'Shipping/Receiving stay landscape; BOL stays portrait.',
+                        const SizedBox(height: 12),
+                        const Text(
+                          'PAGE ORIENTATION',
+                          style: TextStyle(
+                            fontFamily: 'Oswald',
+                            fontSize: 11,
+                            color: SwiftColors.muted,
+                            letterSpacing: 0.6,
                           ),
-                          items: [
-                            for (final o in PdfPageOrientation.values)
-                              DropdownMenuItem(
-                                value: o,
-                                child: Text(o.label),
-                              ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            _set(_draft.copyWith(
-                              pdfOptions: pdf.copyWith(pageOrientation: v),
-                            ));
-                          },
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Fixed by document type: Shipping/Receiving are '
+                          'landscape Letter; BOL is portrait Letter. '
+                          'This cannot be changed without redesigning the layouts.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: SwiftColors.muted.withValues(alpha: 0.95),
+                            height: 1.35,
+                          ),
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,

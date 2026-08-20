@@ -43,9 +43,24 @@ class RestoreCatalog {
   static final Map<String, RestoreTechnique> _seedTechniques = {
     'gemini_primary': RestoreTechnique(
       id: 'gemini_primary',
-      notes: 'Gemini restoreLogoPng is the primary print-ready path. Never skip it when a key is configured.',
+      notes:
+          'Legacy id — Gemini is secondary after Real-ESRGAN. Redraws are discarded by the fidelity gate.',
       uses: 24,
       wins: 21,
+    ),
+    'gemini_secondary': RestoreTechnique(
+      id: 'gemini_secondary',
+      notes:
+          'Optional Gemini after Real-ESRGAN miss. Accept only when geometry and brand fills match.',
+      uses: 0,
+      wins: 0,
+    ),
+    'realesrgan_primary': RestoreTechnique(
+      id: 'realesrgan_primary',
+      notes:
+          'Windows Real-ESRGAN via logo_restorer.py — invents edge/fill detail from degradation.',
+      uses: 0,
+      wins: 0,
     ),
     'plate_knockout': RestoreTechnique(
       id: 'plate_knockout',
@@ -106,7 +121,7 @@ class RestoreCatalog {
     'raster_conservator': RestoreTechnique(
       id: 'raster_conservator',
       notes:
-          'Cubic enhance of the source raster when Gemini is skipped, rejected, or the source is already high-res.',
+          'Cubic enhance when Real-ESRGAN/Gemini are skipped, rejected, unavailable, or the source is already high-res.',
       uses: 0,
       wins: 0,
     ),

@@ -309,34 +309,40 @@ class WindowsAppMenuBar extends StatelessWidget {
     String initial,
   ) async {
     final ctrl = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Assign: $title'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(
-            hintText: 'e.g. Ctrl+Enter',
-            helperText: 'Display label only — built-in shortcuts stay active.',
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Assign: $title'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Ctrl+Enter',
+              helperText:
+                  'Menu label only — does not rebind keyboard shortcuts. '
+                  'Built-in Ctrl/Alt shortcuts stay active.',
+            ),
+            autofocus: true,
           ),
-          autofocus: true,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(''),
+              child: const Text('Reset'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: const Text('OK'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(''),
-            child: const Text('Reset'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<void> _showAbout(BuildContext context) async {

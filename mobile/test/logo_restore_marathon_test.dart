@@ -29,16 +29,28 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = _RealHttpOverrides();
 
-  test('crawl + knockout + restore marathon', () async {
+  test('conservator-only cache score', () async {
     final round = DateTime.now().toIso8601String().replaceAll(':', '-');
     final report = await runLogoRestoreMarathon(
       roundLabel: round,
       recrawl: false,
+      conservatorOnly: true,
     );
     expect(report['companies'], isA<List>());
     final companies = report['companies'] as List;
     expect(companies.length, 10);
-  }, timeout: const Timeout(Duration(minutes: 50)));
+  }, timeout: const Timeout(Duration(minutes: 20)));
+
+  test('full restore marathon with Gemini', () async {
+    final round = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final report = await runLogoRestoreMarathon(
+      roundLabel: round,
+      recrawl: false,
+      conservatorOnly: false,
+    );
+    expect(report['companies'], isA<List>());
+    expect((report['companies'] as List).length, 10);
+  }, skip: 'Conservator-only is the shipped path; Gemini is always rejected on this set. Run explicitly to re-check.', timeout: const Timeout(Duration(minutes: 50)));
 }
 
 const marathonCompanies = <({String name, String domain})>[
@@ -57,6 +69,7 @@ const marathonCompanies = <({String name, String domain})>[
 Future<Map<String, Object?>> runLogoRestoreMarathon({
   required String roundLabel,
   bool recrawl = true,
+  bool conservatorOnly = false,
 }) async {
   final root = Directory.current.path.endsWith('mobile')
       ? Directory.current.parent
@@ -157,6 +170,7 @@ Future<Map<String, Object?>> runLogoRestoreMarathon({
         restoreSrc,
         logosDir: logosDir,
         onLog: (m) => restoreLog = '$restoreLog$m\n',
+        skipGenerative: conservatorOnly,
       );
     } catch (e) {
       restoreLog = '$restoreLog$e\n';

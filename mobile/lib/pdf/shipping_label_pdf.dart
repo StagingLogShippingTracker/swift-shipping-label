@@ -45,6 +45,9 @@ class ShippingLabelPdf {
   final LogoInkMetrics? swiftInk;
   Map<String, Uint8List> carrierLogoPngs;
 
+  /// Applied while painting a document from [PdfRenderOptions.fontScale].
+  double activeFontScale = 1.0;
+
   static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const black = PdfColor.fromInt(0xFF111111);
   static const labelC = PdfColor.fromInt(0xFF6A6A6A);
@@ -338,7 +341,9 @@ class ShippingLabelPdf {
     PdfRenderOptions options = PdfRenderOptions.defaults,
   }) async {
     // Shipping / Receiving labels are designed for landscape Letter.
+    // pageOrientation in settings is informational only (layout is fixed).
     final format = pageFormat;
+    activeFontScale = options.fontScale.clamp(0.8, 1.35);
 
     for (final pageData in pages) {
       doc.addPage(
@@ -559,23 +564,24 @@ class ShippingLabelPdf {
     bool centered = false,
   }) {
     if (text.isEmpty) return;
+    final size = fontSize * activeFontScale;
     final f = font ?? fonts.calibriBold;
     c
       ..setFillColor(textColor)
-      ..setFont(f, fontSize);
+      ..setFont(f, size);
     if (multiline) {
-      final lines = wrapLines(text, w - 4, f, fontSize);
-      var yy = y + h - fontSize - 2;
+      final lines = wrapLines(text, w - 4, f, size);
+      var yy = y + h - size - 2;
       for (final line in lines) {
         if (yy < y - 1) break;
-        final tw = stringWidth(f, line, fontSize);
+        final tw = stringWidth(f, line, size);
         final tx = centered ? x + (w - tw) / 2 : x + 1;
-        c.drawString(f, fontSize, line, tx, yy);
-        yy -= fontSize + lineGap;
+        c.drawString(f, size, line, tx, yy);
+        yy -= size + lineGap;
       }
     } else {
-      final tx = centered ? x + (w - stringWidth(f, text, fontSize)) / 2 : x + 1;
-      c.drawString(f, fontSize, text, tx, y + (h - fontSize) / 2 + 1);
+      final tx = centered ? x + (w - stringWidth(f, text, size)) / 2 : x + 1;
+      c.drawString(f, size, text, tx, y + (h - size) / 2 + 1);
     }
   }
 

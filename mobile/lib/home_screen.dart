@@ -252,8 +252,30 @@ class _HomeScreenState extends State<HomeScreen>
   bool _shakeMenuOpen = false;
   SoFieldMap _soFieldMap = SoFieldMap();
   bool _mappingDialogOpen = false;
-  bool _addressBookBusy = false;
+  /// Prevents double-taps from stacking the same prompt (History, Address Book, …).
+  final Set<String> _dialogLocks = {};
+  String _installedVersionLabel = '';
   final Map<String, FocusNode> _multiFieldFocus = {};
+
+  bool _isDialogLocked(String key) => _dialogLocks.contains(key);
+
+  /// Opens at most one dialog per [key]. Second clicks are ignored until close.
+  Future<T?> _runExclusiveDialog<T>(
+    String key,
+    Future<T?> Function() open,
+  ) async {
+    if (_dialogLocks.contains(key)) return null;
+    setState(() => _dialogLocks.add(key));
+    try {
+      return await open();
+    } finally {
+      if (mounted) {
+        setState(() => _dialogLocks.remove(key));
+      } else {
+        _dialogLocks.remove(key);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -284,6 +306,7 @@ class _HomeScreenState extends State<HomeScreen>
     _loadUiSettings();
     _syncPresetsOnLaunch();
     _refreshContactSuggestions();
+    unawaited(_loadInstalledVersionLabel());
     unawaited(_documentHistorySync.purgeExpired());
     if (Platform.isAndroid) {
       _androidShakeSub = AndroidShake.events.listen((_) {
@@ -379,56 +402,58 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (_) {}
   }
 
-  Future<void> _openErrorCapture() async {
-    PackageInfo? info;
+  Future<void> _loadInstalledVersionLabel() async {
     try {
-      info = await PackageInfo.fromPlatform();
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _installedVersionLabel = '${info.version}+${info.buildNumber}';
+      });
     } catch (_) {}
-    if (!mounted) return;
-    await openErrorCaptureForm(
-      context,
-      installedVersion: info == null
-          ? 'unknown'
-          : '${info.version}+${info.buildNumber}',
-      title: Platform.isAndroid ? 'Error Capture' : 'Error capture (F2)',
-    );
+  }
+
+  Future<void> _openErrorCapture() async {
+    await _runExclusiveDialog<void>('errorCapture', () async {
+      if (!mounted) return;
+      await openErrorCaptureForm(
+        context,
+        installedVersion:
+            _installedVersionLabel.isEmpty ? 'unknown' : _installedVersionLabel,
+        title: Platform.isAndroid ? 'Error Capture' : 'Error capture (F2)',
+      );
+    });
   }
 
   Future<void> _openFeedback() async {
-    PackageInfo? info;
-    try {
-      info = await PackageInfo.fromPlatform();
-    } catch (_) {}
-    if (!mounted) return;
-    await openFeedbackForm(
-      context,
-      installedVersion: info == null
-          ? 'unknown'
-          : '${info.version}+${info.buildNumber}',
-    );
+    await _runExclusiveDialog<void>('feedback', () async {
+      if (!mounted) return;
+      await openFeedbackForm(
+        context,
+        installedVersion:
+            _installedVersionLabel.isEmpty ? 'unknown' : _installedVersionLabel,
+      );
+    });
   }
 
   Future<void> _showAbout() async {
-    PackageInfo? info;
-    try {
-      info = await PackageInfo.fromPlatform();
-    } catch (_) {}
-    if (!mounted) return;
-    showAboutDialog(
-      context: context,
-      applicationName: 'Swift Document Generator',
-      applicationVersion: info == null
-          ? 'unknown'
-          : '${info.version}+${info.buildNumber}',
-      applicationLegalese: 'Swift Oilfield Supply',
-      children: [
-        const SizedBox(height: 12),
-        Text(
-          'Shipping, Receiving, and Bill of Lading for Windows and Android.\n'
-          'Releases: ${AppConfig.githubReleasesPage}',
-        ),
-      ],
-    );
+    await _runExclusiveDialog<void>('about', () async {
+      if (!mounted) return;
+      showAboutDialog(
+        context: context,
+        applicationName: 'Swift Document Generator',
+        applicationVersion: _installedVersionLabel.isEmpty
+            ? 'unknown'
+            : _installedVersionLabel,
+        applicationLegalese: 'Swift Oilfield Supply',
+        children: [
+          const SizedBox(height: 12),
+          Text(
+            'Shipping, Receiving, and Bill of Lading for Windows and Android.\n'
+            'Releases: ${AppConfig.githubReleasesPage}',
+          ),
+        ],
+      );
+    });
   }
 
   Future<void> _onAndroidShake() async {
@@ -917,116 +942,115 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _maybePromptCustomerTemplate() async {
-    if (!mounted) return;
-    if (_kind != LabelKind.shipping && _kind != LabelKind.receiving) return;
-    final customer = _controllers[LabelFields.customer]?.text.trim() ?? '';
-    if (customer.isEmpty) return;
-    // Already building from a chosen preset — do not ask again.
-    if (_presetName != null) {
-      _markTemplatePromptResolved();
-      return;
-    }
-    final resolvedKey =
-        normalizeCustomerKey(_templatePromptResolvedForCustomer ?? '');
-    final customerKey = normalizeCustomerKey(customer);
-    if (resolvedKey.isNotEmpty && resolvedKey == customerKey) {
-      return;
-    }
+    await _runExclusiveDialog<void>('customerTemplate', () async {
+      if (!mounted) return;
+      if (_kind != LabelKind.shipping && _kind != LabelKind.receiving) return;
+      final customer = _controllers[LabelFields.customer]?.text.trim() ?? '';
+      if (customer.isEmpty) return;
+      // Already building from a chosen preset — do not ask again.
+      if (_presetName != null) {
+        _markTemplatePromptResolved();
+        return;
+      }
+      final resolvedKey =
+          normalizeCustomerKey(_templatePromptResolvedForCustomer ?? '');
+      final customerKey = normalizeCustomerKey(customer);
+      if (resolvedKey.isNotEmpty && resolvedKey == customerKey) {
+        return;
+      }
 
-    final matches = _matchingTemplatesForCustomer(customer);
-    if (matches.isEmpty) {
-      _templatePromptResolvedForCustomer = customer;
-      return;
-    }
+      final matches = _matchingTemplatesForCustomer(customer);
+      if (matches.isEmpty) {
+        _templatePromptResolvedForCustomer = customer;
+        return;
+      }
 
-    final picked = await showDialog<CustomerPreset?>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Use a saved template?'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Saved templates match “$customer”.',
-                style: TextStyle(
-                  fontFamily: swiftUiFont(ctx),
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 12),
-              for (final m in matches)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(m.name),
-                  subtitle: Text(
-                    (m.fields[LabelFields.customer] ?? '').trim().isEmpty
-                        ? 'Template'
-                        : m.fields[LabelFields.customer]!,
+      final picked = await showDialog<CustomerPreset?>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Use a saved template?'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Saved templates match “$customer”.',
+                  style: TextStyle(
+                    fontFamily: swiftUiFont(ctx),
+                    fontSize: 14,
                   ),
-                  trailing: const Text('USE'),
-                  onTap: () => Navigator.pop(ctx, m),
                 ),
-            ],
+                const SizedBox(height: 12),
+                for (final m in matches)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(m.name),
+                    subtitle: Text(
+                      (m.fields[LabelFields.customer] ?? '').trim().isEmpty
+                          ? 'Template'
+                          : m.fields[LabelFields.customer]!,
+                    ),
+                    trailing: const Text('USE'),
+                    onTap: () => Navigator.pop(ctx, m),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Proceed anyway'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Proceed anyway'),
+      );
+      if (!mounted) return;
+      _templatePromptResolvedForCustomer = customer;
+      if (picked == null) return;
+
+      final mode = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Apply “${picked.name}”'),
+          content: const Text(
+            'How much of this template should we load?',
           ),
-        ],
-      ),
-    );
-
-    if (!mounted) return;
-    _templatePromptResolvedForCustomer = customer;
-    if (picked == null) return;
-
-    final mode = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Apply “${picked.name}”'),
-        content: const Text(
-          'How much of this template should we load?',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'full'),
+              child: const Text('Full last save'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'core'),
+              child: const Text('Core only'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'logos'),
+              child: const Text('Logos only'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'full'),
-            child: const Text('Full last save'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'core'),
-            child: const Text('Core only'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'logos'),
-            child: const Text('Logos only'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || mode == null) return;
-    switch (mode) {
-      case 'full':
-        _applyPreset(picked.name);
-      case 'core':
-        _applyPresetCore(picked);
-      case 'logos':
-        _applyPresetLogosOnly(picked);
-    }
+      );
+      if (!mounted || mode == null) return;
+      switch (mode) {
+        case 'full':
+          _applyPreset(picked.name);
+        case 'core':
+          _applyPresetCore(picked);
+        case 'logos':
+          _applyPresetLogosOnly(picked);
+      }
+    });
   }
 
   Future<void> _openAddressBook() async {
-    if (_addressBookBusy) return;
-    setState(() => _addressBookBusy = true);
-    try {
+    await _runExclusiveDialog<void>('addressBook', () async {
       if (!mounted) return;
       final picked = await showDialog<DeliveryAddressEntry>(
         context: context,
@@ -1036,13 +1060,7 @@ class _HomeScreenState extends State<HomeScreen>
       );
       if (picked == null || !mounted) return;
       _applyAddressBookEntry(picked);
-    } finally {
-      if (mounted) {
-        setState(() => _addressBookBusy = false);
-      } else {
-        _addressBookBusy = false;
-      }
-    }
+    });
   }
 
   void _applyAddressBookEntry(DeliveryAddressEntry e) {
@@ -1051,6 +1069,10 @@ class _HomeScreenState extends State<HomeScreen>
       _setField(LabelFields.location, e.address);
       _setField(LabelFields.carrier, e.carrier);
       _setField(BolFields.thirdPartyBilling, e.accountNumbers);
+    } else if (_kind == LabelKind.receiving) {
+      _setField(LabelFields.customer, e.shipToName);
+      _setField(LabelFields.location, e.address);
+      _setField(LabelFields.carrier, e.carrier);
     } else if (_kind == LabelKind.bol) {
       _setField(BolFields.consigneeName, e.shipToName);
       _setField(BolFields.consigneeAddress, e.address);
@@ -1114,97 +1136,25 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _openHistory() async {
-    if (_kind == LabelKind.bulk) {
-      showAppSnack(context, 'History for Bulk Labels is not available yet.');
-      return;
-    }
-    List<GeneratedDocumentRecord> docs;
-    try {
-      await _documentHistorySync.pruneWithoutSnapshots();
-      docs = await _documentHistorySync.listForKind(_kind);
-    } on DocumentHistorySyncException catch (e) {
+    // Open immediately (like Address Book). Fetch the list inside the dialog.
+    await _runExclusiveDialog<void>('history', () async {
       if (!mounted) return;
-      showAppSnack(context, 'History: ${e.message}');
-      return;
-    } catch (e) {
-      if (!mounted) return;
-      showAppSnack(context, 'History failed: $e');
-      return;
-    }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(
-            switch (_kind) {
-              LabelKind.shipping => 'Shipping history',
-              LabelKind.receiving => 'Receiving history',
-              LabelKind.bol => 'BOL history',
-              LabelKind.bulk => 'History',
-            },
-          ),
-          content: SizedBox(
-            width: 520,
-            height: 440,
-            child: docs.isEmpty
-                ? const Center(child: Text('No generated documents yet.'))
-                : ListView.separated(
-                    itemCount: docs.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final d = docs[i];
-                      final when = d.createdAt.toLocal().toString().split('.').first;
-                      return ListTile(
-                        title: Text(
-                          d.title.isEmpty ? d.fileName : d.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          [
-                            if (d.customer.isNotEmpty) d.customer,
-                            if (d.salesOrder.isNotEmpty) d.salesOrder,
-                            when,
-                          ].join(' · '),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                unawaited(_applyHistoryTemplate(d));
-                              },
-                              child: const Text('Template'),
-                            ),
-                            IconButton(
-                              tooltip: 'Open PDF',
-                              icon: const Icon(Icons.open_in_new, size: 18),
-                              onPressed: () async {
-                                Navigator.pop(ctx);
-                                await _openHistoryDocument(d);
-                              },
-                            ),
-                          ],
-                        ),
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          await _openHistoryDocument(d);
-                        },
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => _HistoryDialog(
+          kind: _kind,
+          sync: _documentHistorySync,
+          onOpenPdf: (doc) async {
+            Navigator.pop(ctx);
+            await _openHistoryDocument(doc);
+          },
+          onTemplate: (doc) {
+            Navigator.pop(ctx);
+            unawaited(_applyHistoryTemplate(doc));
+          },
+        ),
+      );
+    });
   }
 
   Future<void> _applyHistoryTemplate(GeneratedDocumentRecord doc) async {
@@ -1281,7 +1231,7 @@ class _HomeScreenState extends State<HomeScreen>
     required ShippingLabelData data,
   }) async {
     try {
-      await _documentHistorySync.upload(
+      final record = await _documentHistorySync.upload(
         kind: kind,
         fileName: fileName,
         bytes: bytes,
@@ -1295,6 +1245,13 @@ class _HomeScreenState extends State<HomeScreen>
         fields: Map<String, String>.from(data.values),
         logoBytes: await _loadSelectedLogoBytes(),
       );
+      if (!record.snapshotSaved && mounted) {
+        showAppSnack(
+          context,
+          'Cloud archive saved, but Template snapshot failed — '
+          'Open PDF works; Generate again to store a template.',
+        );
+      }
     } on DocumentHistorySyncException catch (e) {
       if (mounted) {
         showAppSnack(context, 'Cloud archive: ${e.message}');
@@ -1348,28 +1305,30 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _deletePreset() async {
     final name = _presetName;
     if (name == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete preset'),
-        content: Text('Delete preset “$name”?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    widget.storage.presets.remove(_presetStorageKey(name));
-    await widget.storage.savePresets();
-    setState(() => _presetName = null);
-    await _deletePresetQuietly(_kind, name);
+    await _runExclusiveDialog<void>('deletePreset', () async {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Delete preset'),
+          content: Text('Delete preset “$name”?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      widget.storage.presets.remove(_presetStorageKey(name));
+      await widget.storage.savePresets();
+      setState(() => _presetName = null);
+      await _deletePresetQuietly(_kind, name);
+    });
   }
 
   Future<String?> _askString(String title, String label, String initial) async {
@@ -1457,6 +1416,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _addFromStorageAndImport() async {
+    await _runExclusiveDialog<void>('logoStorage', () async {
     if (!mounted) return;
     var logos = widget.storage.listLogos();
     if (logos.isEmpty) {
@@ -1596,10 +1556,13 @@ class _HomeScreenState extends State<HomeScreen>
       bytes,
       preferredName: p.basename(picked.path),
     );
+    });
   }
 
   Future<void> _showUploadManuallyMenu() async {
     if (_restoringLogo) return;
+    await _runExclusiveDialog<void>('uploadManually', () async {
+    if (!mounted) return;
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -1627,15 +1590,17 @@ class _HomeScreenState extends State<HomeScreen>
     } else if (action == 'browse') {
       await _browseAndImportLogo();
     }
+    });
   }
 
   Future<void> _findLogoOnWeb() async {
-    if (_findingLogo) return;
+    if (_findingLogo || _isDialogLocked('findLogo')) return;
     if (_logoPaths.length >= maxCustomerLogos) {
       showAppSnack(context, 'Already have 2 logos. Remove one to find another.');
       return;
     }
 
+    await _runExclusiveDialog<void>('findLogo', () async {
     final nameCtrl = TextEditingController(
       text: _controllers[LabelFields.customer]?.text.trim() ?? '',
     );
@@ -1643,11 +1608,10 @@ class _HomeScreenState extends State<HomeScreen>
     final retoolConfigured = LogoSearchEngine.retoolClearbitConfigured();
     final engineOptions =
         LogoSearchEngine.pickerOptions(retoolConfigured: retoolConfigured);
-    final savedEngineId = await widget.storage.loadLogoSearchEngine();
-    var selectedEngine =
-        LogoSearchEngine.tryParse(savedEngineId) ?? LogoSearchEngine.defaultEngine;
+    // Prefer default immediately so the dialog is not blocked on prefs I/O.
+    var selectedEngine = LogoSearchEngine.defaultEngine;
     if (!engineOptions.contains(selectedEngine)) {
-      selectedEngine = LogoSearchEngine.defaultEngine;
+      selectedEngine = engineOptions.first;
     }
 
     if (!mounted) return;
@@ -1901,6 +1865,7 @@ class _HomeScreenState extends State<HomeScreen>
     } finally {
       if (mounted) setState(() => _findingLogo = false);
     }
+    });
   }
 
   void _removeLogoAt(int index) {
@@ -1985,10 +1950,12 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<PieceCountPlan?> _askPieceCounts() async {
+    return _runExclusiveDialog<PieceCountPlan>('pieceCounts', () async {
     final palletCtrl = TextEditingController(text: '1');
     final boxCtrl = TextEditingController(text: '0');
     var error = '';
-    return showDialog<PieceCountPlan>(
+    try {
+    return await showDialog<PieceCountPlan>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
@@ -2068,6 +2035,11 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+    } finally {
+      palletCtrl.dispose();
+      boxCtrl.dispose();
+    }
+    });
   }
 
   Future<Map<String, PieceCountPlan>?> _askPieceCountsPerSalesOrder({
@@ -3070,6 +3042,33 @@ class _HomeScreenState extends State<HomeScreen>
 
       // Same as other docs: Generate saves, then opens the primary file when
       // auto-open is on. For Bulk Labels the editable Word doc is primary.
+      try {
+        final record = await _documentHistorySync.upload(
+          kind: LabelKind.bulk,
+          fileName: '$name.pdf',
+          bytes: pdfBytes,
+          customer: 'Propak',
+          salesOrder: parsed.poNumber,
+          title: name,
+          fields: {
+            'po': parsed.poNumber,
+            'labels': '${labels.length}',
+            'sheets': '${parsed.sheetCount}',
+            if (_bulkSourcePath != null) 'source': p.basename(_bulkSourcePath!),
+          },
+        );
+        if (!record.snapshotSaved && mounted) {
+          showAppSnack(
+            context,
+            'Bulk History archived, but snapshot incomplete.',
+          );
+        }
+      } on DocumentHistorySyncException catch (e) {
+        if (mounted) {
+          showAppSnack(context, 'Bulk History: ${e.message}');
+        }
+      } catch (_) {}
+
       if (_uiSettings.autoOpenPdf) {
         await shareOrOpenFile(
           file: docxFile,
@@ -3281,6 +3280,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _pickSavedSignature() async {
+    await _runExclusiveDialog<void>('pickSignature', () async {
     final sigs = _signatureSync.localSignatures;
     if (sigs.isEmpty) {
       if (mounted) {
@@ -3310,6 +3310,7 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _shipperSignatureBytes = bytes;
       _selectedSavedSignature = picked;
+    });
     });
   }
 
@@ -3537,7 +3538,7 @@ class _HomeScreenState extends State<HomeScreen>
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: _addressBookBusy ? null : _openAddressBook,
+              onPressed: _isDialogLocked('addressBook') ? null : _openAddressBook,
               icon: const Icon(Icons.menu_book_outlined, size: 18),
               label: const Text('Address book'),
             ),
@@ -4011,6 +4012,7 @@ class _HomeScreenState extends State<HomeScreen>
               FilledButton.tonalIcon(
                 onPressed: (_findingLogo ||
                         _restoringLogo ||
+                        _isDialogLocked('findLogo') ||
                         _logoPaths.length >= maxCustomerLogos)
                     ? null
                     : _findLogoOnWeb,
@@ -4030,7 +4032,8 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _logoPaths.length >= maxCustomerLogos ||
-                        _restoringLogo
+                        _restoringLogo ||
+                        _isDialogLocked('uploadManually')
                     ? null
                     : _showUploadManuallyMenu,
                 icon: const Icon(Icons.upload_file, size: 18),
@@ -4048,6 +4051,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: FilledButton.tonalIcon(
                   onPressed: (_findingLogo ||
                           _restoringLogo ||
+                          _isDialogLocked('findLogo') ||
                           _logoPaths.length >= maxCustomerLogos)
                       ? null
                       : _findLogoOnWeb,
@@ -4069,7 +4073,8 @@ class _HomeScreenState extends State<HomeScreen>
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _logoPaths.length >= maxCustomerLogos ||
-                          _restoringLogo
+                          _restoringLogo ||
+                          _isDialogLocked('uploadManually')
                       ? null
                       : _showUploadManuallyMenu,
                   icon: const Icon(Icons.upload_file, size: 18),
@@ -4431,9 +4436,8 @@ class _HomeScreenState extends State<HomeScreen>
         spacing: 4,
         runSpacing: 4,
         children: [
-          if (_kind != LabelKind.bulk)
-            TextButton.icon(
-              onPressed: _openHistory,
+          TextButton.icon(
+              onPressed: _isDialogLocked('history') ? null : _openHistory,
               icon: const Icon(Icons.history, size: 16),
               label: const Text('History'),
             ),
@@ -4459,8 +4463,10 @@ class _HomeScreenState extends State<HomeScreen>
       spacing: 8,
       runSpacing: 8,
       children: [
-        if (_kind != LabelKind.bulk)
-          TextButton(onPressed: _openHistory, child: const Text('History')),
+        TextButton(
+            onPressed: _isDialogLocked('history') ? null : _openHistory,
+            child: const Text('History'),
+          ),
         TextButton(onPressed: _loadSample, child: const Text('Load sample')),
         TextButton(
           onPressed: _clearShipment,
@@ -6116,6 +6122,137 @@ class _Card extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// History list: open immediately, fetch cloud rows in the background.
+class _HistoryDialog extends StatefulWidget {
+  const _HistoryDialog({
+    required this.kind,
+    required this.sync,
+    required this.onOpenPdf,
+    required this.onTemplate,
+  });
+
+  final LabelKind kind;
+  final DocumentHistorySync sync;
+  final Future<void> Function(GeneratedDocumentRecord doc) onOpenPdf;
+  final void Function(GeneratedDocumentRecord doc) onTemplate;
+
+  @override
+  State<_HistoryDialog> createState() => _HistoryDialogState();
+}
+
+class _HistoryDialogState extends State<_HistoryDialog> {
+  bool _loading = true;
+  String? _error;
+  List<GeneratedDocumentRecord> _docs = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final docs = await widget.sync.listForKind(widget.kind);
+      if (!mounted) return;
+      setState(() {
+        _docs = docs;
+        _loading = false;
+        _error = null;
+      });
+    } on DocumentHistorySyncException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  String get _title => switch (widget.kind) {
+        LabelKind.shipping => 'Shipping history',
+        LabelKind.receiving => 'Receiving history',
+        LabelKind.bol => 'BOL history',
+        LabelKind.bulk => 'History',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_title),
+      content: SizedBox(
+        width: 520,
+        height: 440,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : _docs.isEmpty
+                    ? const Center(child: Text('No generated documents yet.'))
+                    : ListView.separated(
+                        itemCount: _docs.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final d = _docs[i];
+                          final when =
+                              d.createdAt.toLocal().toString().split('.').first;
+                          return ListTile(
+                            title: Text(
+                              d.title.isEmpty ? d.fileName : d.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              [
+                                if (d.customer.isNotEmpty) d.customer,
+                                if (d.salesOrder.isNotEmpty) d.salesOrder,
+                                when,
+                              ].join(' · '),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(
+                                  onPressed: () => widget.onTemplate(d),
+                                  child: const Text('Template'),
+                                ),
+                                IconButton(
+                                  tooltip: 'Open PDF',
+                                  icon: const Icon(Icons.open_in_new, size: 18),
+                                  onPressed: () =>
+                                      unawaited(widget.onOpenPdf(d)),
+                                ),
+                              ],
+                            ),
+                            onTap: () => unawaited(widget.onOpenPdf(d)),
+                          );
+                        },
+                      ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

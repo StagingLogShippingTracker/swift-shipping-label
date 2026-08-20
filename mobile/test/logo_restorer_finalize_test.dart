@@ -842,6 +842,45 @@ void main() {
     );
   });
 
+  test('premultiplied upscale keeps thin black type and does not halo', () {
+    final src = img.Image(width: 80, height: 28, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      src,
+      x1: 6,
+      y1: 18,
+      x2: 74,
+      y2: 21,
+      color: img.ColorRgba8(12, 12, 12, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 8,
+      y1: 4,
+      x2: 40,
+      y2: 14,
+      color: img.ColorRgba8(0, 90, 180, 255),
+    );
+    final bytes = Uint8List.fromList(img.encodePng(src));
+    final up = LogoImageProcessor.upscaleForPrint(bytes, minHeight: 140);
+    final decoded = img.decodeImage(up)!;
+    var black = 0;
+    var whiteHalo = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final lum = (r + g + b) / 3.0;
+        if (a < 200 && lum >= 210) whiteHalo++;
+        if (a >= 180 && r < 40 && g < 40 && b < 40) black++;
+      }
+    }
+    expect(black, greaterThan(80));
+    expect(whiteHalo, lessThan(30));
+  });
+
   test('grey tagline wider than the chromatic wordmark is not cropped', () {
     final src = img.Image(width: 220, height: 120, numChannels: 4);
     img.fill(src, color: img.ColorRgba8(255, 255, 255, 255));

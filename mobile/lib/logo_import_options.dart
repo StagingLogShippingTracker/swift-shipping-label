@@ -272,7 +272,10 @@ class _LogoImportEditDialogState extends State<_LogoImportEditDialog> {
                 onChanged: (v) => setState(() => _restoreHighRes = v ?? false),
                 title: const Text('Restore low-resolution logo for print'),
                 subtitle: const Text(
-                  'Enhance the raster (recover pixelation). Does not redraw or warp the logo. Optional internet pass is rejected if it changes the artwork.',
+                  'Windows: Real-ESRGAN reconstructs edges and fills lost to '
+                  'pixelation (needs Python + torch). Gemini may assist but '
+                  'redraws are rejected. Android uses Gemini/cubic only. '
+                  'Does not invent a new brand design.',
                   style: TextStyle(fontSize: 12, color: SwiftColors.muted),
                 ),
                 controlAffinity: ListTileControlAffinity.leading,

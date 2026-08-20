@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -54,6 +55,7 @@ class GeneratedDocumentRecord {
     required this.storagePath,
     required this.byteSize,
     required this.createdAt,
+    this.snapshotSaved = true,
   });
 
   final String id;
@@ -65,6 +67,8 @@ class GeneratedDocumentRecord {
   final String storagePath;
   final int byteSize;
   final DateTime createdAt;
+  /// False when PDF metadata uploaded but form.json / logo snapshot failed.
+  final bool snapshotSaved;
 }
 
 /// Uploads / lists / downloads generated PDFs (cloud source of truth).
@@ -96,16 +100,23 @@ class DocumentHistorySync {
     final safeName = fileName.trim().isEmpty ? '$id.pdf' : fileName.trim();
     final storagePath = '${kind.name}/$id/${p.basename(safeName)}';
     await _uploadBytes(storagePath, bytes, contentType: 'application/pdf');
+    var snapshotSaved = true;
     if (fields != null) {
-      await _saveSnapshot(
-        kind: kind,
-        id: id,
-        snapshot: HistoryFormSnapshot(
-          fields: fields,
-          logoCount: logoBytes?.length ?? 0,
-        ),
-        logoBytes: logoBytes ?? const [],
-      );
+      try {
+        await _saveSnapshot(
+          kind: kind,
+          id: id,
+          snapshot: HistoryFormSnapshot(
+            fields: fields,
+            logoCount: logoBytes?.length ?? 0,
+          ),
+          logoBytes: logoBytes ?? const [],
+        );
+      } catch (e) {
+        snapshotSaved = false;
+        // PDF + row still archive; Template button needs form.json.
+        debugPrint('document_history: snapshot upload failed: $e');
+      }
     }
 
     final created = DateTime.now().toUtc();
@@ -148,6 +159,7 @@ class DocumentHistorySync {
       storagePath: storagePath,
       byteSize: bytes.length,
       createdAt: created,
+      snapshotSaved: snapshotSaved,
     );
   }
 
@@ -155,13 +167,15 @@ class DocumentHistorySync {
     LabelKind.shipping,
     LabelKind.receiving,
     LabelKind.bol,
+    LabelKind.bulk,
   ];
 
   Future<List<GeneratedDocumentRecord>> listForKind(
     LabelKind kind, {
     int limit = 60,
   }) async {
-    await purgeExpired();
+    // Retention purge runs on launch (and in the background). Never block the
+    // History dialog on a full remote scan.
     return _fetchKind(
       kind,
       limit: limit,
@@ -169,8 +183,10 @@ class DocumentHistorySync {
     );
   }
 
-  /// Remove PDF-only history (no `{id}.form.json` / cloud `form.json`) for
-  /// shipping, receiving, and BOL. Rows with snapshots are left alone.
+  /// Opt-in CLI only — do **not** call from the History UI.
+  ///
+  /// Removes rows with no local/cloud `form.json`. Missing snapshots used to
+  /// be common (bucket MIME was PDF-only), so prune-on-open wiped all kinds.
   Future<int> pruneWithoutSnapshots() async {
     var removed = 0;
     for (final kind in historyKinds) {
@@ -616,26 +632,24 @@ class DocumentHistorySync {
       utf8.encode(jsonEncode(snapshot.toJson())),
     );
     final dir = '${kind.name}/$id';
-    try {
-      await _uploadBytes(
-        '$dir/form.json',
-        jsonBytes,
-        contentType: 'application/json',
-      );
-    } catch (_) {}
+    await _uploadBytes(
+      '$dir/form.json',
+      jsonBytes,
+      contentType: 'application/json',
+    );
     try {
       final local = _localSnapshotFile(id);
       await local.parent.create(recursive: true);
       await local.writeAsString(jsonEncode(snapshot.toJson()));
-    } catch (_) {}
+    } catch (_) {
+      // Local cache is best-effort; cloud form.json is required for Template.
+    }
     for (var i = 0; i < logoBytes.length && i < maxCustomerLogos; i++) {
-      try {
-        await _uploadBytes(
-          '$dir/logo_$i.png',
-          logoBytes[i],
-          contentType: 'image/png',
-        );
-      } catch (_) {}
+      await _uploadBytes(
+        '$dir/logo_$i.png',
+        logoBytes[i],
+        contentType: 'image/png',
+      );
     }
   }
 
@@ -664,7 +678,7 @@ class DocumentHistorySync {
         .timeout(_timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw DocumentHistorySyncException(
-        'Could not upload PDF (${res.statusCode}).',
+        'Could not upload ($contentType, ${res.statusCode}).',
       );
     }
   }

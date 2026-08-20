@@ -248,20 +248,72 @@ class LogoImageProcessor {
 
   /// Cubic upscale of the existing raster — recovers pixelation without
   /// redrawing or warping letterforms.
+  ///
+  /// Uses premultiplied alpha so transparent-neighbor interpolation cannot
+  /// pull JPEG-white AA into a halo or hollow thin grey type.
   static Uint8List upscaleForPrint(Uint8List png, {required int minHeight}) {
     if (png.isEmpty) return png;
-    final decoded = img.decodeImage(png);
+    final decoded = decodeToRgba(png);
     if (decoded == null || decoded.height <= 0) return png;
-    if (decoded.height >= minHeight) return png;
+    if (decoded.height >= minHeight) {
+      return Uint8List.fromList(img.encodePng(decoded));
+    }
     final scale = minHeight / decoded.height;
     final w = math.max(1, (decoded.width * scale).round());
-    final out = img.copyResize(
-      decoded,
-      width: w,
-      height: minHeight,
+    final out = resizePremultipliedCubic(decoded, width: w, height: minHeight);
+    return Uint8List.fromList(img.encodePng(out));
+  }
+
+  /// Cubic resize with premultiplied RGB. Un-premultiplied cubic of a knockout
+  /// mixes ink with "white" stored in transparent pixels and ghosts thin type.
+  static img.Image resizePremultipliedCubic(
+    img.Image src, {
+    required int width,
+    required int height,
+  }) {
+    final work = src.numChannels == 4 ? src.clone() : src.convert(numChannels: 4);
+    _premultiplyInPlace(work);
+    final scaled = img.copyResize(
+      work,
+      width: width,
+      height: height,
       interpolation: img.Interpolation.cubic,
     );
-    return Uint8List.fromList(img.encodePng(out));
+    _unpremultiplyInPlace(scaled);
+    return scaled;
+  }
+
+  static void _premultiplyInPlace(img.Image image) {
+    if (image.numChannels < 4) return;
+    final buf = image.toUint8List();
+    final nc = image.numChannels;
+    for (var i = 0; i + 3 < buf.length; i += nc) {
+      final a = buf[i + 3];
+      if (a == 0) {
+        buf[i] = 0;
+        buf[i + 1] = 0;
+        buf[i + 2] = 0;
+        continue;
+      }
+      if (a == 255) continue;
+      buf[i] = (buf[i] * a / 255.0).round().clamp(0, 255);
+      buf[i + 1] = (buf[i + 1] * a / 255.0).round().clamp(0, 255);
+      buf[i + 2] = (buf[i + 2] * a / 255.0).round().clamp(0, 255);
+    }
+  }
+
+  static void _unpremultiplyInPlace(img.Image image) {
+    if (image.numChannels < 4) return;
+    final buf = image.toUint8List();
+    final nc = image.numChannels;
+    for (var i = 0; i + 3 < buf.length; i += nc) {
+      final a = buf[i + 3];
+      if (a == 0 || a >= 254) continue;
+      final fa = a / 255.0;
+      buf[i] = (buf[i] / fa).round().clamp(0, 255);
+      buf[i + 1] = (buf[i + 1] / fa).round().clamp(0, 255);
+      buf[i + 2] = (buf[i + 2] / fa).round().clamp(0, 255);
+    }
   }
 
   /// True when [result] is a super-resolution of [source], not a redraw.
@@ -284,7 +336,7 @@ class LogoImageProcessor {
       dst,
       width: src.width,
       height: src.height,
-      interpolation: img.Interpolation.cubic,
+      interpolation: img.Interpolation.average,
     );
     var abs = 0;
     var n = 0;
@@ -296,16 +348,18 @@ class LogoImageProcessor {
         final b = scaled.getPixel(x, y);
         final aa = a.a.toInt();
         final ba = b.a.toInt();
-        final aOn = aa >= 40;
-        final bOn = ba >= 40;
+        // JPEG/cubic AA (alpha 40–95) is not the lockup. Scoring it as ink
+        // made cubic conservators fail against native knockouts.
+        const core = 96;
+        final aOn = aa >= core;
+        final bOn = ba >= core;
         if (aOn && bOn) inter++;
         if (aOn || bOn) union++;
-        if (!aOn && !bOn) continue;
+        if (!aOn || !bOn) continue;
         n++;
         abs += (a.r.toInt() - b.r.toInt()).abs();
         abs += (a.g.toInt() - b.g.toInt()).abs();
         abs += (a.b.toInt() - b.b.toInt()).abs();
-        abs += (aa - ba).abs();
       }
     }
     if (n == 0 || union == 0) return false;
@@ -322,6 +376,28 @@ class LogoImageProcessor {
       return false;
     }
     return retainsBrandColors(source, result);
+  }
+
+  /// Looser accept gate for Real-ESRGAN (allowed to invent edge/fill detail).
+  ///
+  /// Still rejects matte plates, extreme aspect warps, and total redraws.
+  static bool isAcceptableSuperResolution(Uint8List source, Uint8List result) {
+    if (result.isEmpty || source.isEmpty) return false;
+    if (looksLikeCheckerboardMatte(result)) return false;
+    if (aspectDrift(source, result) > 0.40) return false;
+    final srcH = decodeToRgba(source)?.height ?? 0;
+    final dstH = decodeToRgba(result)?.height ?? 0;
+    final grew = srcH > 0 && dstH >= (srcH * 1.8).round();
+    if (matchesSourceGeometry(
+      source,
+      result,
+      maxMeanAbs: 42,
+      minAlphaIou: 0.72,
+    )) {
+      return true;
+    }
+    // Strong scale-up with brand colors retained is enough for SR accept.
+    return grew && retainsBrandColors(source, result);
   }
 
   static void _removeCheckerboardMatte(img.Image image) {
@@ -1082,6 +1158,51 @@ class LogoImageProcessor {
       );
     }
     _punchEnclosedPlateHoles(image, plate);
+    _stripJpegWhiteRim(image);
+  }
+
+  /// Punch leftover JPEG-white rims that the plate flood left attached to ink.
+  /// Light-grey / silver letter bodies (lum 80–200) are not JPEG white.
+  static void _stripJpegWhiteRim(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 4 || h < 4) return;
+    final punch = Uint8List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        final lum = (r + g + b) / 3.0;
+        if (lum < 220 || sat > 20) continue;
+        var emptyN = 0;
+        var inkN = 0;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            final nx = x + dx;
+            final ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              emptyN++;
+              continue;
+            }
+            final n = image.getPixel(nx, ny);
+            if (n.a.toInt() < 40) {
+              emptyN++;
+            } else {
+              inkN++;
+            }
+          }
+        }
+        if (emptyN > 0 && inkN <= 6) punch[y * w + x] = 1;
+      }
+    }
+    for (var i = 0; i < punch.length; i++) {
+      if (punch[i] == 0) continue;
+      image.setPixelRgba(i % w, i ~/ w, 0, 0, 0, 0);
+    }
   }
 
   /// Pixels that differ from the outer plate, dilated one pixel so
@@ -1369,7 +1490,12 @@ class LogoImageProcessor {
       if (!_isNearBlackCanvas(r, g, b)) return false;
       return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= 14;
     }
-    if (r >= 240 && g >= 240 && b >= 240) return true;
+    final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+    final lum = (r + g + b) / 3.0;
+    // JPEG ringing around marks on white paper is low-chroma near-white —
+    // not light-grey letter fills (those sit nearer lum 80–180).
+    if (lum >= 208 && sat <= 22) return true;
+    if (r >= 248 && g >= 248 && b >= 248) return true;
     return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance;
   }
 

@@ -142,8 +142,9 @@ class BolLabelPdf {
       throw ArgumentError('At least one BOL copy must be selected.');
     }
 
-    // BOL layout is fixed to portrait Letter.
+    // BOL layout is fixed to portrait Letter (pageOrientation setting ignored).
     final format = pageFormat;
+    shipping.activeFontScale = options.fontScale.clamp(0.8, 1.35);
 
     for (final copy in selected) {
       doc.addPage(
