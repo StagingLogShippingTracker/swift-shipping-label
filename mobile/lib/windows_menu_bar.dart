@@ -376,7 +376,10 @@ class WindowsAppMenuBar extends StatelessWidget {
       )
       ..writeln('Presets: ${actions.storage.presetsFile.path}')
       ..writeln()
-      ..writeln('Logo restore: Gemini (primary); local rebuild if Gemini is down')
+      ..writeln(
+        'Logo restore: vectorize → Real-ESRGAN → cubic; '
+        'Gemini opt-in (LOGO_RESTORE_USE_GEMINI=1)',
+      )
       ..writeln()
       ..writeln('Workspace pane: ${s.showWorkspacePane}')
       ..writeln('Extended rail: ${s.preferExtendedRail}')

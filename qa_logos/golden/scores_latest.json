@@ -1,0 +1,1077 @@
+{
+  "pipeline_note": "Gemini demoted by default in app (LOGO_RESTORE_USE_GEMINI=1 to enable)",
+  "generated_at": "2026-08-20T21:06:59",
+  "modes": {
+    "baseline": {
+      "mode": "baseline",
+      "n_cases": 21,
+      "n_scored": 21,
+      "n_skipped": 0,
+      "mean_composite": 0.8803,
+      "mean_ink_iou": 0.9257,
+      "mean_palette": 0.9581,
+      "mean_alpha_clean": 0.8764,
+      "elapsed_s": 13.98,
+      "cases": [
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.8754,
+          "palette_fidelity": 0.964,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.0766,
+          "composite": 0.901,
+          "slug": "arc",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0007,
+          "ink_iou": 0.9996,
+          "palette_fidelity": 0.8764,
+          "alpha_clean": 0.8878,
+          "edge_energy_ratio": 0.7764,
+          "composite": 0.8852,
+          "slug": "arjae",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0009,
+          "ink_iou": 0.9982,
+          "palette_fidelity": 0.9132,
+          "alpha_clean": 0.9954,
+          "edge_energy_ratio": 0.7523,
+          "composite": 0.9142,
+          "slug": "bfl",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 0.5357,
+          "palette_fidelity": 0.9509,
+          "alpha_clean": 0.9767,
+          "edge_energy_ratio": 1.4702,
+          "composite": 0.7941,
+          "slug": "bfl_google",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0004,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.9982,
+          "alpha_clean": 0.5628,
+          "edge_energy_ratio": 0.8889,
+          "composite": 0.8565,
+          "slug": "bird",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.8228,
+          "ink_iou": 0.7454,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.99,
+          "edge_energy_ratio": 1.6949,
+          "composite": 0.7936,
+          "slug": "dhv",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.9985,
+          "palette_fidelity": 0.848,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.7021,
+          "composite": 0.8963,
+          "slug": "gcm",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 0.9939,
+          "palette_fidelity": 0.9999,
+          "alpha_clean": 0.0801,
+          "edge_energy_ratio": 0.9041,
+          "composite": 0.759,
+          "slug": "melloy",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 1.5415,
+          "ink_iou": 0.3845,
+          "palette_fidelity": 0.8282,
+          "alpha_clean": 0.997,
+          "edge_energy_ratio": 2.7049,
+          "composite": 0.641,
+          "slug": "murrays",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0014,
+          "ink_iou": 0.9774,
+          "palette_fidelity": 0.9616,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.1101,
+          "composite": 0.9377,
+          "slug": "propak",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.8918,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.8419,
+          "composite": 0.915,
+          "slug": "reti_shell",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0007,
+          "ink_iou": 0.997,
+          "palette_fidelity": 0.999,
+          "alpha_clean": 0.8832,
+          "edge_energy_ratio": 1.1156,
+          "composite": 0.931,
+          "slug": "smjv",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0013,
+          "ink_iou": 0.9987,
+          "palette_fidelity": 0.9724,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.6723,
+          "composite": 0.926,
+          "slug": "spartan",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.9156,
+          "edge_energy_ratio": 1.0,
+          "composite": 0.9331,
+          "slug": "swift_orange",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic",
+          "anchor": "pinnacle_north_star"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.812,
+          "composite": 0.9406,
+          "slug": "swift_orange_solid",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic",
+          "anchor": "pinnacle_north_star"
+        },
+        {
+          "aspect_drift": 0.0039,
+          "ink_iou": 0.9862,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.1876,
+          "composite": 0.9538,
+          "slug": "tce",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0044,
+          "ink_iou": 0.9762,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.9569,
+          "composite": 0.9386,
+          "slug": "trialta",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.1168,
+          "edge_energy_ratio": 0.9358,
+          "composite": 0.7701,
+          "slug": "whitecap",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0022,
+          "ink_iou": 0.991,
+          "palette_fidelity": 0.9986,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.0425,
+          "composite": 0.9482,
+          "slug": "worley",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.9999,
+          "palette_fidelity": 0.9556,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.8017,
+          "composite": 0.9287,
+          "slug": "worley_cord",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0018,
+          "ink_iou": 0.9822,
+          "palette_fidelity": 0.9627,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.7756,
+          "composite": 0.9229,
+          "slug": "wpw",
+          "mode": "baseline",
+          "ok": true,
+          "note": "prepare+cubic"
+        }
+      ]
+    },
+    "vectorize": {
+      "mode": "vectorize",
+      "n_cases": 21,
+      "n_scored": 20,
+      "n_skipped": 1,
+      "mean_composite": 0.864,
+      "mean_ink_iou": 0.9293,
+      "mean_palette": 0.9551,
+      "mean_alpha_clean": 0.8314,
+      "elapsed_s": 21.88,
+      "cases": [
+        {
+          "aspect_drift": 0.0435,
+          "ink_iou": 0.5681,
+          "palette_fidelity": 0.9459,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.7486,
+          "composite": 0.764,
+          "slug": "arc",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0007,
+          "ink_iou": 0.9449,
+          "palette_fidelity": 0.8047,
+          "alpha_clean": 0.9709,
+          "edge_energy_ratio": 0.4893,
+          "composite": 0.8504,
+          "slug": "arjae",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0016,
+          "ink_iou": 0.958,
+          "palette_fidelity": 0.8805,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.5352,
+          "composite": 0.8819,
+          "slug": "bfl",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.981,
+          "alpha_clean": 0.5229,
+          "edge_energy_ratio": 0.8395,
+          "composite": 0.8418,
+          "slug": "bfl_google",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0002,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.9976,
+          "alpha_clean": 0.5462,
+          "edge_energy_ratio": 0.7231,
+          "composite": 0.8448,
+          "slug": "bird",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.0001,
+          "edge_energy_ratio": 0.954,
+          "composite": 0.7477,
+          "slug": "dhv",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0028,
+          "ink_iou": 0.956,
+          "palette_fidelity": 0.8116,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.3824,
+          "composite": 0.8561,
+          "slug": "gcm",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0022,
+          "ink_iou": 0.989,
+          "palette_fidelity": 0.9986,
+          "alpha_clean": 0.5541,
+          "edge_energy_ratio": 0.6601,
+          "composite": 0.8392,
+          "slug": "melloy",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "slug": "murrays",
+          "mode": "vectorize",
+          "ok": false,
+          "note": "vectorize_failed"
+        },
+        {
+          "aspect_drift": 0.017,
+          "ink_iou": 0.894,
+          "palette_fidelity": 0.8902,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.8443,
+          "composite": 0.8743,
+          "slug": "propak",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0042,
+          "ink_iou": 0.9803,
+          "palette_fidelity": 0.8561,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.5582,
+          "composite": 0.8842,
+          "slug": "reti_shell",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0032,
+          "ink_iou": 0.8878,
+          "palette_fidelity": 0.9996,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.9817,
+          "composite": 0.9091,
+          "slug": "smjv",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0038,
+          "ink_iou": 0.9277,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.3426,
+          "composite": 0.8911,
+          "slug": "spartan",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 0.9891,
+          "palette_fidelity": 0.9754,
+          "alpha_clean": 0.9294,
+          "edge_energy_ratio": 0.7267,
+          "composite": 0.9123,
+          "slug": "swift_orange",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.001,
+          "ink_iou": 0.9804,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.7443,
+          "composite": 0.9302,
+          "slug": "swift_orange_solid",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0199,
+          "ink_iou": 0.832,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.8097,
+          "composite": 0.8777,
+          "slug": "tce",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0028,
+          "ink_iou": 0.886,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.8361,
+          "composite": 0.9013,
+          "slug": "trialta",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0001,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.1037,
+          "edge_energy_ratio": 0.8314,
+          "composite": 0.7623,
+          "slug": "whitecap",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0027,
+          "ink_iou": 0.9183,
+          "palette_fidelity": 0.9999,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.9268,
+          "composite": 0.9172,
+          "slug": "worley",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0001,
+          "ink_iou": 0.9568,
+          "palette_fidelity": 0.99,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.414,
+          "composite": 0.9031,
+          "slug": "worley_cord",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        },
+        {
+          "aspect_drift": 0.0041,
+          "ink_iou": 0.9176,
+          "palette_fidelity": 0.97,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.5508,
+          "composite": 0.8904,
+          "slug": "wpw",
+          "mode": "vectorize",
+          "ok": true,
+          "note": "vectorize"
+        }
+      ]
+    },
+    "esrgan": {
+      "mode": "esrgan",
+      "n_cases": 21,
+      "n_scored": 0,
+      "n_skipped": 21,
+      "mean_composite": null,
+      "mean_ink_iou": null,
+      "mean_palette": null,
+      "mean_alpha_clean": null,
+      "elapsed_s": 6.64,
+      "cases": [
+        {
+          "slug": "arc",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "arjae",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "bfl",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "bfl_google",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "bird",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "dhv",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "gcm",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "melloy",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "murrays",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "propak",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "reti_shell",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "smjv",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "spartan",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "swift_orange",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "swift_orange_solid",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "tce",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "trialta",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "whitecap",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "worley",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "worley_cord",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        },
+        {
+          "slug": "wpw",
+          "mode": "esrgan",
+          "ok": false,
+          "note": "esrgan_failed"
+        }
+      ]
+    },
+    "gemini-off": {
+      "mode": "gemini-off",
+      "n_cases": 21,
+      "n_scored": 21,
+      "n_skipped": 0,
+      "mean_composite": 0.8803,
+      "mean_ink_iou": 0.9257,
+      "mean_palette": 0.9581,
+      "mean_alpha_clean": 0.8764,
+      "elapsed_s": 11.83,
+      "cases": [
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.8754,
+          "palette_fidelity": 0.964,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.0766,
+          "composite": 0.901,
+          "slug": "arc",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0007,
+          "ink_iou": 0.9996,
+          "palette_fidelity": 0.8764,
+          "alpha_clean": 0.8878,
+          "edge_energy_ratio": 0.7764,
+          "composite": 0.8852,
+          "slug": "arjae",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0009,
+          "ink_iou": 0.9982,
+          "palette_fidelity": 0.9132,
+          "alpha_clean": 0.9954,
+          "edge_energy_ratio": 0.7523,
+          "composite": 0.9142,
+          "slug": "bfl",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 0.5357,
+          "palette_fidelity": 0.9509,
+          "alpha_clean": 0.9767,
+          "edge_energy_ratio": 1.4702,
+          "composite": 0.7941,
+          "slug": "bfl_google",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0004,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.9982,
+          "alpha_clean": 0.5628,
+          "edge_energy_ratio": 0.8889,
+          "composite": 0.8565,
+          "slug": "bird",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.8228,
+          "ink_iou": 0.7454,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.99,
+          "edge_energy_ratio": 1.6949,
+          "composite": 0.7936,
+          "slug": "dhv",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.9985,
+          "palette_fidelity": 0.848,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.7021,
+          "composite": 0.8963,
+          "slug": "gcm",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 0.9939,
+          "palette_fidelity": 0.9999,
+          "alpha_clean": 0.0801,
+          "edge_energy_ratio": 0.9041,
+          "composite": 0.759,
+          "slug": "melloy",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 1.5415,
+          "ink_iou": 0.3845,
+          "palette_fidelity": 0.8282,
+          "alpha_clean": 0.997,
+          "edge_energy_ratio": 2.7049,
+          "composite": 0.641,
+          "slug": "murrays",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0014,
+          "ink_iou": 0.9774,
+          "palette_fidelity": 0.9616,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.1101,
+          "composite": 0.9377,
+          "slug": "propak",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 1.0,
+          "palette_fidelity": 0.8918,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.8419,
+          "composite": 0.915,
+          "slug": "reti_shell",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0007,
+          "ink_iou": 0.997,
+          "palette_fidelity": 0.999,
+          "alpha_clean": 0.8832,
+          "edge_energy_ratio": 1.1156,
+          "composite": 0.931,
+          "slug": "smjv",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0013,
+          "ink_iou": 0.9987,
+          "palette_fidelity": 0.9724,
+          "alpha_clean": 0.9999,
+          "edge_energy_ratio": 0.6723,
+          "composite": 0.926,
+          "slug": "spartan",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.9156,
+          "edge_energy_ratio": 1.0,
+          "composite": 0.9331,
+          "slug": "swift_orange",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic",
+          "anchor": "pinnacle_north_star"
+        },
+        {
+          "aspect_drift": 0.0,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.812,
+          "composite": 0.9406,
+          "slug": "swift_orange_solid",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic",
+          "anchor": "pinnacle_north_star"
+        },
+        {
+          "aspect_drift": 0.0039,
+          "ink_iou": 0.9862,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.1876,
+          "composite": 0.9538,
+          "slug": "tce",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0044,
+          "ink_iou": 0.9762,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.9569,
+          "composite": 0.9386,
+          "slug": "trialta",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0003,
+          "ink_iou": 1.0,
+          "palette_fidelity": 1.0,
+          "alpha_clean": 0.1168,
+          "edge_energy_ratio": 0.9358,
+          "composite": 0.7701,
+          "slug": "whitecap",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0022,
+          "ink_iou": 0.991,
+          "palette_fidelity": 0.9986,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 1.0425,
+          "composite": 0.9482,
+          "slug": "worley",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0011,
+          "ink_iou": 0.9999,
+          "palette_fidelity": 0.9556,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.8017,
+          "composite": 0.9287,
+          "slug": "worley_cord",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        },
+        {
+          "aspect_drift": 0.0018,
+          "ink_iou": 0.9822,
+          "palette_fidelity": 0.9627,
+          "alpha_clean": 1.0,
+          "edge_energy_ratio": 0.7756,
+          "composite": 0.9229,
+          "slug": "wpw",
+          "mode": "gemini-off",
+          "ok": true,
+          "note": "prepare+cubic"
+        }
+      ]
+    },
+    "gemini-on": {
+      "mode": "gemini-on",
+      "n_cases": 21,
+      "n_scored": 0,
+      "n_skipped": 21,
+      "mean_composite": null,
+      "mean_ink_iou": null,
+      "mean_palette": null,
+      "mean_alpha_clean": null,
+      "elapsed_s": 0.0,
+      "cases": [
+        {
+          "slug": "arc",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "arjae",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "bfl",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "bfl_google",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "bird",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "dhv",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "gcm",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "melloy",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "murrays",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "propak",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "reti_shell",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "smjv",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "spartan",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "swift_orange",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "swift_orange_solid",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "tce",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "trialta",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "whitecap",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "worley",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "worley_cord",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        },
+        {
+          "slug": "wpw",
+          "mode": "gemini-on",
+          "ok": false,
+          "note": "gemini_unavailable"
+        }
+      ]
+    }
+  }
+}

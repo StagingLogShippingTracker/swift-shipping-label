@@ -137,7 +137,7 @@ const _bolGroupsBeforeLines = <(String title, String hint, List<String> keys)>[
   ),
   (
     'Billing & freight',
-    'Prepaid, collect, or third party',
+    'Prepaid, collect, third party, or customer pick-up',
     [BolFields.thirdPartyBilling],
   ),
   (
@@ -161,9 +161,8 @@ const _bolSignaturesGroup = (
     BolFields.shipperCertDate,
     BolFields.driverCompany,
     BolFields.driverPrint,
-    BolFields.driverDate,
-    BolFields.departureTime,
     BolFields.vehicleId,
+    BolFields.driverDate,
     BolFields.consigneePrint,
     BolFields.consigneeDate,
   ],
@@ -793,6 +792,15 @@ class _HomeScreenState extends State<HomeScreen>
         f == '3rd party' ||
         f == 'third party') {
       return BolFields.freightThirdParty;
+    }
+    if (f == BolFields.freightCustomerPickup ||
+        f == 'customer pick-up' ||
+        f == 'customer pickup' ||
+        f == 'cust. pick-up' ||
+        f == 'cust pick-up' ||
+        f == 'pick-up' ||
+        f == 'pickup') {
+      return BolFields.freightCustomerPickup;
     }
     if (f == BolFields.freightPrepaid) return BolFields.freightPrepaid;
     return '';

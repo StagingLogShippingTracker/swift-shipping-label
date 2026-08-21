@@ -204,6 +204,16 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.84)
+- **Shipping Label:** approved SO / Swift Contact spacing; square/circular vs rectangular logo height rules; Customer Pick-Up freight
+- **BOL:** L×W×H each with its own unit (e.g. 6 in × 6 in × 21 ft); Vehicle ID + Departure Date row; standardized micro-label→value gaps
+- **Freight:** Customer Pick-Up on Shipping Label and BOL radios
+- **Logo restore:** vectorize → Real-ESRGAN → cubic (Gemini opt-in); Swift-quality fill/stroke seams; golden + shipping improve loops
+
+### What's new (v1.1.83)
+- **History:** opens instantly, never wipes cloud rows on open; Bulk History archives too
+- **Logo restore:** Real-ESRGAN primary on Windows; Gemini gated
+
 ### What's new (v1.1.82)
 - **Logo restore:** keep grey taglines and black script; crop to the mark (not the source plate); drop milky JPEG/cubic halos without hollowing silver type
 - **Find logo:** Gemini still super-resolves low-res rasters, but redraws are rejected and the source is cubic-enhanced instead
@@ -214,47 +224,6 @@ $notes = @"
 - **Logo restore:** Gemini enhances existing pixels, then studio finish; later restores reuse winning techniques
 - **Restore UX:** runs from Edit logo with Cancel — not automatically on Generate
 - **BOL dimensions:** length × width × height with a unit
-
-### What's new (v1.1.80)
-- **Logos:** remove the background plate first, then restore — brand colors stay true; letter holes (black or filled) punch to transparent on every similar mark
-- **Swift lockup:** generated PDFs embed swift_supply_logo_orange.png (no white seams in SWIFT)
-- **OA fill:** full dotted PO / project (e.g. 4460.168-016), plus Attn, site location, and AFE into Special Instructions
-
-### What's new (v1.1.79)
-- **Address book:** opens from the saved list immediately; extra taps no longer stack another window
-- **Android portrait:** address lines wrap at a readable size in the book and live suggestions
-
-### What's new (v1.1.78)
-- **Staging Log intro:** on the first three launches of this update, a warehouse-style prompt for Swift Staging & Shipping Log appears before What's new. Try it today launches or downloads the same way as MORE APPS; Dismiss only hides it until the next launch (still up to three times).
-
-### What's new (v1.1.77)
-- **MORE APPS:** rail footer title (not Operations apps); tile stays under Shipping / Receiving / BOL / Bulk on Windows and Android
-
-### What's new (v1.1.76)
-- **MORE APPS:** expanded side rail advertises Swift Staging & Shipping Log — launch if installed, otherwise download Setup/APK and start install
-- **Address book:** OSM fills missing city/province/postal; same ship-to with different couriers stays as separate rows
-- **History:** prune deletes snapshot-less rows and their PDFs (and logos) from Supabase Storage
-
-### What's new (v1.1.75)
-- **OA fill:** Shipping, Receiving, and BOL can upload a Swift Order Acknowledgement under Customer preset
-- **Fields:** sales order, customer PO / project, Bill To customer; packing list stays blank
-- **Ship-to:** Delivery Instructions when present; otherwise Use OA Ship To or enter manually
-
-### What's new (v1.1.74)
-- **Address book:** lists Z–A by Ship To Name; duplicate places merge in the cloud
-- **History logos:** each saved version opens the PDF (and logo) that was actually generated
-- **Also:** high-res logo restore targets height; square logos crop empty padding
-
-### What's new (v1.1.73)
-- **Logo search:** Serper.dev image API (no Google/Bing HTML scraping); Clearbit/Brandfetch still run in parallel
-- **High-res logos:** checkbox to convert a low-res customer photo to 3000px+ (replaces Recreate)
-- **Templates:** Shipping/Receiving no longer re-prompt on Generate; prompt stays after entering the customer name
-- **History:** generated PDFs older than 90 days are deleted from the app cache and Supabase
-
-### Also in recent releases
-- Gemini logo restore (Windows/Android); local Python RealESRGAN offline; Recreate/vectorizer removed
-- Bulk OA CPO LINE parsing, looser customer-name matching
-- Android portrait Chrome-like header; landscape Windows-style rail layout
 
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.

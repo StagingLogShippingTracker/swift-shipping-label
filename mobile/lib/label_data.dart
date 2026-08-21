@@ -23,12 +23,22 @@ class BolFields {
   static const freightPrepaid = 'prepaid';
   static const freightCollect = 'collect';
   static const freightThirdParty = 'third_party';
+  static const freightCustomerPickup = 'customer_pickup';
 
   static const freightChargeOptions = <(String value, String label)>[
     (freightPrepaid, 'Prepaid'),
     (freightCollect, 'Collect'),
     (freightThirdParty, 'Third Party'),
+    (freightCustomerPickup, 'Customer Pick-Up'),
   ];
+
+  /// Compact labels for the BOL freight radio row (four options).
+  static const freightChargePdfLabels = <String, String>{
+    freightPrepaid: 'Prepaid',
+    freightCollect: 'Collect',
+    freightThirdParty: '3rd Party',
+    freightCustomerPickup: 'Customer Pick-Up',
+  };
 
   /// Human-readable freight term for Shipping/BOL PDFs.
   static String freightChargesDisplay(String raw) {
@@ -52,7 +62,6 @@ class BolFields {
   static const vehicleId = 'vehicle_id';
   /// Kept for older fills; no longer drawn on the BOL.
   static const arrivalTime = 'arrival_time';
-  static const departureTime = 'departure_time';
   static const consigneeSign = 'consignee_sign';
   static const consigneePrint = 'consignee_print';
   static const consigneeDate = 'consignee_date';
@@ -75,9 +84,8 @@ class BolFields {
     (shipperCertDate, 'Shipper Cert Date', false),
     (driverCompany, 'Carrier Company', false),
     (driverPrint, 'Driver Name', false),
-    (driverDate, 'Driver Date', false),
-    (departureTime, 'Departure', false),
     (vehicleId, 'Vehicle ID', false),
+    (driverDate, 'Departure Date', false),
     (consigneePrint, 'Consignee Print Name', false),
     (consigneeDate, 'Consignee Date', false),
     for (var i = 1; i <= 10; i++) ...[
@@ -373,7 +381,7 @@ class ShippingLabelData {
     BolFields.packingList: '1224618',
     BolFields.lineKey(1, 'pieces'): '2',
     BolFields.lineKey(1, 'item_type'): 'Pallet',
-    BolFields.lineKey(1, 'dimensions'): '48x40x48',
+    BolFields.lineKey(1, 'dimensions'): '48 in × 40 in × 48 in',
     BolFields.lineKey(1, 'description'): 'Pipe fittings - north pad staging',
     BolFields.lineKey(1, 'weight'): '1800',
     BolFields.lineKey(2, 'pieces'): '1',

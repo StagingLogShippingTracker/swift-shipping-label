@@ -55,10 +55,24 @@ class RestoreCatalog {
       uses: 0,
       wins: 0,
     ),
+    'vectorize_primary': RestoreTechnique(
+      id: 'vectorize_primary',
+      notes:
+          'Windows vtracer vectorize for flat lockups — Swift-like clean fills when fidelity gates pass.',
+      uses: 0,
+      wins: 0,
+    ),
     'realesrgan_primary': RestoreTechnique(
       id: 'realesrgan_primary',
       notes:
           'Windows Real-ESRGAN via logo_restorer.py — invents edge/fill detail from degradation.',
+      uses: 0,
+      wins: 0,
+    ),
+    'gemini_opt_in': RestoreTechnique(
+      id: 'gemini_opt_in',
+      notes:
+          'Gemini only when LOGO_RESTORE_USE_GEMINI=1 and earlier engines fail. Demoted by default.',
       uses: 0,
       wins: 0,
     ),

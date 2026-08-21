@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
 import 'logo_image_process.dart';
+import 'logo_import_options.dart';
 
 /// Visible-ink box inside a logo bitmap.
 ///
@@ -28,6 +29,26 @@ class LogoInkMetrics {
   final int height;
 
   bool get isValid => width > 0 && height > 0 && canvasW > 0 && canvasH > 0;
+
+  /// Ink width / height. Circles and squares are near 1.0.
+  double get aspectRatio =>
+      (!isValid || height <= 0) ? 1.0 : width / height;
+
+  /// Near 1:1 (square, square-ish, or circular) vs clearly wider-than-tall.
+  ///
+  /// Threshold: [squareIshAspectMax]. Marks with aspect ≤ this use the taller
+  /// (red) shipping-header height; wider marks use the shorter (green) height.
+  static const squareIshAspectMax = 1.4;
+
+  /// True for circles / squares / near-square lockups (red height target).
+  bool get isSquareIsh => aspectRatio <= squareIshAspectMax;
+
+  /// Red vs green shipping header height from aspect class.
+  double targetHeight({
+    required double squareH,
+    required double rectH,
+  }) =>
+      isSquareIsh ? squareH : rectH;
 
   double scaleForHeight(double targetH) =>
       (!isValid || height <= 0) ? 1 : targetH / height;
@@ -63,6 +84,30 @@ class LogoInkMetrics {
     return h;
   }
 
+  /// Uniform scale ≤ 1 so [drawWidth]s + fixed [gap]s fit [maxTotalW] (pink limit).
+  ///
+  /// Gaps are not scaled — only logo heights shrink.
+  static double uniformWidthFitScale(
+    List<LogoInkMetrics> inks,
+    List<double> heights,
+    double gap,
+    double maxTotalW,
+  ) {
+    if (inks.isEmpty || maxTotalW <= 0 || inks.length != heights.length) {
+      return 1;
+    }
+    var inkW = 0.0;
+    for (var i = 0; i < inks.length; i++) {
+      inkW += inks[i].drawWidth(heights[i]);
+    }
+    final gaps = inks.length > 1 ? gap * (inks.length - 1) : 0.0;
+    final budget = maxTotalW - gaps;
+    if (inkW <= 0) return 1;
+    if (budget <= 0) return 0.01;
+    if (inkW <= budget) return 1;
+    return budget / inkW;
+  }
+
   /// PDF y (bitmap bottom-left) so the ink bottom sits on [inkBottomY].
   double bitmapBottomY(double inkBottomY, double targetH) {
     final scale = scaleForHeight(targetH);
@@ -71,13 +116,27 @@ class LogoInkMetrics {
   }
 }
 
-/// Crops every customer logo to real ink, then sizes that ink to Swift height.
+/// Crops every customer logo to real ink for aspect-based PDF sizing.
 class LogoInkFit {
   LogoInkFit._();
 
   static ({Uint8List png, LogoInkMetrics ink}) prepare(Uint8List input) {
-    final normalized = LogoImageProcessor.normalizeToVisibleContent(input);
-    var ink = measure(normalized) ??
+    // Avoid a second normalizeToVisibleContent pass on logos that were already
+    // knocked out at import — re-halo-strip / re-crop clipped white-outline
+    // wordmarks (e.g. GCM "Modification").
+    var working = input;
+    final decoded = img.decodeImage(input);
+    if (decoded != null &&
+        !LogoImageProcessor.hasMeaningfulTransparency(input)) {
+      working = LogoImageProcessor.processWithOptions(
+        input,
+        LogoImportOptions.standard(
+          removeBackground: true,
+          cropMode: LogoCropMode.auto,
+        ),
+      );
+    }
+    var ink = measure(working) ??
         LogoInkMetrics(
           canvasW: 1,
           canvasH: 1,
@@ -86,7 +145,7 @@ class LogoInkFit {
           width: 1,
           height: 1,
         );
-    final cropped = _cropToInkBounds(normalized, ink);
+    final cropped = _cropToInkBounds(working, ink);
     ink = measure(cropped) ?? ink;
     return (png: cropped, ink: ink);
   }
@@ -119,8 +178,7 @@ class LogoInkFit {
     );
   }
 
-  /// Bounding box of opaque, non-white pixels (full artwork AABB — not a
-  /// “tallest row-run” slice, which would destroy wide wordmarks).
+  /// Bounding box of opaque ink including light outlines (full artwork AABB).
   static LogoInkMetrics? measure(Uint8List png) {
     if (png.isEmpty) return null;
     final image = img.decodeImage(png);
@@ -136,11 +194,8 @@ class LogoInkFit {
     for (var y = 0; y < image.height; y++) {
       for (var x = 0; x < image.width; x++) {
         final p = image.getPixel(x, y);
+        // Include white letter outlines — skipping them clipped GCM "Modification".
         if (p.a.toInt() < 96) continue;
-        final r = p.r.toInt();
-        final g = p.g.toInt();
-        final b = p.b.toInt();
-        if (r >= 240 && g >= 240 && b >= 240) continue;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;

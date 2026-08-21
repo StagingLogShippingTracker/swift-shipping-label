@@ -138,8 +138,8 @@ class _CustomizeDialogState extends State<_CustomizeDialog> {
                             'Restore low-resolution logos for print',
                           ),
                           subtitle: const Text(
-                            'Logo restore: Real-ESRGAN (Windows) invents lost '
-                            'detail; Gemini assist only if faithful; else cubic.',
+                            'Logo restore: vectorize → Real-ESRGAN → cubic '
+                            '(Windows). Gemini opt-in only; else cubic.',
                           ),
                           controlAffinity: ListTileControlAffinity.leading,
                         ),

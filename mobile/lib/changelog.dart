@@ -17,10 +17,23 @@ class AppChangelog {
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.83)";
+  static const title = "What's new (v1.1.68 – v1.1.84)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.84',
+      bullets: [
+        'Shipping Label: approved SO/Contact spacing; aspect-based logo heights (square/circle vs rectangular)',
+        'Shipping Label: Customer Pick-Up freight option; improve-loop scoring harness',
+        'BOL dimensions: each of L / W / H has its own unit (e.g. 6 in × 6 in × 21 ft)',
+        'BOL: standardize micro-label→value gaps; Carrier Vehicle ID + Departure Date row',
+        'Freight Charges: add Customer Pick-Up (Shipping Label + BOL radios)',
+        'Logo restore: vectorize flat logos → Real-ESRGAN → cubic; Gemini off unless opted in',
+        'Logo restore: keep fill↔stroke seams (Swift-quality) — skip destructive re-knockout on clean alpha',
+        'Golden suite under qa_logos/golden for restore score regression',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.83',
       bullets: [

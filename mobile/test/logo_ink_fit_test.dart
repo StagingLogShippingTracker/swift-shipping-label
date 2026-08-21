@@ -8,6 +8,73 @@ import 'package:swift_shipping_label/logo_ink_fit.dart';
 Uint8List _png(img.Image image) => Uint8List.fromList(img.encodePng(image));
 
 void main() {
+  test('aspect class: square / circle → red; wide → green', () {
+    const squareInk = LogoInkMetrics(
+      canvasW: 100,
+      canvasH: 100,
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 100,
+    );
+    const circleIsh = LogoInkMetrics(
+      canvasW: 120,
+      canvasH: 118,
+      left: 0,
+      top: 0,
+      width: 120,
+      height: 118,
+    );
+    const wide = LogoInkMetrics(
+      canvasW: 400,
+      canvasH: 80,
+      left: 0,
+      top: 0,
+      width: 400,
+      height: 80,
+    );
+    expect(squareInk.isSquareIsh, isTrue);
+    expect(circleIsh.isSquareIsh, isTrue);
+    expect(wide.isSquareIsh, isFalse);
+    expect(
+      squareInk.targetHeight(squareH: 62.24, rectH: 46),
+      62.24,
+    );
+    expect(
+      wide.targetHeight(squareH: 62.24, rectH: 46),
+      46,
+    );
+  });
+
+  test('uniformWidthFitScale shrinks dual logos to pink limit', () {
+    const a = LogoInkMetrics(
+      canvasW: 200,
+      canvasH: 100,
+      left: 0,
+      top: 0,
+      width: 200,
+      height: 100,
+    );
+    const b = LogoInkMetrics(
+      canvasW: 200,
+      canvasH: 200,
+      left: 0,
+      top: 0,
+      width: 200,
+      height: 200,
+    );
+    // At h=50 each: drawW = 100 and 50 → total 100+10+50=160 > 120
+    final scale = LogoInkMetrics.uniformWidthFitScale(
+      [a, b],
+      [50, 50],
+      10,
+      120,
+    );
+    expect(scale, lessThan(1));
+    expect(a.drawWidth(50 * scale) + 10 + b.drawWidth(50 * scale),
+        closeTo(120, 0.05));
+  });
+
   test('padded square and padded wide mark get the same ink draw height', () {
     const targetH = 62.24;
 
@@ -110,7 +177,7 @@ void main() {
     expect(prepared.ink.width, greaterThan(400));
   });
 
-  test('real customer logos: square vs wide share Swift ink height', () {
+  test('real customer logos: aspect picks red vs green height', () {
     final root = Directory.current.parent;
     final bfl = File('${root.path}/customer_logos/bfl fabricators.png');
     final arc = File('${root.path}/customer_logos/Arc Resources LTD.png');
@@ -118,19 +185,24 @@ void main() {
       return;
     }
 
-    const targetH = 62.24;
+    const squareH = 62.24;
+    const rectH = 46.0;
     final square = LogoInkFit.prepare(bfl.readAsBytesSync());
     final wide = LogoInkFit.prepare(arc.readAsBytesSync());
 
     expect(wide.ink.width / wide.ink.height, greaterThan(2.5));
+    expect(wide.ink.isSquareIsh, isFalse);
+    final squareTarget = square.ink.targetHeight(squareH: squareH, rectH: rectH);
+    final wideTarget = wide.ink.targetHeight(squareH: squareH, rectH: rectH);
     expect(
-      square.ink.height * square.ink.scaleForHeight(targetH),
-      closeTo(targetH, 0.001),
+      square.ink.height * square.ink.scaleForHeight(squareTarget),
+      closeTo(squareTarget, 0.001),
     );
     expect(
-      wide.ink.height * wide.ink.scaleForHeight(targetH),
-      closeTo(targetH, 0.001),
+      wide.ink.height * wide.ink.scaleForHeight(wideTarget),
+      closeTo(wideTarget, 0.001),
     );
+    expect(wideTarget, rectH);
   });
 
   test('bird wordmark on black keeps green+orange and Swift ink height', () {

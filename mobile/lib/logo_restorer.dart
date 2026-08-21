@@ -9,26 +9,35 @@ import 'package:path/path.dart' as p;
 import 'gemini_client.dart';
 import 'logo_image_process.dart';
 import 'logo_realesrgan.dart';
+import 'logo_vectorize.dart';
 import 'restore_catalog.dart';
 
 /// Print-ready customer logo restore.
 ///
-/// Primary invent-detail path (Windows): local Real-ESRGAN via
-/// `logo_restorer.py` — structure-aware SR that reconstructs edges/fills lost
-/// to pixelation. Capability limit: not a free-form brand redesign.
+/// Generative branch order (Windows, when Python tools exist):
+/// 1. **Vectorize** flat lockups (`scripts/logo_vectorize.py`) — Swift-like
+///    clean fills/edges when the mark is low-color.
+/// 2. **Real-ESRGAN** (`logo_restorer.py`) — structure-aware SR for mottled /
+///    photo-like rasters.
+/// 3. **Cubic conservator** — faithful upscale; cannot invent lost detail.
 ///
-/// Secondary: Gemini (`restoreLogoPng`) when configured. Redraws that fail the
-/// fidelity gate are discarded. Final fallback: cubic conservator.
+/// Gemini (`restoreLogoPng`) is **demoted**: off by default. Set env
+/// `LOGO_RESTORE_USE_GEMINI=1` to allow it only after earlier engines fail.
+/// Redraws that fail the fidelity gate are discarded. Golden suite evidence
+/// decides whether Gemini stays demoted.
 ///
-/// Android: Real-ESRGAN is not bundled — Gemini (gated) then cubic only.
-/// Do not unwire Gemini. Every pass is scored into [lessonsFileName].
+/// Android: no bundled vectorize/ESRGAN — cubic, then optional Gemini if env
+/// enables it. Capability limit: invent missing edge/fill detail from
+/// degradation patterns — **not** a free-form brand redesign.
+///
+/// Every pass is scored into [lessonsFileName].
 class LogoRestorer {
   LogoRestorer._();
 
   static const minDimension = 3000;
-  static const pipelineVersion = 'print-ready-v14-realesrgan';
-  /// Below this source height, Real-ESRGAN / Gemini may run. At or above it,
-  /// only a gentle raster conservator (knockout + cubic scale) runs.
+  static const pipelineVersion = 'print-ready-v15-vectorize';
+  /// Below this source height, vectorize / Real-ESRGAN / optional Gemini may
+  /// run. At or above it, only a gentle raster conservator runs.
   static const generativeMaxHeight = 1600;
   static const cacheFileName = 'logo_restore_cache.json';
   static const lessonsFileName = 'logo_restore_lessons.json';
@@ -36,6 +45,14 @@ class LogoRestorer {
   static int _epoch = 0;
 
   static int get epoch => _epoch;
+
+  /// Opt-in Gemini branch (default off). Checked at call time.
+  static bool get useGeminiRestore {
+    final v = (Platform.environment['LOGO_RESTORE_USE_GEMINI'] ?? '')
+        .trim()
+        .toLowerCase();
+    return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+  }
 
   /// Abort in-flight restores. Completions after this are discarded.
   static void cancelAll() {
@@ -108,6 +125,7 @@ class LogoRestorer {
 
     var usedGemini = false;
     var usedRealEsrgan = false;
+    var usedVectorize = false;
     late Uint8List png;
     final referenceBytes = sourceBytes;
     late Uint8List workBytes;
@@ -125,24 +143,41 @@ class LogoRestorer {
       workBytes = prepared.isNotEmpty ? prepared : sourceBytes;
       png = Uint8List(0);
 
-      // 1) Real-ESRGAN — primary invent-detail engine (Windows + Python).
-      final sr = await LogoRealEsrgan.restore(
+      // 1) Vectorize — flat lockups (Swift-like clean fills when applicable).
+      final vec = await LogoVectorize.restore(
         workBytes,
         minHeight: minDimension,
         onLog: onLog,
       );
-      if (sr != null &&
-          sr.isNotEmpty &&
-          LogoImageProcessor.isAcceptableSuperResolution(sourceBytes, sr)) {
-        png = sr;
-        usedRealEsrgan = true;
-        onLog?.call('logo_restorer: Real-ESRGAN accepted');
+      if (vec != null &&
+          vec.isNotEmpty &&
+          LogoImageProcessor.isAcceptableSuperResolution(sourceBytes, vec)) {
+        png = vec;
+        usedVectorize = true;
+        onLog?.call('logo_restorer: vectorize accepted');
       }
 
-      // 2) Gemini — optional; reject redraws.
-      if (!usedRealEsrgan && GeminiClient.isConfigured) {
+      // 2) Real-ESRGAN — structure-aware SR when vectorize misses / unsuitable.
+      if (!usedVectorize) {
+        final sr = await LogoRealEsrgan.restore(
+          workBytes,
+          minHeight: minDimension,
+          onLog: onLog,
+        );
+        if (sr != null &&
+            sr.isNotEmpty &&
+            LogoImageProcessor.isAcceptableSuperResolution(sourceBytes, sr)) {
+          png = sr;
+          usedRealEsrgan = true;
+          onLog?.call('logo_restorer: Real-ESRGAN accepted');
+        }
+      }
+
+      // 3) Gemini — opt-in only; reject redraws.
+      final geminiAllowed = useGeminiRestore && GeminiClient.isConfigured;
+      if (!usedVectorize && !usedRealEsrgan && geminiAllowed) {
         try {
-          onLog?.call('logo_restorer: Gemini restoreLogoPng');
+          onLog?.call('logo_restorer: Gemini restoreLogoPng (opt-in)');
           final gem = await GeminiClient().restoreLogoPng(
             workBytes,
             addenda: addenda,
@@ -161,10 +196,17 @@ class LogoRestorer {
         } catch (e) {
           onLog?.call('logo_restorer: Gemini failed ($e)');
         }
+      } else if (!usedVectorize &&
+          !usedRealEsrgan &&
+          GeminiClient.isConfigured &&
+          !useGeminiRestore) {
+        onLog?.call(
+          'logo_restorer: Gemini demoted (set LOGO_RESTORE_USE_GEMINI=1)',
+        );
       }
 
-      // 3) Cubic conservator — faithful but cannot invent lost detail.
-      if (!usedRealEsrgan && !usedGemini) {
+      // 4) Cubic conservator — faithful but cannot invent lost detail.
+      if (!usedVectorize && !usedRealEsrgan && !usedGemini) {
         onLog?.call('logo_restorer: cubic conservator fallback');
         png = _conservatorRaster(sourceBytes);
       }
@@ -182,7 +224,7 @@ class LogoRestorer {
       png = Uint8List.fromList(img.encodePng(decoded));
     }
 
-    final enhanceOnly = !usedGemini && !usedRealEsrgan;
+    final enhanceOnly = !usedGemini && !usedRealEsrgan && !usedVectorize;
     final finalized = finalizeRestoredPng(
       png,
       sourceBytes: referenceBytes,
@@ -201,9 +243,11 @@ class LogoRestorer {
       sourceName: p.basename(source.path),
       grade: quality.grade,
       used: [
+        if (usedVectorize) 'vectorize_primary',
         if (usedRealEsrgan) 'realesrgan_primary',
-        if (usedGemini) 'gemini_secondary',
-        if (!usedRealEsrgan && !usedGemini) 'raster_conservator',
+        if (usedGemini) 'gemini_opt_in',
+        if (!usedVectorize && !usedRealEsrgan && !usedGemini)
+          'raster_conservator',
         'plate_knockout',
         'no_watermark',
         'halo_strip',
@@ -257,10 +301,11 @@ class LogoRestorer {
     return '$h:${bytes.length}:$pipelineVersion';
   }
 
-  /// Studio finish after Gemini (or cubic fallback): plate/halo out, lock
-  /// brand colors, even blotchy interiors, PNG at [minDimension] px tall.
+  /// Studio finish after generative restore (or cubic fallback): plate/halo
+  /// out, lock brand colors, even blotchy interiors, PNG at [minDimension].
   ///
-  /// Does not re-trace or cartoon edges — Gemini already repaired them.
+  /// Swift-quality lesson: do not re-trace over a good lockup; preserve dark
+  /// strokes against chromatic fills; avoid letterboxing to the source plate.
   static Uint8List finalizeRestoredPng(
     Uint8List bytes, {
     Uint8List? sourceBytes,
@@ -269,7 +314,7 @@ class LogoRestorer {
     if (bytes.isEmpty) return bytes;
 
     if (enhanceOnly) {
-      return _finalizeConservatorOnly(bytes);
+      return _finalizeConservatorOnly(bytes, sourceBytes: sourceBytes);
     }
 
     final cropped = LogoImageProcessor.normalizeToVisibleContent(bytes);
@@ -280,7 +325,8 @@ class LogoRestorer {
         minHeight: minDimension,
       );
     }
-    LogoImageProcessor.stripHaloFringe(image);
+    // Stroke-aware halo strip: Swift orange↔black seams must not open.
+    LogoImageProcessor.stripHaloFringe(image, protectStrokeFills: true);
 
     if (!enhanceOnly && sourceBytes != null && sourceBytes.isNotEmpty) {
       image = LogoImageProcessor.snapToSourceBrandColors(image, sourceBytes);
@@ -311,21 +357,32 @@ class LogoRestorer {
     if (image.height < minDimension) {
       final scale = minDimension / image.height;
       final w = math.max(1, (image.width * scale).round());
-      image = img.copyResize(
+      image = LogoImageProcessor.resizePremultipliedCubic(
         image,
         width: w,
         height: minDimension,
-        interpolation: img.Interpolation.cubic,
       );
     }
     return Uint8List.fromList(img.encodePng(image));
   }
 
-  /// Cubic conservator: premultiplied upscale only. Halo strip runs on the
-  /// native knockout before scale so print-size fringe punches cannot hollow
-  /// thin grey type.
-  static Uint8List _finalizeConservatorOnly(Uint8List bytes) {
-    return LogoImageProcessor.upscaleForPrint(bytes, minHeight: minDimension);
+  /// Cubic conservator: optional native flatten for mottled JPEG fills, then
+  /// premultiplied upscale. Matches Swift's flat-fill look without redrawing.
+  static Uint8List _finalizeConservatorOnly(
+    Uint8List bytes, {
+    Uint8List? sourceBytes,
+  }) {
+    var work = bytes;
+    final decoded = img.decodeImage(bytes);
+    if (decoded != null && decoded.height > 0 && decoded.height < 900) {
+      // Light interior flatten at native size (Swift-like solid fills).
+      var flat = LogoImageProcessor.flattenSolidBrandFills(decoded);
+      if (sourceBytes != null && sourceBytes.isNotEmpty) {
+        flat = LogoImageProcessor.snapToSourceBrandColors(flat, sourceBytes);
+      }
+      work = Uint8List.fromList(img.encodePng(flat));
+    }
+    return LogoImageProcessor.upscaleForPrint(work, minHeight: minDimension);
   }
 
   static Uint8List _finalizeFromSourceFallback(Uint8List sourceBytes) {
@@ -335,11 +392,10 @@ class LogoRestorer {
     if (image.height < minDimension) {
       final scale = minDimension / image.height;
       final w = math.max(1, (image.width * scale).round());
-      image = img.copyResize(
+      image = LogoImageProcessor.resizePremultipliedCubic(
         image,
         width: w,
         height: minDimension,
-        interpolation: img.Interpolation.cubic,
       );
     }
     return Uint8List.fromList(img.encodePng(image));

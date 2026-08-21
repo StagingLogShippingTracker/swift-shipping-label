@@ -1,0 +1,44 @@
+---
+description: Continue Shipping Label layout improve loop unprompted (like logo Phase 4)
+globs: mobile/lib/pdf/shipping_label_pdf.dart,mobile/lib/logo_ink_fit.dart,mobile/test/shipping_improve_loop_test.dart,mobile/test/shipping_qa_preview_test.dart,qa_shipping/**/*,scripts/shipping_label_*.py
+alwaysApply: true
+---
+
+# Shipping Label improve loop — CONTINUE UNPROMPTED
+
+When this agent (or any concurrent agent) touches Shipping Label PDF/layout,
+**own the improve loop**. Do not stop after one tweak and wait for the user to
+re-ask. Same spirit as logo Phase 4 (`qa_logos/synthetic`).
+
+## Mandatory loop
+
+1. Read `qa_shipping/synthetic/improve_summary_latest.json` (create/run the loop
+   if missing).
+2. Fix the listed **top_failures** / gate fails that are real layout bugs
+   (overflow, logo encroachment, margins, column bleed, missing bars).
+3. Re-run: `python scripts/shipping_label_improve_loop.py` from repo root
+   (uses `.tools/flutter` + `scripts/shipping_label_score.py`).
+4. Confirm mean composite and gates move the right way; iterate again if clear
+   score-proven bugs remain.
+
+Docs: `qa_shipping/synthetic/README.md`.
+
+## HARD LOCK — never break approved SO / Contact
+
+Respect `.cursor/rules/shipping-label-approved-layout.mdc`:
+
+| Constant / behavior | Must stay |
+|---|---|
+| `afterPillGap` | **11.0** |
+| Shipping under-pill `showRule` | **false** |
+| Contact label→value / centering | **3.0** / centered value box |
+
+Score these as **gates**. If scores drop only because scorer bands disagree with
+the approved sample (`shipping_preview_latest` / baseline dual Arc+Trialta),
+**fix the scorer thresholds** — do **not** change the locked layout constants.
+
+## Out of scope for “fixes”
+
+- Do not loosen `shipping_qa_preview_test.dart` to hide a regression.
+- Do not commit/push unless the user asked (or standing session commit policy
+  explicitly applies). The improve loop itself does not require a commit.

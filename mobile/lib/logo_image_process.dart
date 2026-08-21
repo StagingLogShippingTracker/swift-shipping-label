@@ -112,23 +112,70 @@ class LogoImageProcessor {
     return Uint8List.fromList(img.encodePng(canvas));
   }
 
-  /// Strip solid plate + crop for Gemini: raw raster first, restore second.
+  /// Strip solid plate + crop for restore: raw raster first, enhance second.
   ///
   /// Same knockout/crop as `processWithOptions(... cropMode: auto)` so the
   /// conservator path cannot clip taglines the knockout kept.
+  ///
+  /// Swift-quality lesson: when the source already has true alpha and looks
+  /// studio-ready (clean outer ring, solid fills), skip edge-flood knockout /
+  /// JPEG-rim punches that open white seams between chromatic fills and dark
+  /// strokes. Only crop + safe-pad those assets.
   static Uint8List prepareRasterForRestore(Uint8List input) {
     if (input.isEmpty) return input;
     var image = decodeToRgba(input);
     if (image == null) return input;
 
-    if (!_hasMeaningfulTransparency(image)) {
+    final alreadyAlpha = _hasMeaningfulTransparency(image);
+    final studioReady = alreadyAlpha && _looksStudioReadyAlpha(image);
+
+    if (!alreadyAlpha) {
       _knockOutOuterPlate(image);
+    } else if (!studioReady) {
+      // Transparent but dirty plate leftovers — gentle outer cleanup only.
+      _removeCheckerboardMatte(image);
     }
 
-    image = _cropToContentBBox(image, null, minAlpha: 48);
-    image = _trimLowCoverageMargins(image);
-    image = addSafePad(image);
+    if (studioReady) {
+      // Swift-quality path: do not peel AA / stroke rims. Crop loosely + pad.
+      image = _cropToContentBBox(image, null, minAlpha: 32);
+      image = addSafePad(image, fraction: 0.02);
+    } else {
+      image = _cropToContentBBox(image, null, minAlpha: 48);
+      image = _trimLowCoverageMargins(image);
+      image = addSafePad(image);
+    }
     return Uint8List.fromList(img.encodePng(image));
+  }
+
+  /// True when outer ring is already clean transparent (Swift-style lockup).
+  static bool _looksStudioReadyAlpha(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 8 || h < 8) return false;
+    final band = math.max(2, math.min(w, h) ~/ 25);
+    var edge = 0;
+    var opaquePlate = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final onEdge =
+            x < band || y < band || x >= w - band || y >= h - band;
+        if (!onEdge) continue;
+        edge++;
+        final p = image.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final lum = (r + g + b) / 3.0;
+        final sat =
+            math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        if ((lum > 245 && sat < 12) || (lum < 18 && sat < 12)) {
+          opaquePlate++;
+        }
+      }
+    }
+    if (edge == 0) return false;
+    return opaquePlate / edge < 0.02;
   }
 
   /// Remap restored opaque pixels onto the nearest source brand fill so Gemini
@@ -385,6 +432,8 @@ class LogoImageProcessor {
     if (result.isEmpty || source.isEmpty) return false;
     if (looksLikeCheckerboardMatte(result)) return false;
     if (aspectDrift(source, result) > 0.40) return false;
+    // Palette collapse (Arc red→mauve, etc.) must not beat cubic fallback.
+    if (!retainsBrandColors(source, result)) return false;
     final srcH = decodeToRgba(source)?.height ?? 0;
     final dstH = decodeToRgba(result)?.height ?? 0;
     final grew = srcH > 0 && dstH >= (srcH * 1.8).round();
@@ -397,7 +446,7 @@ class LogoImageProcessor {
       return true;
     }
     // Strong scale-up with brand colors retained is enough for SR accept.
-    return grew && retainsBrandColors(source, result);
+    return grew;
   }
 
   static void _removeCheckerboardMatte(img.Image image) {
@@ -482,7 +531,7 @@ class LogoImageProcessor {
 
     _knockOutOuterPlate(image);
     stripForeignMarks(image);
-    stripHaloFringe(image);
+    stripHaloFringe(image, protectStrokeFills: true);
 
     final beforeW = image.width;
     final beforeH = image.height;
@@ -504,7 +553,14 @@ class LogoImageProcessor {
   /// Light, low-chroma pixels sitting between brand ink and empty canvas are
   /// compression fringe — not part of the lockup. Enclosed white fills (letter
   /// counters, snow marks) do not touch empty canvas and are kept.
-  static void stripHaloFringe(img.Image image) {
+  ///
+  /// When [protectStrokeFills] is true (Swift-style orange fill + black stroke),
+  /// skip punching pixels that sit between chromatic fill and near-black ink —
+  /// those AA seams must stay opaque or re-encoding opens white gaps.
+  static void stripHaloFringe(
+    img.Image image, {
+    bool protectStrokeFills = false,
+  }) {
     final w = image.width;
     final h = image.height;
     if (w < 4 || h < 4) return;
@@ -533,11 +589,16 @@ class LogoImageProcessor {
         final lum = (r + g + b) / 3.0;
         // Grey/silver letter bodies are ink, not JPEG halo.
         if (sat < 30 && lum >= 48 && lum <= 215) continue;
+        // Near-white letter outlines / counters (e.g. GCM wordmark stroke)
+        // are not compression fringe — only mid-luma grey rims are.
+        if (lum > 230) continue;
         final fringe = (sat < 42 && lum > 88) || (sat < 28 && lum > 70);
         if (!fringe) continue;
         var opaqueN = 0;
         var hasInk = false;
         var hasEmpty = false;
+        var hasChromatic = false;
+        var hasDarkStroke = false;
         for (var dy = -1; dy <= 1; dy++) {
           for (var dx = -1; dx <= 1; dx++) {
             if (dx == 0 && dy == 0) continue;
@@ -552,13 +613,22 @@ class LogoImageProcessor {
               hasEmpty = true;
             } else {
               opaqueN++;
-              if (chromaticInk(n)) hasInk = true;
+              if (chromaticInk(n)) {
+                hasInk = true;
+                hasChromatic = true;
+              }
+              final nr = n.r.toInt(), ng = n.g.toInt(), nb = n.b.toInt();
+              if (nearBlack(nr, ng, nb)) hasDarkStroke = true;
             }
           }
         }
         // Fills (grey/silver letter bodies) have many opaque neighbors.
         // JPEG halo is a 1px rim between ink and empty canvas.
         if (opaqueN >= 6) continue;
+        if (protectStrokeFills && hasChromatic && hasDarkStroke) {
+          // Swift lesson: do not punch AA between fill and stroke.
+          continue;
+        }
         if (hasInk && hasEmpty) punch[y * w + x] = 1;
       }
     }
@@ -1109,6 +1179,13 @@ class LogoImageProcessor {
   }
 
   /// True when border pixels are already mostly transparent (good PNG).
+  static bool hasMeaningfulTransparency(Uint8List png) {
+    final image = decodeToRgba(png);
+    if (image == null) return false;
+    return _hasMeaningfulTransparency(image);
+  }
+
+  /// True when border pixels are already mostly transparent (good PNG).
   static bool _hasMeaningfulTransparency(img.Image image) {
     final w = image.width;
     final h = image.height;
@@ -1176,7 +1253,8 @@ class LogoImageProcessor {
         final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
         final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
         final lum = (r + g + b) / 3.0;
-        if (lum < 220 || sat > 20) continue;
+        // Pure white letter outlines (GCM etc.) stay; only off-white JPEG rims.
+        if (lum < 220 || lum >= 248 || sat > 20) continue;
         var emptyN = 0;
         var inkN = 0;
         for (var dy = -1; dy <= 1; dy++) {
@@ -1674,7 +1752,8 @@ class LogoImageProcessor {
         final r = p.r.toInt();
         final g = p.g.toInt();
         final b = p.b.toInt();
-        if (r >= 240 && g >= 240 && b >= 240) continue;
+        // Near-white outlines/counters are part of the mark (keep in bbox).
+        // Only skip them when they match an estimated light plate.
         if (bg != null &&
             _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance) {
           continue;
@@ -1773,10 +1852,7 @@ class LogoImageProcessor {
     bool isInk(int x, int y) {
       final p = image.getPixel(x, y);
       if (p.a.toInt() < minAlpha) return false;
-      final r = p.r.toInt();
-      final g = p.g.toInt();
-      final b = p.b.toInt();
-      if (r >= 240 && g >= 240 && b >= 240) return false;
+      // Near-white outlines count as ink so wordmarks are not edge-peeled.
       return true;
     }
 

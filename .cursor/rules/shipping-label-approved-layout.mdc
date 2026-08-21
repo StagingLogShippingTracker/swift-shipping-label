@@ -1,0 +1,47 @@
+---
+description: Protect user-approved Shipping Label PDF layout (do not overwrite)
+globs: mobile/lib/pdf/shipping_label_pdf.dart,mobile/test/shipping_qa_preview_test.dart,mobile/lib/logo_ink_fit.dart
+alwaysApply: true
+---
+
+# Shipping Label format — APPROVED LOCK (2026-08-20)
+
+The user approved the **current Shipping Label PDF layout** as the final format
+as of this date. Do **not** "improve", tighten, or revert these values unless
+the user **explicitly** asks to change the Shipping Label format.
+
+## Locked SO / Contact spacing (`shipping_label_pdf.dart`)
+
+| Constant / behavior | Approved value | Do not change to |
+|---|---|---|
+| `afterPillGap` (pill → SWIFT CONTACT label) | **11.0** | 6.0, 34.0, or other |
+| Shipping under-pill `showRule` | **false** (default) | true on shipping |
+| `contactLabelToValue` | **3.0** (same as `_fieldRow`) | 2.0 |
+| Contact value box | **ink + 10, min 28**, **centered** via `_drawValue` | top-aligned compact `ink+6` |
+| Contact field rule | **none** | hairline through name |
+| Contact vs piece-band | name clears soft rule by **≥8pt** | overlap |
+
+Receiving may still use `showRule: true` for SO→PM. That is separate from Shipping.
+
+## Locked customer logo sizing (red / green / pink)
+
+| Guide | Constant | Value |
+|---|---|---|
+| Square / square-ish / **circular** (aspect ≤ 1.4) | `squareLogoTargetH` | ~62.24 (header band) |
+| Rectangular / long (aspect > 1.4) | `rectLogoTargetH` | **46.0** |
+| Max stretch before Swift logo | `customerLogoToSwiftGap` | **12.0** |
+
+Dual / mixed logos: each uses its own height class; if total width hits the pink
+limit, **uniform** shrink. Never overlap the fixed Swift logo.
+
+## QA guard
+
+`mobile/test/shipping_qa_preview_test.dart` encodes these constraints. If a
+change fails that test, **revert** — do not loosen the harness to match a
+regression.
+
+## Concurrent agents
+
+If another task (logo restore, hairline debug, etc.) touches this file, **preserve
+these approved constants**. Do not overwrite them as a side effect of unrelated
+layout experiments.

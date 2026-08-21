@@ -1645,9 +1645,8 @@ def draw_bol_page(
         [("driver_company", "Company", 1.0)],
         [("driver_print", "Driver Print Name", 1.0)],
         [("driver_sign", "Signature", 1.0)],
-        [("vehicle_id", "Vehicle ID", 1.0)],
-        [("departure_time", "Departure", 0.62), ("driver_date", "Date", 0.38)],
-    ], top_inset=2.5, bottom_inset=2.5)
+        [("vehicle_id", "Vehicle ID", 0.62), ("driver_date", "Departure Date", 0.38)],
+    ], top_inset=BODY_INSET, bottom_inset=5.0)
     sx += sw + GAP
 
     # --- Consignee Delivery Receipt ---

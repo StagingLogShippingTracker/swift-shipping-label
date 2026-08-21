@@ -3,19 +3,23 @@ import 'package:flutter/services.dart';
 
 import 'theme.dart';
 
-/// Length / width / height plus a unit, stored as one BOL line string.
+/// Length / width / height with a unit per axis, stored as one BOL line string.
 class BolDimensionsValue {
   const BolDimensionsValue({
     this.length = '',
     this.width = '',
     this.height = '',
-    this.unit = 'in',
+    this.lengthUnit = 'in',
+    this.widthUnit = 'in',
+    this.heightUnit = 'in',
   });
 
   final String length;
   final String width;
   final String height;
-  final String unit;
+  final String lengthUnit;
+  final String widthUnit;
+  final String heightUnit;
 
   static const units = <String>['in', 'ft', 'cm', 'm', 'mm'];
 
@@ -30,23 +34,41 @@ class BolDimensionsValue {
   bool get isEmpty =>
       length.trim().isEmpty && width.trim().isEmpty && height.trim().isEmpty;
 
-  /// `48 × 40 × 48 in` — empty when no measurements were entered.
+  /// `6 in × 6 in × 21 ft` — empty when no measurements were entered.
   String format() {
     if (isEmpty) return '';
     final l = length.trim().isEmpty ? '—' : length.trim();
     final w = width.trim().isEmpty ? '—' : width.trim();
     final h = height.trim().isEmpty ? '—' : height.trim();
-    return '$l × $w × $h $unit';
+    return '$l ${normalizeUnit(lengthUnit)} × '
+        '$w ${normalizeUnit(widthUnit)} × '
+        '$h ${normalizeUnit(heightUnit)}';
   }
 
-  static final _unitSuffix = RegExp(
-    r'\s*(mm|cm|m|in|ft|inches?|feet|foot|meters?|'
-    r'centimet(?:er|re)s?|millimet(?:er|re)s?)\s*$',
+  static const _unitAlt =
+      r'mm|cm|m|in|ft|inches?|feet|foot|meters?|'
+      r'centimet(?:er|re)s?|millimet(?:er|re)s?';
+
+  /// Legacy: `48 × 40 × 48 in` (one shared unit at the end).
+  static final _legacyTriple = RegExp(
+    r'^\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)'
+    r'(?:\s*('
+    '$_unitAlt'
+    r'))\s*$',
     caseSensitive: false,
   );
 
-  static final _triple = RegExp(
-    r'^\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)',
+  /// Per-axis: `6 in × 6 in × 21 ft` (unit optional on each number).
+  static final _perAxisTriple = RegExp(
+    r'^\s*([0-9]*\.?[0-9]+)\s*('
+    '$_unitAlt'
+    r')?\s*[x×]\s*'
+    r'([0-9]*\.?[0-9]+)\s*('
+    '$_unitAlt'
+    r')?\s*[x×]\s*'
+    r'([0-9]*\.?[0-9]+)\s*('
+    '$_unitAlt'
+    r')?\s*$',
     caseSensitive: false,
   );
 
@@ -86,27 +108,57 @@ class BolDimensionsValue {
   static BolDimensionsValue parse(String raw) {
     final s = raw.trim();
     if (s.isEmpty) return const BolDimensionsValue();
-    var body = s;
-    var unit = 'in';
-    final unitMatch = _unitSuffix.firstMatch(s);
-    if (unitMatch != null) {
-      unit = normalizeUnit(unitMatch.group(1)!);
-      body = s.substring(0, unitMatch.start).trim();
-    }
-    final triple = _triple.firstMatch(body);
-    if (triple != null) {
+
+    final perAxis = _perAxisTriple.firstMatch(s);
+    if (perAxis != null) {
+      final sharedFallback = 'in';
+      final lu = perAxis.group(2);
+      final wu = perAxis.group(4);
+      final hu = perAxis.group(6);
+      // If only one unit appears overall, apply it to blank axes (legacy-ish).
+      final anyUnit = lu ?? wu ?? hu;
+      final fallback =
+          anyUnit != null ? normalizeUnit(anyUnit) : sharedFallback;
       return BolDimensionsValue(
-        length: triple.group(1)!,
-        width: triple.group(2)!,
-        height: triple.group(3)!,
-        unit: unit,
+        length: perAxis.group(1)!,
+        width: perAxis.group(3)!,
+        height: perAxis.group(5)!,
+        lengthUnit: lu != null ? normalizeUnit(lu) : fallback,
+        widthUnit: wu != null ? normalizeUnit(wu) : fallback,
+        heightUnit: hu != null ? normalizeUnit(hu) : fallback,
       );
     }
-    return BolDimensionsValue(length: body, unit: unit);
+
+    final legacy = _legacyTriple.firstMatch(s);
+    if (legacy != null) {
+      final u = normalizeUnit(legacy.group(4) ?? 'in');
+      return BolDimensionsValue(
+        length: legacy.group(1)!,
+        width: legacy.group(2)!,
+        height: legacy.group(3)!,
+        lengthUnit: u,
+        widthUnit: u,
+        heightUnit: u,
+      );
+    }
+
+    // Bare `48x40x48` — inches on all axes.
+    final bare = RegExp(
+      r'^\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)\s*[x×]\s*([0-9]*\.?[0-9]+)\s*$',
+    ).firstMatch(s);
+    if (bare != null) {
+      return BolDimensionsValue(
+        length: bare.group(1)!,
+        width: bare.group(2)!,
+        height: bare.group(3)!,
+      );
+    }
+
+    return BolDimensionsValue(length: s);
   }
 }
 
-/// L / W / H boxes plus a unit dropdown, bound to the existing dimensions key.
+/// L / W / H boxes each with their own unit, bound to the dimensions key.
 class BolDimensionsFields extends StatefulWidget {
   const BolDimensionsFields({super.key, required this.controller});
 
@@ -120,7 +172,9 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
   late final TextEditingController _length;
   late final TextEditingController _width;
   late final TextEditingController _height;
-  late String _unit;
+  late String _lengthUnit;
+  late String _widthUnit;
+  late String _heightUnit;
   var _writing = false;
 
   @override
@@ -130,12 +184,17 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
     _length = TextEditingController(text: parsed.length);
     _width = TextEditingController(text: parsed.width);
     _height = TextEditingController(text: parsed.height);
-    _unit = BolDimensionsValue.units.contains(parsed.unit) ? parsed.unit : 'in';
+    _lengthUnit = _safeUnit(parsed.lengthUnit);
+    _widthUnit = _safeUnit(parsed.widthUnit);
+    _heightUnit = _safeUnit(parsed.heightUnit);
     widget.controller.addListener(_onParent);
     _length.addListener(_push);
     _width.addListener(_push);
     _height.addListener(_push);
   }
+
+  String _safeUnit(String u) =>
+      BolDimensionsValue.units.contains(u) ? u : 'in';
 
   @override
   void didUpdateWidget(covariant BolDimensionsFields oldWidget) {
@@ -180,9 +239,17 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
     sync(_length, parsed.length);
     sync(_width, parsed.width);
     sync(_height, parsed.height);
-    final unit =
-        BolDimensionsValue.units.contains(parsed.unit) ? parsed.unit : 'in';
-    if (unit != _unit && mounted) setState(() => _unit = unit);
+    final lu = _safeUnit(parsed.lengthUnit);
+    final wu = _safeUnit(parsed.widthUnit);
+    final hu = _safeUnit(parsed.heightUnit);
+    if ((lu != _lengthUnit || wu != _widthUnit || hu != _heightUnit) &&
+        mounted) {
+      setState(() {
+        _lengthUnit = lu;
+        _widthUnit = wu;
+        _heightUnit = hu;
+      });
+    }
   }
 
   void _push() {
@@ -190,7 +257,9 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
       length: _length.text,
       width: _width.text,
       height: _height.text,
-      unit: _unit,
+      lengthUnit: _lengthUnit,
+      widthUnit: _widthUnit,
+      heightUnit: _heightUnit,
     ).format();
     if (widget.controller.text == next) return;
     _writing = true;
@@ -206,6 +275,60 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
       labelText: label,
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    );
+  }
+
+  Widget _axis({
+    required String label,
+    required TextEditingController controller,
+    required String unit,
+    required ValueChanged<String> onUnit,
+  }) {
+    return Expanded(
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
+              decoration: _box(label),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 2,
+            child: DropdownButtonFormField<String>(
+              value: unit,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'UNIT',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 10,
+                ),
+              ),
+              items: [
+                for (final u in BolDimensionsValue.units)
+                  DropdownMenuItem(
+                    value: u,
+                    child: Text(u, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                onUnit(v);
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -230,74 +353,34 @@ class _BolDimensionsFieldsState extends State<BolDimensionsFields> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _length,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  decoration: _box('L'),
-                ),
+              _axis(
+                label: 'L',
+                controller: _length,
+                unit: _lengthUnit,
+                onUnit: (v) {
+                  setState(() => _lengthUnit = v);
+                  _push();
+                },
               ),
               const SizedBox(width: 6),
-              Expanded(
-                child: TextField(
-                  controller: _width,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  decoration: _box('W'),
-                ),
+              _axis(
+                label: 'W',
+                controller: _width,
+                unit: _widthUnit,
+                onUnit: (v) {
+                  setState(() => _widthUnit = v);
+                  _push();
+                },
               ),
               const SizedBox(width: 6),
-              Expanded(
-                child: TextField(
-                  controller: _height,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  decoration: _box('H'),
-                ),
-              ),
-              const SizedBox(width: 6),
-              SizedBox(
-                width: 118,
-                child: DropdownButtonFormField<String>(
-                  value: _unit,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'UNIT',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
-                  ),
-                  items: [
-                    for (final u in BolDimensionsValue.units)
-                      DropdownMenuItem(
-                        value: u,
-                        child: Text(
-                          BolDimensionsValue.unitLabels[u] ?? u,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() => _unit = v);
-                    _push();
-                  },
-                ),
+              _axis(
+                label: 'H',
+                controller: _height,
+                unit: _heightUnit,
+                onUnit: (v) {
+                  setState(() => _heightUnit = v);
+                  _push();
+                },
               ),
             ],
           ),

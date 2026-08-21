@@ -342,7 +342,7 @@ class AppStorage {
   ///
   /// Runs the lightweight [LogoImageProcessor] fast path (trim margins /
   /// optional background removal). Low-res logos are restored separately
-  /// via [LogoRestorer] (Gemini, online).
+  /// via [LogoRestorer] (vectorize / Real-ESRGAN / cubic; Gemini opt-in).
   Future<ImportLogoResult> importLogoBytes(
     List<int> bytes, {
     required String preferredName,

@@ -8,8 +8,8 @@ import 'package:path/path.dart' as p;
 ///
 /// Capability limit (be upfront): this invents missing edge/fill detail from
 /// degradation patterns. It is **not** a free-form brand redesign. Windows
-/// only (needs local Python + torch/realesrgan). Android stays on Dart/Gemini
-/// paths — do not claim Real-ESRGAN there.
+/// only (needs local Python + torch/realesrgan). Android stays on Dart cubic
+/// (+ optional Gemini) — do not claim Real-ESRGAN there.
 class LogoRealEsrgan {
   LogoRealEsrgan._();
 

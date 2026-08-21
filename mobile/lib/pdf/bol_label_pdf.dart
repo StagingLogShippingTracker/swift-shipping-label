@@ -52,6 +52,11 @@ class BolLabelPdf {
   static const pad = 6.0;
   static const bodyInset = 8.0;
   static const inset = 3.0;
+  /// Distance from cell/band top down to micro-label baseline (pt).
+  static const microFromTop = 8.0;
+  /// Gap from micro-label baseline to value-box top — same rhythm as Shipping
+  /// field labels (`_fieldRow` uses 3pt). Applied across BOL cells.
+  static const microToValueGap = 3.0;
   /// Default height for uploaded customer/C/O logos on the BOL header (pt).
   static const customerLogoTargetH = 59.0;
   /// Safety gap between customer logo frame and Probill / Swift.
@@ -436,9 +441,9 @@ class BolLabelPdf {
     _sectionTitle(c, fonts, rx, y, colW, 'FREIGHT CHARGES', hdrH);
     final freight = d.get(BolFields.freightCharges).toLowerCase().trim();
     // Classic thin-ring radios (match standard PDF/browser controls).
-    const radioSize = 9.0;
-    const labelSize = 7.0;
-    const radioLabelGap = 4.0;
+    const radioSize = 8.5;
+    const labelSize = 6.5;
+    const radioLabelGap = 3.0;
     final freightBodyBot = y - freightH;
     final freightBodyTop = y - hdrH;
     final rowCenter = (freightBodyBot + freightBodyTop) / 2;
@@ -446,9 +451,11 @@ class BolLabelPdf {
     // Vertically center label with the radio circle.
     final labelY = rowCenter - labelSize * 0.32;
     final options = [
-      ('prepaid', 'Prepaid'),
-      ('collect', 'Collect'),
-      ('third_party', '3rd Party'),
+      for (final o in BolFields.freightChargeOptions)
+        (
+          o.$1,
+          BolFields.freightChargePdfLabels[o.$1] ?? o.$2,
+        ),
     ];
     final innerLeft = rx + pad + 2;
     final innerRight = rx + colW - pad - 2;
@@ -458,14 +465,23 @@ class BolLabelPdf {
     ];
     final totalW = widths.fold<double>(0, (a, b) => a + b);
     final free = (innerRight - innerLeft - totalW).clamp(0.0, double.infinity);
-    final radioGap = free / (options.length - 1);
+    final radioGap =
+        options.length > 1 ? free / (options.length - 1) : 0.0;
     var ox = innerLeft;
     for (var i = 0; i < options.length; i++) {
       final key = options[i].$1;
       final label = options[i].$2;
       final on = freight == key ||
           freight == label.toLowerCase() ||
-          (key == 'third_party' && (freight == '3rd party' || freight == 'third party'));
+          freight == BolFields.freightChargesDisplay(key).toLowerCase() ||
+          (key == BolFields.freightThirdParty &&
+              (freight == '3rd party' || freight == 'third party')) ||
+          (key == BolFields.freightCustomerPickup &&
+              (freight == 'customer pick-up' ||
+                  freight == 'customer pickup' ||
+                  freight == 'cust. pick-up' ||
+                  freight == 'pick-up' ||
+                  freight == 'pickup'));
       _radio(c, ox, ry, radioSize, on);
       c
         ..setFillColor(black)
@@ -677,7 +693,8 @@ class BolLabelPdf {
     );
     sx += sw + gap;
 
-    // Carrier / Driver Acceptance
+    // Carrier / Driver Acceptance — 4 rows (was 5): Vehicle ID shares the
+    // bottom row with Departure Date (calendar) so micro-labels can breathe.
     _sectionTitle(c, fonts, sx, y, sw, 'CARRIER / DRIVER ACCEPTANCE', shdr);
     _rect(c, sx, bodyBot, sw, sh, lw: 0.75);
     _sigFields(
@@ -692,15 +709,13 @@ class BolLabelPdf {
         [(BolFields.driverCompany, 'Company', 1.0)],
         [(BolFields.driverPrint, 'Driver Print Name', 1.0)],
         [(BolFields.driverSign, 'Signature', 1.0)],
-        [(BolFields.vehicleId, 'Vehicle ID', 1.0)],
         [
-          (BolFields.departureTime, 'Departure', 0.62),
-          (BolFields.driverDate, 'Date', 0.38),
+          (BolFields.vehicleId, 'Vehicle ID', 0.62),
+          (BolFields.driverDate, 'Departure Date', 0.38),
         ],
       ],
-      // Tight outer insets → taller row bands → more header/entry air.
-      topInset: 2.5,
-      bottomInset: 2.5,
+      topInset: bodyInset,
+      bottomInset: 5.0,
     );
     sx += sw + gap;
 
@@ -783,11 +798,10 @@ class BolLabelPdf {
       for (var i = 0; i < cats.length; i++) {
         final label = cats[i];
         final rowTop = bodyTop - topInset - i * rowH;
-        _micro(c, fonts, colX, rowTop - 6.5, label);
-        // Value band under the micro-label, resting on the underline — center
-        // both horizontally and vertically in that cell.
-        const labelReserve = 8.5;
-        final fieldTop = rowTop - labelReserve;
+        final labelY = rowTop - microFromTop + 1.5;
+        _micro(c, fonts, colX, labelY, label);
+        // Value band under the micro-label, resting on the underline.
+        final fieldTop = labelY - microToValueGap;
         final fieldBot = rowTop - rowH + 2;
         final fieldH = (fieldTop - fieldBot).clamp(9.0, rowH);
         final lineW = colW - 1;
@@ -833,14 +847,12 @@ class BolLabelPdf {
       ..drawLine(tx, midTot, tx + tw, midTot)
       ..strokePath();
 
-    // Totals: reserve label / LBS strips, center numerals in the remaining box.
-    // Keep equal numeral size for Piece Count and Weight. Lift values slightly
-    // so Weight clears the LBS caption under it (without moving the frame).
-    const totLabelReserve = 11.0;
+    // Totals: reserve label strip via shared micro→value gap; center numerals.
     const lbsReserve = 10.0;
     const totNumSize = 10.0;
     const totValueNudgeUp = 2.0;
-    _micro(c, fonts, tx + pad, bodyTop - 6, 'Total Piece Count');
+    final totLabelY = bodyTop - microFromTop + 2;
+    _micro(c, fonts, tx + pad, totLabelY, 'Total Piece Count');
     final piecesText = totalPieces > 0
         ? totalPieces.toStringAsFixed(0)
         : d.get(BolFields.totalPieces);
@@ -851,13 +863,14 @@ class BolLabelPdf {
       tx + pad,
       midTot + 2,
       tw - 2 * pad,
-      (bodyTop - totLabelReserve) - (midTot + 2),
+      (totLabelY - microToValueGap) - (midTot + 2),
       size: totNumSize,
       shrinkToFit: false,
       nudgeUp: totValueNudgeUp,
     );
 
-    _micro(c, fonts, tx + pad, midTot - 6, 'Total Weight');
+    final weightLabelY = midTot - microFromTop + 2;
+    _micro(c, fonts, tx + pad, weightLabelY, 'Total Weight');
     final weightText = totalWeight > 0
         ? totalWeight.toStringAsFixed(0)
         : d.get(BolFields.totalWeight);
@@ -868,7 +881,7 @@ class BolLabelPdf {
       tx + pad,
       blockBot + lbsReserve,
       tw - 2 * pad,
-      (midTot - totLabelReserve) - (blockBot + lbsReserve),
+      (weightLabelY - microToValueGap) - (blockBot + lbsReserve),
       size: totNumSize,
       shrinkToFit: false,
       nudgeUp: totValueNudgeUp,
@@ -902,20 +915,17 @@ class BolLabelPdf {
     final innerX = x + pad;
     final innerW = w - 2 * pad;
     final n = rows.length;
-    // Dense grids (Carrier's 5 rows): reclaim padding so each band can keep
-    // category headers clear of entry text without growing the outer box.
+    // Prefer shared micro→value rhythm; only tighten outer insets when ≥5 rows.
     final dense = n >= 5;
-    final insetTop = topInset ?? (dense ? 2.5 : bodyInset);
-    final insetBot = bottomInset ?? (dense ? 2.5 : 5.0);
+    final insetTop = topInset ?? (dense ? 3.0 : bodyInset);
+    final insetBot = bottomInset ?? (dense ? 3.0 : 5.0);
     final contentTop = yTop - insetTop;
     final contentBot = yBottom + insetBot;
     final availH = contentTop - contentBot;
     if (availH < 20 || rows.isEmpty) return;
 
-    // Vertically center values in the band between the category label and rule.
     final valueSize = dense ? 7.0 : 8.0;
     final ruleAboveBandBot = dense ? 2.0 : 3.5;
-    final labelFromBandTop = dense ? 2.5 : 5.0;
     const colGap = 10.0;
     final rowH = availH / n;
 
@@ -923,9 +933,9 @@ class BolLabelPdf {
       final bandTop = contentTop - i * rowH;
       final bandBot = bandTop - rowH;
       final yRule = bandBot + ruleAboveBandBot;
-      final labelY = bandTop - labelFromBandTop;
-      // Value sits in the clear band under the micro-label, above the rule.
-      final valueTop = labelY - (dense ? 1.5 : 2.5);
+      final labelY = bandTop - microFromTop + 2.5;
+      // Same gap as `_cellValue` / Shipping field labels.
+      final valueTop = labelY - microToValueGap;
       final valueBot = yRule + 1.0;
       final valueBandH = (valueTop - valueBot).clamp(valueSize, rowH);
 
@@ -1079,8 +1089,19 @@ class BolLabelPdf {
           ..drawLine(cx, bot, cx, y)
           ..strokePath();
       }
-      _micro(c, fonts, cx + pad, y - 8, specs[i].$2);
-      _drawValue(c, fonts, d.get(specs[i].$1), cx + 4, bot + 3, colW - 8, 12, 8);
+      _micro(c, fonts, cx + pad, y - microFromTop, specs[i].$2);
+      final valueTop = y - microFromTop - microToValueGap;
+      final valueH = (valueTop - (bot + 3)).clamp(8.0, 14.0);
+      _drawValue(
+        c,
+        fonts,
+        d.get(specs[i].$1),
+        cx + 4,
+        bot + 3,
+        colW - 8,
+        valueH,
+        8,
+      );
       _hline(c, cx + 4, bot + 3, colW - 8);
     }
     return bot - gap;
@@ -1391,9 +1412,10 @@ class BolLabelPdf {
     bool compact = false,
   }) {
     _rect(c, x, y, w, h, lw: 0.6);
-    final labelY = y + h - (compact ? 8.5 : 10);
+    // Same micro→value gap whether compact or full — only value line count differs.
+    final labelY = y + h - microFromTop;
     _micro(c, fonts, x + pad, labelY, label);
-    final topReserve = compact ? 11.0 : 14.0;
+    final topReserve = microFromTop + microToValueGap;
     final botPad = compact ? 2.5 : 3.5;
     final lines = maxLines ?? (h > 36 ? 3 : (h > 28 ? 2 : 1));
     _drawValue(

@@ -48,6 +48,15 @@ class ShippingLabelPdf {
   /// Applied while painting a document from [PdfRenderOptions.fontScale].
   double activeFontScale = 1.0;
 
+  /// Last shipping-page SO/Contact/piece Y dump (PDF space, origin bottom-left).
+  /// Filled while painting; tests print these to verify no under-pill rule.
+  static double? debugPillBottomY;
+  static double? debugSoRuleY;
+  static double? debugContactLabelY;
+  static double? debugContactNameBaselineY;
+  static double? debugPieceRuleY;
+  static bool? debugSoShowRule;
+
   static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const black = PdfColor.fromInt(0xFF111111);
   static const labelC = PdfColor.fromInt(0xFF6A6A6A);
@@ -549,6 +558,28 @@ class ShippingLabelPdf {
     }
   }
 
+  /// Ink height (ascent − descent) for [text] at [size], never below [size].
+  double _inkHeight(PdfFont font, String text, double size) {
+    if (text.isEmpty || size <= 0) return size;
+    final m = font.stringMetrics(text) * size;
+    final h = m.ascent - m.descent;
+    return h > size ? h : size;
+  }
+
+  /// Baseline Y so glyph ink is vertically centered in box bottom-left [y], height [h].
+  double _baselineCentered(
+    PdfFont font,
+    String text,
+    double size,
+    double boxBottom,
+    double boxH,
+  ) {
+    final m = font.stringMetrics(text) * size;
+    final inkH = m.ascent - m.descent;
+    // PDF: ascent above baseline, descent typically ≤ 0 below.
+    return boxBottom + (boxH - inkH) / 2 - m.descent;
+  }
+
   void _drawValue(
     PdfGraphics c,
     _ResolvedFonts fonts,
@@ -571,17 +602,32 @@ class ShippingLabelPdf {
       ..setFont(f, size);
     if (multiline) {
       final lines = wrapLines(text, w - 4, f, size);
-      var yy = y + h - size - 2;
-      for (final line in lines) {
-        if (yy < y - 1) break;
+      if (lines.length <= 1) {
+        final line = lines.isEmpty ? text : lines.first;
         final tw = stringWidth(f, line, size);
         final tx = centered ? x + (w - tw) / 2 : x + 1;
-        c.drawString(f, size, line, tx, yy);
-        yy -= size + lineGap;
+        c.drawString(
+          f,
+          size,
+          line,
+          tx,
+          _baselineCentered(f, line, size, y, h),
+        );
+      } else {
+        // Multi-line: top-align with em size so layout height matches line boxes.
+        var yy = y + h - size - 1;
+        for (final line in lines) {
+          if (yy < y - 1) break;
+          final tw = stringWidth(f, line, size);
+          final tx = centered ? x + (w - tw) / 2 : x + 1;
+          c.drawString(f, size, line, tx, yy);
+          yy -= size + lineGap;
+        }
       }
     } else {
       final tx = centered ? x + (w - stringWidth(f, text, size)) / 2 : x + 1;
-      c.drawString(f, size, text, tx, y + (h - size) / 2 + 1);
+      final baseline = _baselineCentered(f, text, size, y, h);
+      c.drawString(f, size, text, tx, baseline);
     }
   }
 
@@ -627,7 +673,14 @@ class ShippingLabelPdf {
   }
 
   /// Fixed Swift logo height (pt). Never scaled by customer logos or logoScale.
+  /// Also the **red** (taller) target for square / square-ish / circular marks.
   static const customerLogoTargetH = 62.24;
+
+  /// Red box: max ink height for square-ish / circular logos (pt).
+  static const squareLogoTargetH = customerLogoTargetH;
+
+  /// Green box: ink height for rectangular / long logos (pt). Nested under red.
+  static const rectLogoTargetH = 46.0;
 
   /// Keep logos clear of the orange header frames (band edges).
   static const customerLogoBandInset = 2.0;
@@ -635,7 +688,7 @@ class ShippingLabelPdf {
   /// Horizontal gap between Logo 1 and Logo 2 (C/O).
   static const customerLogoGap = 10.0;
 
-  /// Breathing gap between the customer-logo row and Swift (never overlap).
+  /// Pink line: breathing gap between customer-logo row and Swift (never touch).
   static const customerLogoToSwiftGap = 12.0;
 
   /// Swift lockup may not consume more than this share of the header row.
@@ -656,9 +709,11 @@ class ShippingLabelPdf {
     c.drawImage(logo.image, x, y, w, bh);
   }
 
-  /// Customer logos in a bounded frame — dual marks use equal cells (C/O layout).
-  /// Ink height matches [targetH] when possible; width budget scales height down
-  /// uniformly (aspect preserved, never squashed).
+  /// Per-logo red/green height, then pink-limit width clamp (uniform shrink).
+  ///
+  /// Square-ish / circular → [squareLogoTargetH]; rectangular → [rectLogoTargetH].
+  /// Dual logos keep individual heights; if total width (inks + gap) would reach
+  /// the pink edge / Swift, both heights scale down uniformly.
   void _drawCustomerLogosInFrame(
     PdfGraphics c,
     List<_InkLogo> logos,
@@ -666,45 +721,49 @@ class ShippingLabelPdf {
     double frameRight,
     double frameBottom,
     double frameH,
-    double inkBottomY,
-    double targetH,
-  ) {
+    double bandCenterY, {
+    double squareH = squareLogoTargetH,
+    double rectH = rectLogoTargetH,
+  }) {
     final valid = [
       for (final l in logos)
         if (l.image.width > 0 && l.image.height > 0 && l.ink.isValid) l,
-    ];
-    if (valid.isEmpty || targetH <= 0) return;
+    ].take(maxCustomerLogos).toList();
+    if (valid.isEmpty) return;
 
     final frameW = frameRight - frameLeft;
     if (frameW < 8 || frameH <= 0) return;
+
+    final heights = <double>[
+      for (final l in valid)
+        math.min(
+          l.ink.targetHeight(squareH: squareH, rectH: rectH),
+          frameH,
+        ),
+    ];
+    final inks = [for (final l in valid) l.ink];
+    final scale = LogoInkMetrics.uniformWidthFitScale(
+      inks,
+      heights,
+      customerLogoGap,
+      frameW,
+    );
+    for (var i = 0; i < heights.length; i++) {
+      heights[i] = heights[i] * scale;
+    }
 
     c.saveContext();
     c
       ..drawRect(frameLeft, frameBottom, frameW, frameH)
       ..clipPath();
 
-    if (valid.length == 1) {
-      final h = math.min(
-        LogoInkMetrics.fitHeightToWidth(valid.first.ink, targetH, frameW),
-        frameH,
-      );
-      _drawLogoInk(c, valid.first, frameLeft, inkBottomY, h);
-    } else {
-      final cellW = (frameW - customerLogoGap) / 2;
-      if (cellW >= 4) {
-        final sharedH = math.min(
-          LogoInkMetrics.sharedHeightForCells(
-            valid.take(2).map((l) => l.ink),
-            targetH,
-            cellW,
-          ),
-          frameH,
-        );
-        for (var i = 0; i < valid.length && i < 2; i++) {
-          final cellX = frameLeft + i * (cellW + customerLogoGap);
-          _drawLogoInk(c, valid[i], cellX, inkBottomY, sharedH);
-        }
-      }
+    var x = frameLeft;
+    for (var i = 0; i < valid.length; i++) {
+      final h = heights[i];
+      if (h < 0.5) continue;
+      final inkBottomY = bandCenterY - h / 2;
+      _drawLogoInk(c, valid[i], x, inkBottomY, h);
+      x += valid[i].ink.drawWidth(h) + customerLogoGap;
     }
     c.restoreContext();
   }
@@ -758,12 +817,12 @@ class ShippingLabelPdf {
       }
     }
 
-    // Customer logos match Swift ink height when possible.
-    final customerTargetH = swiftH > 0
-        ? swiftH
-        : (customerLogoTargetH * options.logoScale.clamp(0.6, 1.5));
+    // Red/green customer targets scale with logoScale; Swift height stays fixed.
+    final logoScale = options.logoScale.clamp(0.6, 1.5);
+    final squareH = squareLogoTargetH * logoScale;
+    final rectH = rectLogoTargetH * logoScale;
 
-    final logoH = swiftH > 0 ? swiftH : customerTargetH;
+    final logoH = swiftH > 0 ? swiftH : squareH;
     final bandCenter = (yTop + logoBottom) / 2;
     var yLogoBottom = bandCenter - logoH / 2;
     final minY = logoBottom + customerLogoBandInset;
@@ -778,6 +837,7 @@ class ShippingLabelPdf {
       late double frameRight;
       if (place == PdfLogoPlacement.left) {
         frameLeft = mx;
+        // Pink limit: right edge of customer frame, clear of Swift.
         frameRight = swiftW > 0
             ? mx + contentW - swiftW - customerLogoToSwiftGap
             : mx + contentW;
@@ -794,8 +854,9 @@ class ShippingLabelPdf {
         frameRight,
         logoBottom,
         bandH,
-        yLogoBottom,
-        customerTargetH,
+        bandCenter,
+        squareH: squareH,
+        rectH: rectH,
       );
     } else if (logos.isEmpty && place != PdfLogoPlacement.belowSwift) {
       c
@@ -823,15 +884,18 @@ class ShippingLabelPdf {
     }
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
+      final belowBottom = logoBottom - squareH - 4;
+      final belowCenter = belowBottom + bandH / 2;
       _drawCustomerLogosInFrame(
         c,
         logos,
         mx,
         mx + contentW,
-        logoBottom - customerTargetH - 4,
+        belowBottom,
         bandH,
-        logoBottom - customerTargetH - 4,
-        customerTargetH,
+        belowCenter,
+        squareH: squareH,
+        rectH: rectH,
       );
     }
 
@@ -917,8 +981,13 @@ class ShippingLabelPdf {
             preferred: pref,
             minSize: hero ? 12 : entryMin,
           );
-      final base = size + (hero ? 12 : 10);
-      vh = valueH ?? (hero ? (base < 30 ? 30 : base) : (base < 26 ? 26 : base));
+      // Box must clear real glyph ink + hairline — size+10 was too short and
+      // let the rule cut through Capitals (e.g. Swift Contact name).
+      final ink = val.isEmpty ? size : _inkHeight(bold, val, size);
+      final pad = hero ? 12.0 : 10.0;
+      final base = ink + pad;
+      final minH = hero ? 30.0 : 28.0;
+      vh = valueH ?? (base < minH ? minH : base);
     }
     final alertFill = valueBgWhenNonEmpty != null && val.isNotEmpty;
     if (alertFill) {
@@ -1051,6 +1120,7 @@ class ShippingLabelPdf {
       preferredSize: entryRecvSo,
       minRowH: 48,
       centerPill: true,
+      showRule: true,
     );
     _fieldRow(
       c,
@@ -1130,6 +1200,12 @@ class ShippingLabelPdf {
   }
 
   /// Sales Order — preferred size [entrySo] (Shipping) / [entryRecvSo] (Receiving).
+  ///
+  /// Pill height uses line size only (no fieldHeightFor / +pad double-count).
+  /// [afterPillGap] is from the pill bottom to the next micro-label baseline.
+  /// Default [showRule] is false: the under-pill `_hairline` at `pillBottom-1`
+  /// was the real culprit that cut through SWIFT CONTACT when the gap was ~6pt.
+  /// Receiving opts back in so a rule still separates SO from PM.
   double _drawSalesOrderRow(
     PdfGraphics c,
     _ResolvedFonts fonts,
@@ -1141,12 +1217,19 @@ class ShippingLabelPdf {
     double? preferredSize,
     double minRowH = 28,
     bool centerPill = false,
+    bool showRule = false,
   }) {
     _microLabel(c, fonts, x, y, 'Swift Sales Order No.');
-    y -= 4;
+    y -= 5;
     final val = sample.get(LabelFields.salesOrder);
     const padX = 12.0;
-    const padY = 8.0;
+    // Tight inset — top-align SO glyphs so pink does not pad under the digits.
+    const padTop = 2.0;
+    const padBottom = 1.5;
+    // APPROVED LOCK (2026-08-20) — user final Shipping Label format.
+    // afterPillGap MUST stay 11.0. Do not "tighten" to 6 or reopen to 34.
+    // See .cursor/rules/shipping-label-approved-layout.mdc
+    const afterPillGap = 11.0;
     final pref = preferredSize ?? entrySo;
     final size = fitWrappedSize(
       val,
@@ -1156,25 +1239,32 @@ class ShippingLabelPdf {
       minSize: 11,
       maxLines: wrapMaxLines,
     );
-    final textH = val.isEmpty
-        ? size + 4
-        : fieldHeightFor(
-            val,
-            fonts.calibriBold,
-            colWidth: colWidth - 2 * padX,
-            size: size,
-            maxLines: wrapMaxLines,
-          );
+    double textH;
+    if (val.isEmpty) {
+      textH = size;
+    } else {
+      final lines = wrapLines(
+        val,
+        colWidth - 2 * padX,
+        fonts.calibriBold,
+        size,
+      );
+      final n = (lines.isEmpty ? 1 : lines.length).clamp(1, wrapMaxLines);
+      // Cap-height line boxes only — full ascent−descent over-pads all-caps SO.
+      textH = n * size + (n - 1) * lineGap;
+    }
     final pillW = colWidth;
-    final pillH = textH + 2 * padY;
-    final rowH = pillH < minRowH ? minRowH : pillH;
+    final rawPill = textH + padTop + padBottom;
+    final pillH = rawPill < minRowH ? minRowH : rawPill;
     final pillX = centerPill ? x + (colWidth - pillW) / 2 : x;
 
     c.setFillColor(pillBg ?? soBg);
     _fillRRect(c, pillX, y - pillH, pillW, pillH, 8);
 
     if (val.isNotEmpty) {
-      final textY = y - pillH + (pillH - textH) / 2;
+      // Top-align in the pill (not vertically centered) — kills the false
+      // "gap under SO" that was empty pink below the digits.
+      final textY = y - padTop - textH;
       _drawValue(
         c,
         fonts,
@@ -1189,8 +1279,19 @@ class ShippingLabelPdf {
         multiline: true,
       );
     }
-    _hairline(c, x, y - rowH - 1, colWidth);
-    return y - rowH - 12;
+    final pillBottom = y - pillH;
+    debugPillBottomY = pillBottom;
+    debugSoShowRule = showRule;
+    // ONLY Receiving should pass showRule:true. This hairline at pillBottom-1
+    // is the drawLine that sat on/through CONTACT when Shipping left it on.
+    if (showRule) {
+      final ruleY = pillBottom - 1;
+      debugSoRuleY = ruleY;
+      _hairline(c, x, ruleY, colWidth);
+      return ruleY - afterPillGap;
+    }
+    debugSoRuleY = null;
+    return pillBottom - afterPillGap;
   }
 
   double _drawHero(
@@ -1203,14 +1304,25 @@ class ShippingLabelPdf {
     _microLabel(c, fonts, rx, y, 'Ship To Name');
     y -= 5;
     final ship = sample.get(LabelFields.shipTo);
-    final shipSize = fitSingleLineSize(
-      ship,
-      colW - 4,
-      fonts.calibriBold,
-      preferred: entryHero,
-      minSize: 12,
-    );
-    final heroH = shipSize + 12 < 30 ? 30.0 : shipSize + 12;
+    // Keep the Ship To band at single-line hero height so wrapping extreme
+    // names cannot shove Contact into the piece rule (approved clearance).
+    // Prefer large type; wrap (max 2) + shrink to fit inside [bandH].
+    const shipMaxLines = 2;
+    final bandH = entryHero + 12 < 30 ? 30.0 : entryHero + 12;
+    var shipSize = entryHero;
+    if (ship.isNotEmpty) {
+      while (shipSize > entryMin) {
+        final lines = wrapLines(ship, colW - 4, fonts.calibriBold, shipSize);
+        if (lines.length <= shipMaxLines) {
+          final n = lines.isEmpty ? 1 : lines.length;
+          final textH = n * (shipSize + lineGap) - lineGap;
+          final need = textH + 12 < 30 ? 30.0 : textH + 12;
+          if (need <= bandH) break;
+        }
+        shipSize -= 0.5;
+      }
+    }
+    final heroH = bandH;
     if (ship.isNotEmpty) {
       _drawValue(
         c,
@@ -1222,6 +1334,7 @@ class ShippingLabelPdf {
         heroH,
         fontSize: shipSize,
         font: fonts.calibriBold,
+        multiline: true,
       );
     }
     c
@@ -1287,6 +1400,16 @@ class ShippingLabelPdf {
     final lx = mx;
     final bold = fonts.calibriBold;
 
+    // Wrap + shrink-to-fit — single-line Customer overflowed the gutter into
+    // Ship To on extreme legal names (text_long_customer).
+    final cust = sample.get(LabelFields.customer);
+    final custSize = fitWrappedSize(cust, colW - 4, bold, maxLines: 3);
+    final custH = fieldHeightFor(
+      cust,
+      bold,
+      size: custSize,
+      maxLines: 3,
+    );
     var yL = _fieldRow(
       c,
       fonts,
@@ -1296,6 +1419,10 @@ class ShippingLabelPdf {
       lx,
       colW,
       sample,
+      valueH: custH,
+      valueSize: custSize,
+      multiline: true,
+      maxLines: 3,
     );
 
     final po = sample.get(LabelFields.poNum);
@@ -1415,6 +1542,7 @@ class ShippingLabelPdf {
       colW,
       sample,
     );
+    // Shipping: never draw under-pill rule (default showRule:false).
     y = _drawSalesOrderRow(
       c,
       fonts,
@@ -1425,17 +1553,67 @@ class ShippingLabelPdf {
       preferredSize: entrySo,
     );
 
-    // Natural stack keeps Contact clear of the piece band (no downward shove).
-    _fieldRow(
-      c,
-      fonts,
-      y,
-      'Swift Contact',
-      LabelFields.swiftContact,
-      rx,
-      colW,
-      sample,
+    // APPROVED LOCK (2026-08-20) — match `_fieldRow` label→value (3pt + centered
+    // ink+10/min-28 box). Do not revert to top-aligned ink+6 / labelGap 2.
+    // See .cursor/rules/shipping-label-approved-layout.mdc
+    final pieceRuleY = bandBottom + 4;
+    debugPieceRuleY = pieceRuleY;
+    const contactClearance = 8.0;
+    final contactFloor = pieceRuleY + contactClearance;
+    // Match `_fieldRow`: gap from micro-label baseline to value-box top.
+    const contactLabelToValue = 3.0;
+    final contactName = sample.get(LabelFields.swiftContact);
+    var contactSize = fitSingleLineSize(
+      contactName,
+      colW - 4,
+      fonts.calibriBold,
+      preferred: entrySize,
+      minSize: entryMin,
     );
+    var contactInk = contactName.isEmpty
+        ? contactSize
+        : _inkHeight(fonts.calibriBold, contactName, contactSize);
+    // Same box pad as `_fieldRow` single-line (ink + 10, min 28).
+    var contactValueH = contactInk + 10.0;
+    if (contactValueH < 28.0) contactValueH = 28.0;
+    final contactBoxBottom = y - contactLabelToValue - contactValueH;
+    if (contactBoxBottom < contactFloor && contactName.isNotEmpty) {
+      final maxH = (y - contactLabelToValue - contactFloor).clamp(10.0, 40.0);
+      while (contactValueH > maxH && contactSize > entryMin) {
+        contactSize -= 0.5;
+        contactInk = _inkHeight(fonts.calibriBold, contactName, contactSize);
+        contactValueH = contactInk + 10.0;
+        if (contactValueH < 28.0) contactValueH = 28.0;
+      }
+      if (contactValueH > maxH) contactValueH = maxH;
+    }
+    debugContactLabelY = y;
+    _microLabel(c, fonts, rx, y, 'Swift Contact');
+    final valueTop = y - contactLabelToValue;
+    final valueBottom = valueTop - contactValueH;
+    if (contactName.isNotEmpty) {
+      // Center in the value box — same as Customer / other `_fieldRow` entries.
+      _drawValue(
+        c,
+        fonts,
+        contactName,
+        rx,
+        valueBottom,
+        colW,
+        contactValueH,
+        fontSize: contactSize,
+        font: fonts.calibriBold,
+      );
+      debugContactNameBaselineY = _baselineCentered(
+        fonts.calibriBold,
+        contactName,
+        contactSize * activeFontScale,
+        valueBottom,
+        contactValueH,
+      );
+    } else {
+      debugContactNameBaselineY = null;
+    }
 
     _microLabel(c, fonts, lx, yLeft, 'Special Instructions');
     final notesTop = yLeft - 4;
