@@ -1221,6 +1221,9 @@ class LogoImageProcessor {
 
   /// Edge-flood the outer canvas only. Letter fills — including dark/grey
   /// ink on a dark plate and black bodies on a light plate — stay opaque.
+  ///
+  /// Paint-like for phone photos / speckled gray plates: wider plate match,
+  /// then a second pass that punches remaining low-chroma plate islands.
   static void _knockOutOuterPlate(img.Image image) {
     _removeCheckerboardMatte(image);
     final plate = _estimateBackgroundColor(image);
@@ -1232,6 +1235,7 @@ class LogoImageProcessor {
         plate,
         eightWay: !dark,
         protect: protect,
+        floodTolerance: _plateFloodTolerance(plate),
       );
     } else {
       _removeSolidBackground(
@@ -1239,10 +1243,26 @@ class LogoImageProcessor {
         (255, 255, 255),
         eightWay: true,
         protect: protect,
+        floodTolerance: 40,
       );
     }
     _punchEnclosedPlateHoles(image, plate);
     _stripJpegWhiteRim(image);
+    _stripTexturedPlateRemnants(image, plate);
+  }
+
+  /// Speckled / JPEG gray plates need a wider flood than flat studio white.
+  static int _plateFloodTolerance((int r, int g, int b) plate) {
+    final sat =
+        math.max(plate.$1, math.max(plate.$2, plate.$3)) -
+        math.min(plate.$1, math.min(plate.$2, plate.$3));
+    final lum = (plate.$1 + plate.$2 + plate.$3) / 3.0;
+    if (_isNearBlackCanvas(plate.$1, plate.$2, plate.$3)) return 14;
+    // Near-white studio plates.
+    if (lum >= 230 && sat <= 20) return 38;
+    // Mid-gray photo / desk / paper texture (Inked Energy style).
+    if (sat <= 35 && lum >= 140 && lum <= 230) return 48;
+    return colorTolerance + 10;
   }
 
   /// Punch leftover JPEG-white rims that the plate flood left attached to ink.
@@ -1292,6 +1312,9 @@ class LogoImageProcessor {
 
   /// Pixels that differ from the outer plate, dilated one pixel so
   /// anti-aliased rims are not eaten by the edge flood.
+  ///
+  /// On light / textured plates, keep protect tight so speckled gray is not
+  /// treated as ink (that blocked Paint-style knockout for Inked Energy).
   static Uint8List _protectedInkMask(
     img.Image image,
     (int r, int g, int b)? plate,
@@ -1299,6 +1322,7 @@ class LogoImageProcessor {
     final w = image.width;
     final h = image.height;
     final raw = Uint8List(w * h);
+    final plateTol = plate == null ? colorTolerance : _plateFloodTolerance(plate);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         final p = image.getPixel(x, y);
@@ -1306,7 +1330,14 @@ class LogoImageProcessor {
         final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
         if (plate != null) {
           final d = _colorDistance(r, g, b, plate.$1, plate.$2, plate.$3);
-          if (d <= 10) continue;
+          if (d <= plateTol) continue;
+          final sat =
+              math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+          final lum = (r + g + b) / 3.0;
+          // Speckled plate mush near plate luma — not protectable ink.
+          if (sat <= 28 && lum >= 130 && (lum - (plate.$1 + plate.$2 + plate.$3) / 3.0).abs() <= 40) {
+            continue;
+          }
         }
         raw[y * w + x] = 1;
       }
@@ -1337,18 +1368,20 @@ class LogoImageProcessor {
     (int r, int g, int b) bg, {
     bool eightWay = false,
     Uint8List? protect,
+    int? floodTolerance,
   }) {
     final w = image.width;
     final h = image.height;
     final visited = Uint8List(w * h);
     final queue = <(int, int)>[];
+    final tol = floodTolerance ?? colorTolerance;
 
     void trySeed(int x, int y) {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       final idx = y * w + x;
       if (visited[idx] != 0) return;
       if (protect != null && protect[idx] != 0) return;
-      if (!_isEmptyPixel(image.getPixel(x, y), bg)) return;
+      if (!_isEmptyPixel(image.getPixel(x, y), bg, tolerance: tol)) return;
       visited[idx] = 1;
       queue.add((x, y));
     }
@@ -1376,6 +1409,137 @@ class LogoImageProcessor {
         trySeed(x - 1, y + 1);
         trySeed(x - 1, y - 1);
       }
+    }
+  }
+
+  /// Second pass after edge flood: punch remaining low-chroma plate islands
+  /// (textured desk/photo backgrounds Paint removes in one click).
+  static void _stripTexturedPlateRemnants(
+    img.Image image,
+    (int r, int g, int b)? plate,
+  ) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 8 || h < 8) return;
+
+    final pr = plate?.$1 ?? 245;
+    final pg = plate?.$2 ?? 245;
+    final pb = plate?.$3 ?? 245;
+    final plateLum = (pr + pg + pb) / 3.0;
+    final plateSat =
+        math.max(pr, math.max(pg, pb)) - math.min(pr, math.min(pg, pb));
+    // Only run for light / mid-gray plates — not black canvases.
+    if (plateLum < 120) return;
+
+    final tol = _plateFloodTolerance((pr, pg, pb));
+    final punch = Uint8List(w * h);
+
+    bool looksLikePlate(int r, int g, int b) {
+      final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+      final lum = (r + g + b) / 3.0;
+      if (sat > 40) return false; // keep chromatic brand ink
+      if (lum < 55) return false; // keep dark marks
+      final d = _colorDistance(r, g, b, pr, pg, pb);
+      if (d <= tol) return true;
+      // Speckled mid-gray near the plate luma.
+      if (plateSat <= 40 && sat <= 28 && (lum - plateLum).abs() <= 36) {
+        return true;
+      }
+      if (lum >= 225 && sat <= 24) return true;
+      return false;
+    }
+
+    bool nearStrongInk(int x, int y) {
+      for (var dy = -2; dy <= 2; dy++) {
+        for (var dx = -2; dx <= 2; dx++) {
+          final nx = x + dx;
+          final ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          final p = image.getPixel(nx, ny);
+          if (p.a.toInt() < 80) continue;
+          final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+          final sat =
+              math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+          final lum = (r + g + b) / 3.0;
+          if (sat >= 36) return true;
+          if (lum <= 70 && sat <= 40) return true;
+        }
+      }
+      return false;
+    }
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        if (!looksLikePlate(r, g, b)) continue;
+        // Preserve AA rims hugging real ink.
+        if (nearStrongInk(x, y)) continue;
+        punch[y * w + x] = 1;
+      }
+    }
+
+    // Only keep punches that touch transparent / border (outer leftovers).
+    final keep = Uint8List(w * h);
+    final q = <int>[];
+    for (var x = 0; x < w; x++) {
+      for (final y in [0, h - 1]) {
+        final i = y * w + x;
+        if (punch[i] != 0) {
+          keep[i] = 1;
+          q.add(i);
+        }
+      }
+    }
+    for (var y = 0; y < h; y++) {
+      for (final x in [0, w - 1]) {
+        final i = y * w + x;
+        if (punch[i] != 0 && keep[i] == 0) {
+          keep[i] = 1;
+          q.add(i);
+        }
+      }
+    }
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final i = y * w + x;
+        if (punch[i] == 0 || keep[i] != 0) continue;
+        var touchEmpty = false;
+        for (final (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+          final nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+            touchEmpty = true;
+            break;
+          }
+          if (image.getPixel(nx, ny).a.toInt() < 40) {
+            touchEmpty = true;
+            break;
+          }
+        }
+        if (touchEmpty) {
+          keep[i] = 1;
+          q.add(i);
+        }
+      }
+    }
+    while (q.isNotEmpty) {
+      final i = q.removeLast();
+      final x = i % w;
+      final y = i ~/ w;
+      for (final (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+        final nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        final ni = ny * w + nx;
+        if (punch[ni] == 0 || keep[ni] != 0) continue;
+        keep[ni] = 1;
+        q.add(ni);
+      }
+    }
+
+    for (var i = 0; i < keep.length; i++) {
+      if (keep[i] == 0) continue;
+      image.setPixelRgba(i % w, i ~/ w, 0, 0, 0, 0);
     }
   }
 
@@ -1561,11 +1725,16 @@ class LogoImageProcessor {
   /// greens/blues (high saturation) must never be treated as the plate — that
   /// used to leave only a bright accent (e.g. orange swoosh) which then scaled
   /// up to Swift height and looked huge / cut-off on the PDF.
-  static bool _isEmptyPixel(img.Pixel pixel, (int r, int g, int b)? bg) {
+  static bool _isEmptyPixel(
+    img.Pixel pixel,
+    (int r, int g, int b)? bg, {
+    int? tolerance,
+  }) {
     if (pixel.a.toInt() < alphaThreshold) return true;
     final r = pixel.r.toInt();
     final g = pixel.g.toInt();
     final b = pixel.b.toInt();
+    final tol = tolerance ?? colorTolerance;
     if (bg == null) {
       return r >= 240 && g >= 240 && b >= 240;
     }
@@ -1577,11 +1746,10 @@ class LogoImageProcessor {
     }
     final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
     final lum = (r + g + b) / 3.0;
-    // JPEG ringing around marks on white paper is low-chroma near-white —
-    // not light-grey letter fills (those sit nearer lum 80–180).
-    if (lum >= 208 && sat <= 22) return true;
+    // JPEG ringing / textured light plate — Paint-style near-white knockout.
+    if (lum >= 200 && sat <= 28) return true;
     if (r >= 248 && g >= 248 && b >= 248) return true;
-    return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= colorTolerance;
+    return _colorDistance(r, g, b, bg.$1, bg.$2, bg.$3) <= tol;
   }
 
   /// Near-black canvas (not a dark brand fill): low luminance and low saturation.

@@ -17,10 +17,19 @@ class AppChangelog {
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.85)";
+  static const title = "What's new (v1.1.68 – v1.1.86)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.86',
+      bullets: [
+        'BOL: proceed without SO pairing; Shipping Labels copy greys out when pairing is skipped',
+        'Ship To Name: address-book memory suggestions; multi-store names listed per location',
+        'Logo knockout: stronger textured/photo plate removal (Inked-style) without eating brand ink',
+        'Shipping logos: fill red/green target heights; plate leftovers no longer shrink marks',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.85',
       bullets: [

@@ -43,6 +43,7 @@ import 'platform_io.dart';
 import 'preset_sync.dart';
 import 'signature_pad.dart';
 import 'signature_sync.dart';
+import 'ship_to_suggest_field.dart';
 import 'theme.dart';
 import 'update_sheet.dart';
 import 'operations_apps_rail.dart';
@@ -209,6 +210,8 @@ class _HomeScreenState extends State<HomeScreen>
   bool _bolCustomerCopy = true;
   /// When true, BOL generate also appends Shipping Label pages.
   bool _bolAlsoShippingLabels = false;
+  /// User dismissed SO↔PO/Project/Packing List pairing — Shipping Labels locked off.
+  bool _soPairingDismissed = false;
   /// Visible BOL goods lines (1..7); start with line 1 only.
   int _bolLineCount = 1;
   late final PresetSync _presetSync;
@@ -716,6 +719,9 @@ class _HomeScreenState extends State<HomeScreen>
             fieldKey,
             mappingBySalesOrder(extras: extras, assigned: step.assigned),
           );
+          if (_soPairingDismissed) {
+            setState(() => _soPairingDismissed = false);
+          }
           break;
         }
         final picked = await showDialog<String>(
@@ -744,13 +750,21 @@ class _HomeScreenState extends State<HomeScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Skip'),
+                  child: const Text('Proceed without pairing'),
                 ),
               ],
             );
           },
         );
-        if (picked == null || picked.isEmpty) break;
+        if (picked == null || picked.isEmpty) {
+          if (mounted) {
+            setState(() {
+              _soPairingDismissed = true;
+              _bolAlsoShippingLabels = false;
+            });
+          }
+          break;
+        }
         assigned = {...step.assigned, step.askIndex!: picked};
       }
     } finally {
@@ -2742,6 +2756,7 @@ class _HomeScreenState extends State<HomeScreen>
       _bulkSourcePath = null;
     }
     _soFieldMap = SoFieldMap();
+    _soPairingDismissed = false;
     setState(() {});
   }
 
@@ -2759,6 +2774,7 @@ class _HomeScreenState extends State<HomeScreen>
     _bulkSourcePath = null;
     _templatePromptResolvedForCustomer = null;
     _soFieldMap = SoFieldMap();
+    _soPairingDismissed = false;
     setState(() {});
   }
 
@@ -2772,7 +2788,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     PieceCountPlan? piecePlan;
     Map<String, PieceCountPlan>? perSoPlans;
-    final alsoShipping = _kind == LabelKind.bol && _bolAlsoShippingLabels;
+    final alsoShipping = _kind == LabelKind.bol &&
+        _bolAlsoShippingLabels &&
+        !_soPairingDismissed;
     if (_kind == LabelKind.shipping || alsoShipping) {
       piecePlan = await _askPieceCounts();
       if (piecePlan == null || piecePlan.isEmpty) return;
@@ -3415,6 +3433,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (key == LabelFields.customer && _kind != LabelKind.bulk) {
       return _buildCustomerField();
     }
+    if (key == LabelFields.shipTo || key == BolFields.consigneeName) {
+      return _buildShipToNameField(key);
+    }
     if (key == LabelFields.location || key == BolFields.consigneeAddress) {
       return _buildDeliveryAddressField(key);
     }
@@ -3454,6 +3475,20 @@ class _HomeScreenState extends State<HomeScreen>
                 labelText: m.$2.toUpperCase(),
               ),
             ),
+    );
+  }
+
+  Widget _buildShipToNameField(String key) {
+    final meta = _meta(key);
+    return ShipToSuggestField(
+      controller: _controllers[key]!,
+      entries: _addressBookSync.entries,
+      labelText: meta.$2.toUpperCase(),
+      hintText:
+          'Type a name or pick a saved location (multi-store names listed per address)',
+      onPicked: (e) {
+        _applyAddressBookEntry(e);
+      },
     );
   }
 
@@ -3954,9 +3989,14 @@ class _HomeScreenState extends State<HomeScreen>
           SwiftCircleCheckbox(
             dense: compact,
             label: 'Shipping Labels',
-            value: _bolAlsoShippingLabels,
-            onChanged: (v) =>
-                setState(() => _bolAlsoShippingLabels = v ?? false),
+            subtitle: _soPairingDismissed
+                ? 'Unavailable — sales-order pairing was skipped'
+                : null,
+            value: _bolAlsoShippingLabels && !_soPairingDismissed,
+            enabled: !_soPairingDismissed,
+            onChanged: _soPairingDismissed
+                ? null
+                : (v) => setState(() => _bolAlsoShippingLabels = v ?? false),
           ),
         ],
       ),

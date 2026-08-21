@@ -673,13 +673,15 @@ class ShippingLabelPdf {
   }
 
   /// Fixed Swift logo height (pt). Never scaled by customer logos or logoScale.
-  /// Also the **red** (taller) target for square / square-ish / circular marks.
+  /// Also the **red** target for square / square-ish / circular marks.
+  /// 62.24 pt ≈ 62 px @72dpi, 83 px @96dpi, 125 px @2× QA render.
   static const customerLogoTargetH = 62.24;
 
-  /// Red box: max ink height for square-ish / circular logos (pt).
+  /// Red box: ink height for square-ish / circular logos (pt). Fill this height.
   static const squareLogoTargetH = customerLogoTargetH;
 
-  /// Green box: ink height for rectangular / long logos (pt). Nested under red.
+  /// Green box: ink height for rectangular / long logos (pt). Fill this height.
+  /// 46 pt ≈ 46 px @72dpi, 61 px @96dpi, 92 px @2× QA render.
   static const rectLogoTargetH = 46.0;
 
   /// Keep logos clear of the orange header frames (band edges).
@@ -689,6 +691,7 @@ class ShippingLabelPdf {
   static const customerLogoGap = 10.0;
 
   /// Pink line: breathing gap between customer-logo row and Swift (never touch).
+  /// 12 pt ≈ 12 px @72dpi, 16 px @96dpi, 24 px @2× QA render.
   static const customerLogoToSwiftGap = 12.0;
 
   /// Swift lockup may not consume more than this share of the header row.

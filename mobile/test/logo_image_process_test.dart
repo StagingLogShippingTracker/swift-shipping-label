@@ -84,4 +84,71 @@ void main() {
     expect(decoded.height, 40);
     expect(decoded.getPixel(20, 20).g.toInt(), greaterThan(200));
   });
+
+  /// Speckled mid-gray photo plate (Inked Energy style): clear outer plate,
+  /// keep chromatic graphic + dark wordmark. Guards against over-strip AND
+  /// under-strip regressions.
+  test('speckled gray photo plate clears while brand ink survives', () {
+    final src = img.Image(width: 240, height: 120, numChannels: 4);
+    // Textured desk/photo plate — not a flat studio white.
+    for (var y = 0; y < src.height; y++) {
+      for (var x = 0; x < src.width; x++) {
+        final n = ((x * 17 + y * 31) % 28) - 14;
+        final lum = (178 + n).clamp(150, 210);
+        src.setPixelRgba(x, y, lum, lum - 2, lum - 4, 255);
+      }
+    }
+    // Blue/black mark (Inked-like).
+    img.fillCircle(
+      src,
+      x: 55,
+      y: 55,
+      radius: 28,
+      color: img.ColorRgba8(20, 70, 170, 255),
+    );
+    img.fillRect(
+      src,
+      x1: 95,
+      y1: 38,
+      x2: 210,
+      y2: 72,
+      color: img.ColorRgba8(18, 18, 18, 255),
+    );
+
+    final out = LogoImageProcessor.processWithOptions(
+      Uint8List.fromList(img.encodePng(src)),
+      LogoImportOptions.standard(
+        removeBackground: true,
+        cropMode: LogoCropMode.auto,
+      ),
+    );
+    final decoded = img.decodePng(out)!;
+
+    var blue = 0, black = 0, plate = 0, opaque = 0;
+    for (var y = 0; y < decoded.height; y++) {
+      for (var x = 0; x < decoded.width; x++) {
+        final p = decoded.getPixel(x, y);
+        if (p.a.toInt() < 40) continue;
+        opaque++;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final sat = [r, g, b].reduce((a, c) => a > c ? a : c) -
+            [r, g, b].reduce((a, c) => a < c ? a : c);
+        final lum = (r + g + b) / 3.0;
+        if (b > r + 30 && b > g + 20) {
+          blue++;
+        } else if (lum <= 55 && sat <= 30) {
+          black++;
+        } else if (sat <= 28 && lum >= 140 && lum <= 220) {
+          plate++;
+        }
+      }
+    }
+
+    expect(decoded.getPixel(0, 0).a.toInt(), lessThan(40),
+        reason: 'outer plate corner should be transparent');
+    expect(blue, greaterThan(80), reason: 'blue graphic must survive');
+    expect(black, greaterThan(80), reason: 'dark wordmark must survive');
+    expect(plate / opaque, lessThan(0.18),
+        reason: 'speckled plate leftovers must be mostly gone');
+  });
 }

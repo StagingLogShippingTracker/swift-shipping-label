@@ -27,14 +27,20 @@ Receiving has its own improve loop: `qa_receiving/synthetic/` /
 
 ## Locked customer logo sizing (red / green / pink)
 
-| Guide | Constant | Value |
-|---|---|---|
-| Square / square-ish / **circular** (aspect ≤ 1.4) | `squareLogoTargetH` | ~62.24 (header band) |
-| Rectangular / long (aspect > 1.4) | `rectLogoTargetH` | **46.0** |
-| Max stretch before Swift logo | `customerLogoToSwiftGap` | **12.0** |
+Logos must **fill** their target height every time (scale up or down to match).
+The only shrink exception is the pink limit (customer row would collide with Swift).
 
-Dual / mixed logos: each uses its own height class; if total width hits the pink
-limit, **uniform** shrink. Never overlap the fixed Swift logo.
+| Guide | Constant | PDF pt | px @ 72 dpi (1:1) | px @ 96 dpi | px @ 2× QA render |
+|---|---|---|---|---|---|
+| **Red** — square / square-ish / circular (aspect ≤ 1.4) | `squareLogoTargetH` | **62.24** | **62** | **83** | **125** |
+| **Green** — rectangular / long (aspect > 1.4) | `rectLogoTargetH` | **46.0** | **46** | **61** | **92** |
+| **Pink** — gap before Swift (never overlap) | `customerLogoToSwiftGap` | **12.0** | **12** | **16** | **24** |
+
+Conversion: `px = pt × (dpi / 72)`. QA label previews use ~2 px per PDF pt.
+
+Dual / mixed logos: each uses its own height class; if total ink width + gaps
+would reach the pink edge, **uniform** height shrink. Never overlap the fixed
+Swift logo.
 
 ## QA guard
 

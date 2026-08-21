@@ -196,6 +196,15 @@ class LogoInkFit {
         final p = image.getPixel(x, y);
         // Include white letter outlines — skipping them clipped GCM "Modification".
         if (p.a.toInt() < 96) continue;
+        final r = p.r.toInt();
+        final g = p.g.toInt();
+        final b = p.b.toInt();
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        final lum = (r + g + b) / 3.0;
+        // Leftover photo / JPEG plate must not inflate the ink AABB — that
+        // makes rectangular logos look tiny when scaled to green/red targets.
+        if (lum >= 235 && sat <= 18) continue;
+        if (lum >= 210 && sat <= 12) continue;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
