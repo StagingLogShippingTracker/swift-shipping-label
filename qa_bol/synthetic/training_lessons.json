@@ -1,0 +1,414 @@
+{
+  "domain": "bol",
+  "version": 1,
+  "purpose": "Incremental training memory for this improve loop. Score \u2192 fix \u2192 re-score \u2192 keep lessons \u2192 expand cases.",
+  "lessons": [
+    {
+      "id": "20260821T065009Z",
+      "ts": "2026-08-21T06:50:09Z",
+      "title": "Long tracking fields must stay visible",
+      "lesson": "Sales Order / PO / Project / Packing List must shrink or wrap \u2014 never clip away. Logos never invade Probill or Swift ink. logo_wide overcrowding is next curriculum target when gates are green.",
+      "do_not_regress": "tracking field visibility + logo/Probill/Swift clearance",
+      "case_ids": [
+        "text_long_all_refs",
+        "logo_wide"
+      ],
+      "tags": [
+        "layout"
+      ]
+    },
+    {
+      "id": "20260821T065027Z",
+      "ts": "2026-08-21T06:50:27Z",
+      "title": "ORDER # must resolve sales_order",
+      "lesson": "bolSample sets LabelFields.salesOrder but tracking row read BolFields.orderNum only \u2014 ORDER appeared empty on north-star. Prefer order_num then sales_order (and packing_list then packing_slip).",
+      "do_not_regress": "ORDER # empty when sales_order set",
+      "case_ids": [
+        "baseline_sample"
+      ],
+      "tags": [
+        "tracking",
+        "order_num"
+      ]
+    },
+    {
+      "id": "20260821T065027Z",
+      "ts": "2026-08-21T06:50:27Z",
+      "title": "Long tracking refs: shrink + wrap (2 lines)",
+      "lesson": "Single-line _drawValue overflowed/cut long unbroken PO/project/packing strings. Use shrinkToFit + char-break wrap with maxLines=2 and slightly taller value row so text stays visible.",
+      "do_not_regress": "Long SO/PO/project/packing list clipped or vanished",
+      "case_ids": [
+        "text_long_all_refs",
+        "text_long_po"
+      ],
+      "tags": [
+        "tracking",
+        "shrink",
+        "wrap"
+      ]
+    },
+    {
+      "id": "20260821T065028Z",
+      "ts": "2026-08-21T06:50:28Z",
+      "title": "Fit full logo bitmap inside header cell",
+      "lesson": "logo_wide overcrowding=0.4: ink-fitted height ignored transparent canvas pad so draw rect exceeded customer_logo_frame (clip hid bleed). Scale so drawHeight/drawWidth fit cell before draw; keep Probill/Swift locked.",
+      "do_not_regress": "Customer logo draw box outside left header frame",
+      "case_ids": [
+        "logo_wide"
+      ],
+      "tags": [
+        "logo",
+        "overcrowding",
+        "wide"
+      ]
+    }
+  ],
+  "run_snapshots": [
+    {
+      "ts": "2026-08-21T06:47:39Z",
+      "run_id": "20260821T064739Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "baseline_sample",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_square",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_rect",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_dual_arc_trialta",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_wide",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
+    },
+    {
+      "ts": "2026-08-21T06:48:46Z",
+      "run_id": "20260821T064846Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "baseline_sample",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_square",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_rect",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_dual_arc_trialta",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_wide",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
+    },
+    {
+      "ts": "2026-08-21T06:50:19Z",
+      "run_id": "20260821T065019Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "baseline_sample",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_square",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_rect",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_dual_arc_trialta",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_wide",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
+    }
+  ],
+  "updated_at": "2026-08-21T06:50:28Z"
+}

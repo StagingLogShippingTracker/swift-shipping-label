@@ -1,0 +1,21 @@
+---
+description: Auto-commit and push meaningful app changes to GitHub
+alwaysApply: true
+---
+
+# Auto commit & push
+
+When finishing a meaningful change set in this repo (features, fixes, PDF/layout, releases), **commit and push to `origin` without waiting for the user to ask again**.
+
+## When to commit
+- After completing the user’s requested work (or a coherent slice of it)
+- Include related files only — no secrets (`.env`, credentials, private keys)
+- Skip empty commits; skip if the user explicitly said not to commit
+
+## How
+1. Follow the repo’s git commit protocol (status, diff, log, stage, HEREDOC message, status)
+2. Push with `git push -u origin HEAD` when the branch should update GitHub
+3. If a GitHub Release / Update asset is needed for Windows or Android, publish with `scripts/publish_release.ps1` (bump version when shipping user-facing changes)
+
+## Commit message style
+Match recent history: concise, imperative, focus on why (e.g. “Tighten piece-count field spacing on wide Windows layouts.”).

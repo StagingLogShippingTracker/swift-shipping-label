@@ -1,0 +1,39 @@
+---
+description: Continue whole-app improve loop unprompted (generate, speed, history, addresses)
+globs: mobile/lib/home_screen.dart,mobile/lib/document_history_sync.dart,mobile/lib/app_storage.dart,mobile/lib/address*.dart,mobile/test/app_improve_loop_test.dart,qa_app/**/*,scripts/app_improve_*.py
+alwaysApply: true
+---
+
+# App improve loop — CONTINUE UNPROMPTED (training)
+
+When this agent touches Generate, History, Address Book, restore UX, startup, or
+general app reliability, **own the app improve loop**. Same training contract as
+logo / Shipping / BOL (see `improve-loops-training.mdc`).
+
+## Mandatory loop
+
+1. Read `qa_app/synthetic/improve_summary_latest.json` (create/run if missing).
+2. Fix real top failures (crashes, empty PDFs, history wipe-on-open, slow budgets,
+   address load failures, restore hangs).
+3. Re-run: `python scripts/app_improve_loop.py` from repo root.
+4. Append lessons to `qa_app/synthetic/training_lessons.json`.
+5. Expand cases when new glitches appear.
+
+Docs: `qa_app/synthetic/README.md`.
+
+## Curriculum focus
+
+- Cold start / storage open timing
+- Shipping + Receiving + BOL (+ Bulk if cheap) generate success + timing
+- Rapid generate loop (no crash)
+- Logo restore path timing (honest budgets; skip generative if env lacks engines)
+- Address book load / search smoke
+- History retention (no prune-on-open regression)
+- General errors, glitches, shortcomings surfaced by scores
+
+## Constraints
+
+- Do not break Shipping SO/Contact lock or invent logo redraws.
+- Do not commit/push unless the user asked.
+- Prefer adjusting **budgets** for `logo_restore_cubic` over “optimizing” by
+  skipping real restore work — document honest machine-class limits in lessons.

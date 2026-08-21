@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Shipping Label improve loop: render matrix → score → log → summary.
+"""BOL improve loop: render matrix → score → log → summary.
 
-1. Run mobile/test/shipping_improve_loop_test.dart via repo .tools/flutter
-2. Score all qa_shipping/synthetic/renders with shipping_label_score.py
-3. Append qa_shipping/synthetic/improve_log.jsonl
-4. Write qa_shipping/synthetic/improve_summary_latest.json
+1. Run mobile/test/bol_improve_loop_test.dart via repo .tools/flutter
+2. Score all qa_bol/synthetic/renders with bol_label_score.py
+3. Append qa_bol/synthetic/improve_log.jsonl
+4. Write qa_bol/synthetic/improve_summary_latest.json
 
 Usage (repo root):
-  python scripts/shipping_label_improve_loop.py
-  python scripts/shipping_label_improve_loop.py --skip-render
-  python scripts/shipping_label_improve_loop.py --top 8
+  python scripts/bol_label_improve_loop.py
+  python scripts/bol_label_improve_loop.py --skip-render
+  python scripts/bol_label_improve_loop.py --top 8
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SYN = ROOT / "qa_shipping" / "synthetic"
+SYN = ROOT / "qa_bol" / "synthetic"
 LOG = SYN / "improve_log.jsonl"
 SUMMARY = SYN / "improve_summary_latest.json"
 MOBILE = ROOT / "mobile"
@@ -32,17 +32,17 @@ FLUTTER = ROOT / ".tools" / "flutter" / "bin" / (
 )
 
 sys.path.insert(0, str(ROOT / "scripts"))
+from bol_label_score import score_all  # noqa: E402
 from improve_loop_training import record_run_snapshot  # noqa: E402
-from shipping_label_score import score_all  # noqa: E402
 
 
-def _run_harness(timeout_s: int = 600) -> tuple[bool, str]:
+def _run_harness(timeout_s: int = 900) -> tuple[bool, str]:
     if not FLUTTER.is_file():
         return False, f"missing_flutter:{FLUTTER}"
     cmd = [
         str(FLUTTER),
         "test",
-        "test/shipping_improve_loop_test.dart",
+        "test/bol_improve_loop_test.dart",
     ]
     try:
         r = subprocess.run(
@@ -54,7 +54,7 @@ def _run_harness(timeout_s: int = 600) -> tuple[bool, str]:
         )
         out = (r.stdout or "") + ("\n" + r.stderr if r.stderr else "")
         if r.returncode != 0:
-            tail = "\n".join(out.strip().splitlines()[-40:])
+            tail = "\n".join(out.strip().splitlines()[-50:])
             return False, f"flutter_test_exit_{r.returncode}\n{tail}"
         return True, "ok"
     except subprocess.TimeoutExpired:
@@ -98,7 +98,6 @@ def run_loop(skip_render: bool = False, top_n: int = 10) -> dict:
     cases = scored.get("cases") or []
     ok_rows = [c for c in cases if c.get("ok") and c.get("composite") is not None]
 
-    # Append per-case log rows
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as f:
         for row in ok_rows:
@@ -132,7 +131,6 @@ def run_loop(skip_render: bool = False, top_n: int = 10) -> dict:
     best = sorted(ok_rows, key=lambda r: -r["composite"])[: min(5, top_n)]
     gate_fails = scored.get("gate_fails") or []
 
-    # Metric-level top failures: lowest metric across cases
     metric_fails: list[dict] = []
     for r in ok_rows:
         for m, v in (r.get("metrics") or {}).items():
@@ -171,23 +169,22 @@ def run_loop(skip_render: bool = False, top_n: int = 10) -> dict:
         "top_wins": [
             {"case_id": r["case_id"], "composite": r["composite"]} for r in best
         ],
-        "approved_lock_reminder": {
+        "north_star": "baseline_sample",
+        "do_not_touch_shipping_lock": {
             "after_pill_gap": 11.0,
             "so_show_rule": False,
             "contact_label_to_value": 3.0,
-            "note": "Never change these to chase scores; fix scorer bands if gates false-fail.",
         },
         "log": str(LOG.relative_to(ROOT)).replace("\\", "/"),
         "next": (
-            "Read this summary + qa_shipping/synthetic/training_lessons.json; "
-            "fix top_failures that are real layout bugs "
-            "(overflow, logo encroachment, margins, columns, bars) without "
-            "changing locked SO/Contact constants; re-run this script; append "
-            "score-proven lessons. If only gate_fails on approved bands, adjust "
-            "shipping_label_score.py."
+            "Read this summary + qa_bol/synthetic/training_lessons.json; fix "
+            "top_failures that are real layout bugs (long-field cutoff, logo "
+            "under Probill/Swift, margins, overcrowding) without changing "
+            "Shipping SO/Contact locks; re-run this script; append score-proven "
+            "lessons."
         ),
     }
-    record_run_snapshot("shipping", summary)
+    record_run_snapshot("bol", summary)
     SUMMARY.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\n=== improve loop summary ===", flush=True)
@@ -205,7 +202,10 @@ def run_loop(skip_render: bool = False, top_n: int = 10) -> dict:
     )
     print("\nTop failures (fix next):", flush=True)
     for w in summary["top_failures"]:
-        print(f"  {w['case_id']}: composite={w['composite']} metrics={w['metrics']}", flush=True)
+        print(
+            f"  {w['case_id']}: composite={w['composite']} metrics={w['metrics']}",
+            flush=True,
+        )
     if summary["metric_hotspots"]:
         print("\nMetric hotspots:", flush=True)
         for m in summary["metric_hotspots"][:8]:
@@ -220,7 +220,7 @@ def run_loop(skip_render: bool = False, top_n: int = 10) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Shipping label improve loop")
+    p = argparse.ArgumentParser(description="BOL label improve loop")
     p.add_argument(
         "--skip-render",
         action="store_true",

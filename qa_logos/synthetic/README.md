@@ -14,8 +14,18 @@ qa_logos/synthetic/
   pairs.json             # clean ↔ degraded + recipe + seed
   improve_log.jsonl      # Append-only run history
   improve_summary_latest.json
+  training_lessons.json  # Durable lessons + automatic run snapshots
   README.md              # this file
 ```
+
+## Training memory
+
+```powershell
+python scripts/improve_loop_training.py append-lesson logo `
+  --title "..." --lesson "..." --do-not-regress "no invented Arc red from gray"
+```
+
+See `.cursor/rules/improve-loops-training.mdc`.
 
 ### Anchors (quality north star)
 

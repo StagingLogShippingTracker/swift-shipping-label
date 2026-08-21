@@ -1,0 +1,53 @@
+---
+description: Continue BOL layout improve loop unprompted (like shipping + logo Phase 4)
+globs: mobile/lib/pdf/bol_label_pdf.dart,mobile/test/bol_improve_loop_test.dart,mobile/test/generate_bol_preview_test.dart,qa_bol/**/*,scripts/bol_label_*.py
+alwaysApply: true
+---
+
+# BOL improve loop — CONTINUE UNPROMPTED (training)
+
+When this agent (or any concurrent agent) touches Bill of Lading PDF/layout,
+**own the improve loop**. Do not stop after one tweak and wait for the user to
+re-ask. This loop **trains** BOL layout quality over time (spacing, bleed,
+overcrowding, long refs, logo/Probill/Swift clearance).
+
+## Mandatory loop
+
+1. Read `qa_bol/synthetic/improve_summary_latest.json` (create/run the loop
+   if missing).
+2. Fix the listed **top_failures** / gate fails that are real layout bugs
+   (long-field cutoff, logo under Probill/Swift, margin bleed, overcrowding,
+   missing orange title bar).
+3. Re-run: `python scripts/bol_label_improve_loop.py` from repo root
+   (uses `.tools/flutter` + `scripts/bol_label_score.py`).
+4. Confirm mean composite and gates move the right way; iterate again if clear
+   score-proven bugs remain.
+5. Append lessons to `qa_bol/synthetic/training_lessons.json`; expand cases when
+   new BOL failure modes appear.
+
+Docs: `qa_bol/synthetic/README.md`. See also `improve-loops-training.mdc`.
+
+## North star
+
+- `filled/qa_bol_preview/bol_preview_latest.png` /
+  `mobile/test/generate_bol_preview_test.dart`
+- Matrix case `baseline_sample` (`ShippingLabelData.bolSample` + sample logo)
+
+Protect baseline visual quality. Prefer shrink-to-fit / wrap / logo frame
+clamping over redesign.
+
+## Hard constraints
+
+- Do **not** change Shipping Label locked SO/Contact constants
+  (`afterPillGap` 11.0, under-pill `showRule` false, contact label→value 3.0).
+  Do not edit `shipping_label_pdf.dart` locked values as a side effect of BOL work.
+- Long Sales Order / PO / Project / Packing List values must remain **visible**
+  (shrink or wrap) — never clipped away or empty when the source value is set.
+- Customer logos must stay in the left header frame; never invade Probill or
+  Swift ink.
+
+## Out of scope for “fixes”
+
+- Do not loosen harness soft gates to hide a regression.
+- Do not commit/push unless the user asked. The improve loop itself does not
+  require a commit.

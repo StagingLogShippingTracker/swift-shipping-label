@@ -1,0 +1,50 @@
+---
+description: Continue Receiving Label layout improve loop unprompted (training)
+globs: mobile/lib/pdf/shipping_label_pdf.dart,mobile/test/receiving_improve_loop_test.dart,qa_receiving/**/*,scripts/receiving_label_*.py
+alwaysApply: true
+---
+
+# Receiving Label improve loop — CONTINUE UNPROMPTED (training)
+
+When this agent (or any concurrent agent) touches Receiving Label PDF/layout
+(`buildReceiving` / `_drawReceivingPage`), **own the improve loop**. Do not stop
+after one tweak and wait for the user to re-ask. This loop **trains** Receiving
+layout quality over time.
+
+## Mandatory loop
+
+1. Read `qa_receiving/synthetic/improve_summary_latest.json` (create/run if missing).
+2. Fix real **top_failures** / gate fails (long-field cutoff, logo/Swift
+   encroachment, missing yellow SO pill, missing SO→PM hairline, missing
+   received band, wrong instructions alert).
+3. Re-run: `python scripts/receiving_label_improve_loop.py` from repo root.
+4. Confirm mean composite and gates move the right way; iterate if clear
+   score-proven bugs remain.
+5. Append lessons to `qa_receiving/synthetic/training_lessons.json`; expand cases
+   when new Receiving failure modes appear.
+
+Docs: `qa_receiving/synthetic/README.md`. See also `improve-loops-training.mdc`.
+
+## Receiving vs Shipping (do not confuse)
+
+| Behavior | Receiving | Shipping (locked) |
+|---|---|---|
+| Under-pill `showRule` | **true** (SO → PM) | **false** |
+| SO pill color | Yellow `recvSoBg` | Peach `soBg` |
+| Layout | Full-width stack | Two-column |
+
+Never “fix” Receiving by forcing Shipping’s `showRule: false`. Never edit
+Shipping’s approved SO/Contact constants (`afterPillGap` 11.0, Contact 3.0) as a
+side effect of Receiving work.
+
+## North star
+
+- Matrix case `baseline_receiving_sample` (`ShippingLabelData.receivingSample`)
+- Visual anchors: RECEIVING chip, yellow SO pill + hairline, PM, received band,
+  orange bumpers, red instructions alert when non-empty
+
+## Out of scope for “fixes”
+
+- Do not loosen harness soft gates to hide a regression.
+- Do not commit/push unless the user asked. The improve loop itself does not
+  require a commit.

@@ -1,0 +1,177 @@
+{
+  "domain": "logo",
+  "version": 1,
+  "purpose": "Incremental training memory for this improve loop. Score \u2192 fix \u2192 re-score \u2192 keep lessons \u2192 expand cases.",
+  "lessons": [
+    {
+      "id": "20260821T070313Z",
+      "ts": "2026-08-21T07:03:13Z",
+      "title": "Vectorize oversmooth gate for thin marks",
+      "lesson": "GCM is thin_wordmark so the old non-thin-only oversmooth gate never fired; mushy vectorize beat Lanczos on disk. Reject when edge_energy(restored@prep) < 0.82*prep AND ink IoU vs prep >= 0.85 (thin+non-thin). Do not reject low-IoU soft redraws (gcm__downscale vectorize wins). Aggressive pink demotion in recover/_brand_palette regressed swift_orange__import_combo (~-0.11) — do not promote.",
+      "do_not_regress": "swift_orange import_combo baseline; gcm__downscale vectorize IoU wins",
+      "case_ids": [
+        "gcm__import_combo",
+        "gcm__plate_halo",
+        "trialta__downscale_jpeg",
+        "swift_orange_solid__plate_halo"
+      ],
+      "tags": [
+        "vectorize",
+        "oversmooth",
+        "thin-wordmark"
+      ]
+    },
+    {
+      "id": "20260821T065009Z",
+      "ts": "2026-08-21T06:50:09Z",
+      "title": "No invented brand color from gray",
+      "lesson": "When import_combo / plate_halo wipe chroma (Arc), do not invent brand red. Soften degrade recipes so residual chroma usually survives; document honest palette_fidelity limits.",
+      "do_not_regress": "palette invent from fully gray sources",
+      "case_ids": [
+        "arc__import_combo"
+      ],
+      "tags": [
+        "fidelity",
+        "honest-limit"
+      ]
+    },
+    {
+      "id": "20260821T070118Z",
+      "ts": "2026-08-21T07:01:18Z",
+      "title": "Extreme print upscale: linear + strip at working size",
+      "lesson": "App loop proved skipGenerative was ~80s from stripForeignMarks on huge canvases and Dart cubic at scale>8. Keep strip at working size (<=1600) and linear interp when scale>8; single upscale in finalizeConservatorOnly. Do not reintroduce double cubic upscale.",
+      "do_not_regress": "logo_restore_cubic / conservator path timing",
+      "case_ids": [],
+      "tags": [
+        "restore",
+        "speed",
+        "app-cross-domain"
+      ]
+    }
+  ],
+  "run_snapshots": [
+    {
+      "ts": "2026-08-21T06:15:21Z",
+      "run_id": "20260821T061521Z",
+      "mean_composite": 0.755,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.4814,
+          "ink_iou": 0.2469,
+          "palette_fidelity": 0.0,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0249
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.4895,
+          "ink_iou": 0.2638,
+          "palette_fidelity": 0.0005,
+          "alpha_clean": 0.9982,
+          "aspect_drift": 0.0131
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.4926,
+          "ink_iou": 0.2651,
+          "palette_fidelity": 0.015,
+          "alpha_clean": 0.9965,
+          "aspect_drift": 0.0161
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.5288,
+          "ink_iou": 0.3265,
+          "palette_fidelity": 0.0839,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0324
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5356,
+          "ink_iou": 0.3329,
+          "palette_fidelity": 0.1059,
+          "alpha_clean": 0.9993,
+          "aspect_drift": 0.0361
+        }
+      ],
+      "gate_fails": [],
+      "next": "Improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors). Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9225,
+      "engine_mean_composite": {
+        "baseline": 0.751,
+        "esrgan": 0.7679,
+        "vectorize": 0.7462
+      }
+    },
+    {
+      "ts": "2026-08-21T07:03:13Z",
+      "run_id": "20260821T070313Z",
+      "mean_composite": 0.7575,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.4814,
+          "ink_iou": 0.2469,
+          "palette_fidelity": 0.0,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0249
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.4895,
+          "ink_iou": 0.2638,
+          "palette_fidelity": 0.0005,
+          "alpha_clean": 0.9982,
+          "aspect_drift": 0.0131
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.4926,
+          "ink_iou": 0.2651,
+          "palette_fidelity": 0.015,
+          "alpha_clean": 0.9965,
+          "aspect_drift": 0.0161
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.5353,
+          "ink_iou": 0.331,
+          "palette_fidelity": 0.1115,
+          "alpha_clean": 0.9958,
+          "aspect_drift": 0.0378
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5356,
+          "ink_iou": 0.3329,
+          "palette_fidelity": 0.1059,
+          "alpha_clean": 0.9993,
+          "aspect_drift": 0.0361
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9242,
+      "engine_mean_composite": {
+        "baseline": 0.751,
+        "esrgan": 0.7679,
+        "vectorize": 0.7535
+      }
+    }
+  ],
+  "updated_at": "2026-08-21T07:18:52Z"
+}

@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-08-21T06:57:49.245266Z",
+  "n_cases": 10,
+  "case_ids": [
+    "cold_start_storage",
+    "generate_shipping",
+    "generate_receiving",
+    "generate_bol",
+    "logo_restore_cubic",
+    "address_book_local",
+    "history_open_no_prune",
+    "history_snapshot_heuristics",
+    "exclusive_dialogs",
+    "rapid_generate_loop"
+  ],
+  "notes": [
+    "address_book_network: skipped (local-only smoke)"
+  ]
+}

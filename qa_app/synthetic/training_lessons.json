@@ -1,0 +1,381 @@
+{
+  "domain": "app",
+  "version": 1,
+  "purpose": "Incremental training memory for this improve loop. Score \u2192 fix \u2192 re-score \u2192 keep lessons \u2192 expand cases.",
+  "lessons": [
+    {
+      "id": "20260821T065009Z",
+      "ts": "2026-08-21T06:50:09Z",
+      "title": "History prune is opt-in",
+      "lesson": "pruneWithoutSnapshots must never run from History UI open \u2014 missing snapshots used to wipe kinds. Retention is 90 days; historyKinds are shipping/receiving/bol only.",
+      "do_not_regress": "no prune-on-open wipe",
+      "case_ids": [],
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "id": "20260821T065233Z",
+      "ts": "2026-08-21T06:52:33Z",
+      "title": "logo_restore_cubic budget is honest",
+      "lesson": "Cubic restore can take ~80s on this machine class and still succeed. Prefer documenting / adjusting speed budgets over skipping restore work or inventing shortcuts that hide real cost.",
+      "do_not_regress": "restore must still succeed and produce bytes",
+      "case_ids": [
+        "logo_restore_cubic"
+      ],
+      "tags": [
+        "restore",
+        "budget"
+      ]
+    },
+    {
+      "id": "20260821T065818Z",
+      "ts": "2026-08-21T06:58:18Z",
+      "title": "Extreme print upscale must stay fast",
+      "lesson": "skipGenerative restore was ~80s due to stripForeignMarks on 3000px canvases and pure Dart cubic at scale>8. Fixed: strip only at working size (<=1600), single upscale in finalizeConservatorOnly, linear interp when scale>8. Prefer profiling over budget-only papering.",
+      "do_not_regress": "logo_restore_cubic under budget with success+bytes",
+      "case_ids": [
+        "logo_restore_cubic"
+      ],
+      "tags": [
+        "restore",
+        "speed"
+      ]
+    }
+  ],
+  "run_snapshots": [
+    {
+      "ts": "2026-08-21T06:52:33Z",
+      "run_id": "20260821T065233Z",
+      "mean_composite": 0.985,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "logo_restore_cubic",
+          "composite": 0.85,
+          "metrics": {
+            "success": 1.0,
+            "speed": 0.2499,
+            "output_bytes": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 80036.0
+        },
+        {
+          "case_id": "cold_start_storage",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 9.0
+        },
+        {
+          "case_id": "generate_shipping",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 1383.0
+        },
+        {
+          "case_id": "generate_receiving",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 405.0
+        },
+        {
+          "case_id": "generate_bol",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 1102.0
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_app/synthetic/training_lessons.json; fix top_failures that are real app bugs (generate integrity, prune-on-open, restore/address regressions, rapid-loop crashes) without changing Shipping SO/Contact locks or inventing logo redraws; expand curriculum for new glitches; re-run; append score-proven lessons. Adjust budgets only when the machine class proves a band is wrong.",
+      "metric_hotspots": [
+        {
+          "case_id": "logo_restore_cubic",
+          "metric": "speed",
+          "score": 0.2499,
+          "composite": 0.85
+        }
+      ]
+    },
+    {
+      "ts": "2026-08-21T06:52:44Z",
+      "run_id": "20260821T065244Z",
+      "mean_composite": 0.9876,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "logo_restore_cubic",
+          "composite": 0.8756,
+          "metrics": {
+            "success": 1.0,
+            "speed": 0.3781,
+            "output_bytes": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 52893.0
+        },
+        {
+          "case_id": "cold_start_storage",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 9.0
+        },
+        {
+          "case_id": "generate_shipping",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 1114.0
+        },
+        {
+          "case_id": "generate_receiving",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 279.0
+        },
+        {
+          "case_id": "generate_bol",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 796.0
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_app/synthetic/training_lessons.json; fix top_failures that are real app bugs (generate integrity, prune-on-open, restore/address regressions, rapid-loop crashes) without changing Shipping SO/Contact locks or inventing logo redraws; expand curriculum for new glitches; re-run; append score-proven lessons. Adjust budgets only when the machine class proves a band is wrong.",
+      "metric_hotspots": [
+        {
+          "case_id": "logo_restore_cubic",
+          "metric": "speed",
+          "score": 0.3781,
+          "composite": 0.8756
+        }
+      ]
+    },
+    {
+      "ts": "2026-08-21T06:57:29Z",
+      "run_id": "20260821T065729Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "cold_start_storage",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 7.0
+        },
+        {
+          "case_id": "generate_shipping",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 1106.0
+        },
+        {
+          "case_id": "generate_receiving",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 313.0
+        },
+        {
+          "case_id": "generate_bol",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 884.0
+        },
+        {
+          "case_id": "logo_restore_cubic",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0,
+            "output_bytes": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 8335.0
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_app/synthetic/training_lessons.json; fix top_failures that are real app bugs (generate integrity, prune-on-open, restore/address regressions, rapid-loop crashes) without changing Shipping SO/Contact locks or inventing logo redraws; expand curriculum for new glitches; re-run; append score-proven lessons. Adjust budgets only when the machine class proves a band is wrong."
+    },
+    {
+      "ts": "2026-08-21T06:58:25Z",
+      "run_id": "20260821T065825Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "cold_start_storage",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 7.0
+        },
+        {
+          "case_id": "generate_shipping",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 1106.0
+        },
+        {
+          "case_id": "generate_receiving",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 313.0
+        },
+        {
+          "case_id": "generate_bol",
+          "composite": 1.0,
+          "metrics": {
+            "file_integrity": 1.0,
+            "success": 1.0,
+            "speed": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 884.0
+        },
+        {
+          "case_id": "logo_restore_cubic",
+          "composite": 1.0,
+          "metrics": {
+            "success": 1.0,
+            "speed": 1.0,
+            "output_bytes": 1.0
+          },
+          "gates": {
+            "success": true,
+            "all_ok": true
+          },
+          "duration_ms": 8335.0
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_app/synthetic/training_lessons.json; fix top_failures that are real app bugs (generate integrity, prune-on-open, restore/address regressions, rapid-loop crashes) without changing Shipping SO/Contact locks or inventing logo redraws; expand curriculum for new glitches; re-run; append score-proven lessons. Adjust budgets only when the machine class proves a band is wrong."
+    }
+  ],
+  "updated_at": "2026-08-21T06:58:25Z"
+}

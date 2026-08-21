@@ -31,7 +31,23 @@ qa_shipping/synthetic/
   manifest.json            # case matrix from last harness run
   improve_log.jsonl        # append-only run history
   improve_summary_latest.json
+  training_lessons.json    # durable lessons + automatic run snapshots
 ```
+
+## Training memory
+
+After score-proven fixes, append a lesson:
+
+```powershell
+python scripts/improve_loop_training.py append-lesson shipping `
+  --title "Customer/Ship To wrap" `
+  --lesson "..." `
+  --do-not-regress "column bleed on long customer names" `
+  --case text_long_customer
+```
+
+Loop runners automatically append `run_snapshots` into `training_lessons.json`.
+See `.cursor/rules/improve-loops-training.mdc`.
 
 ## Case matrix (harness)
 

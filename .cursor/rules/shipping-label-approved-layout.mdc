@@ -22,6 +22,8 @@ the user **explicitly** asks to change the Shipping Label format.
 | Contact vs piece-band | name clears soft rule by **≥8pt** | overlap |
 
 Receiving may still use `showRule: true` for SO→PM. That is separate from Shipping.
+Receiving has its own improve loop: `qa_receiving/synthetic/` /
+`scripts/receiving_label_improve_loop.py` / `.cursor/rules/receiving-label-improve-loop.mdc`.
 
 ## Locked customer logo sizing (red / green / pink)
 

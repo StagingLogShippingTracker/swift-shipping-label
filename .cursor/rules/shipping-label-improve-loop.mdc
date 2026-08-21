@@ -4,11 +4,11 @@ globs: mobile/lib/pdf/shipping_label_pdf.dart,mobile/lib/logo_ink_fit.dart,mobil
 alwaysApply: true
 ---
 
-# Shipping Label improve loop — CONTINUE UNPROMPTED
+# Shipping Label improve loop — CONTINUE UNPROMPTED (training)
 
 When this agent (or any concurrent agent) touches Shipping Label PDF/layout,
 **own the improve loop**. Do not stop after one tweak and wait for the user to
-re-ask. Same spirit as logo Phase 4 (`qa_logos/synthetic`).
+re-ask. This loop **trains** Shipping layout quality over time.
 
 ## Mandatory loop
 
@@ -20,8 +20,10 @@ re-ask. Same spirit as logo Phase 4 (`qa_logos/synthetic`).
    (uses `.tools/flutter` + `scripts/shipping_label_score.py`).
 4. Confirm mean composite and gates move the right way; iterate again if clear
    score-proven bugs remain.
+5. Append lessons to `qa_shipping/synthetic/training_lessons.json`; expand cases
+   when new layout failure modes appear.
 
-Docs: `qa_shipping/synthetic/README.md`.
+Docs: `qa_shipping/synthetic/README.md`. See also `improve-loops-training.mdc`.
 
 ## HARD LOCK — never break approved SO / Contact
 

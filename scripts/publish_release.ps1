@@ -1,4 +1,4 @@
-# Build Windows portable zip + Android APK and publish a GitHub Release.
+﻿# Build Windows portable zip + Android APK and publish a GitHub Release.
 #
 # Usage:
 #   .\scripts\publish_release.ps1
@@ -204,9 +204,15 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
+### What's new (v1.1.85)
+- **BOL:** ORDER# fallback; tracking refs shrink/wrap; wide logos clamp left of Probill/Swift
+- **Logo restore:** faster large upscales (strip at working size; linear when scale > 8)
+- **Receiving Label:** improve-loop scoring harness (SO→PM hairline preserved; Shipping SO/Contact lock unchanged)
+- **Training loops:** Shipping, Receiving, BOL, app, and logo restore curriculum / harnesses
+
 ### What's new (v1.1.84)
 - **Shipping Label:** approved SO / Swift Contact spacing; square/circular vs rectangular logo height rules; Customer Pick-Up freight
-- **BOL:** L×W×H each with its own unit (e.g. 6 in × 6 in × 21 ft); Vehicle ID + Departure Date row; standardized micro-label→value gaps
+- **BOL:** L×W×H each with its own unit; Vehicle ID + Departure Date row; standardized micro-label→value gaps
 - **Freight:** Customer Pick-Up on Shipping Label and BOL radios
 - **Logo restore:** vectorize → Real-ESRGAN → cubic (Gemini opt-in); Swift-quality fill/stroke seams; golden + shipping improve loops
 
@@ -224,7 +230,6 @@ $notes = @"
 - **Logo restore:** Gemini enhances existing pixels, then studio finish; later restores reuse winning techniques
 - **Restore UX:** runs from Edit logo with Cancel — not automatically on Generate
 - **BOL dimensions:** length × width × height with a unit
-
 ### Assets
 - SwiftDocumentGenerator-Setup.exe - Windows installer (per-user, no admin; Start Menu, uninstaller). Preferred for in-app Update.
 - SwiftDocumentGenerator-windows.zip - portable Flutter onedir. Run swift_shipping_label.exe.

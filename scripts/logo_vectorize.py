@@ -182,23 +182,23 @@ def convert(src: Path, dest: Path, min_height: int = 3000) -> Path:
                 max_aspect_drift=max_drift,
                 min_ink_iou=min_iou,
             )
-            # Non-thin oversmooth: Propak import_combo locks source fills
-            # (high IoU) but kills edge energy vs the prepared crop. Compare at
-            # prep resolution — cheap and avoids inventing chroma.
-            if not thin:
-                h0, w0 = prepared.shape[:2]
-                small = np.asarray(
-                    Image.fromarray(finished, "RGBA").resize(
-                        (w0, h0), Image.Resampling.LANCZOS
-                    )
+            # Oversmooth: vectorize can lock fills (high IoU vs prep) while
+            # killing edge energy. Apply to thin + non-thin — GCM is thin and
+            # was skipping the old non-thin-only gate. Do NOT reject low-IoU
+            # soft redraws (gcm__downscale vectorize beats Lanczos on clean IoU).
+            h0, w0 = prepared.shape[:2]
+            small = np.asarray(
+                Image.fromarray(finished, "RGBA").resize(
+                    (w0, h0), Image.Resampling.LANCZOS
                 )
-                ve = edge_energy(small)
-                pe = edge_energy(prepared)
-                iou_v = ink_mask_iou(prepared, finished)
-                if pe > 1e-6 and ve < 0.78 * pe and iou_v >= 0.92:
-                    raise RuntimeError(
-                        f"oversmooth (edge_ratio={ve / pe:.3f}, iou={iou_v:.3f})"
-                    )
+            )
+            ve = edge_energy(small)
+            pe = edge_energy(prepared)
+            iou_v = ink_mask_iou(prepared, finished)
+            if pe > 1e-6 and ve < 0.82 * pe and iou_v >= 0.85:
+                raise RuntimeError(
+                    f"oversmooth (edge_ratio={ve / pe:.3f}, iou={iou_v:.3f})"
+                )
         except RuntimeError as e:
             print(f"vectorize fidelity reject ({e}); Lanczos fallback", file=sys.stderr)
             finished = finalize_restore(

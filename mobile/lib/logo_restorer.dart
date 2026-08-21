@@ -220,8 +220,13 @@ class LogoRestorer {
 
     final decoded = img.decodeImage(png);
     if (decoded != null) {
-      LogoImageProcessor.stripForeignMarks(decoded);
-      png = Uint8List.fromList(img.encodePng(decoded));
+      // Connected-component strip is O(pixels). Run only at working size —
+      // after a 3000px upscale this dominated restore latency (~80s smoke).
+      final maxEdge = math.max(decoded.width, decoded.height);
+      if (maxEdge <= 1600) {
+        LogoImageProcessor.stripForeignMarks(decoded);
+        png = Uint8List.fromList(img.encodePng(decoded));
+      }
     }
 
     final enhanceOnly = !usedGemini && !usedRealEsrgan && !usedVectorize;
@@ -275,9 +280,10 @@ class LogoRestorer {
   static Uint8List _conservatorRaster(Uint8List sourceBytes) {
     final prepared = LogoImageProcessor.prepareRasterForRestore(sourceBytes);
     final bytes = prepared.isNotEmpty ? prepared : sourceBytes;
-    // Premultiplied cubic only. Halo-strip at native size ate thin grey
-    // taglines (Allied FITTING, Paragon OILFIELD SUPPLY).
-    return LogoImageProcessor.upscaleForPrint(bytes, minHeight: minDimension);
+    // Keep native / prepared size here. [_finalizeConservatorOnly] does the
+    // single premultiplied cubic upscale to [minDimension] — avoid double
+    // 3000px encode (was ~tens of seconds on Windows smoke).
+    return bytes;
   }
 
   static bool _isPrintReadyRestored(File source, Uint8List bytes) {

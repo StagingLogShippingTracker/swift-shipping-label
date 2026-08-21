@@ -1,0 +1,54 @@
+---
+description: All Swift Document Generator improve loops are ongoing training systems
+alwaysApply: true
+---
+
+# Improve loops = incremental training (always)
+
+This repo’s improve loops are **not one-shot QA**. They are the product’s
+**training curriculum**: score → fix → re-score → keep lessons → expand cases.
+Agents must treat them as continuous improvement of the app and its functions.
+
+## Active loops (own without waiting for re-prompt)
+
+| Domain | Summary path | Runner |
+|--------|--------------|--------|
+| Logo restore | `qa_logos/synthetic/improve_summary_latest.json` | `scripts/logo_restore_improve_loop.py` |
+| Shipping Label | `qa_shipping/synthetic/improve_summary_latest.json` | `scripts/shipping_label_improve_loop.py` |
+| Receiving Label | `qa_receiving/synthetic/improve_summary_latest.json` | `scripts/receiving_label_improve_loop.py` |
+| BOL | `qa_bol/synthetic/improve_summary_latest.json` | `scripts/bol_label_improve_loop.py` |
+| Whole app | `qa_app/synthetic/improve_summary_latest.json` | `scripts/app_improve_loop.py` |
+
+Per-domain rules: `logo-restore-improve-loop.mdc`, `shipping-label-improve-loop.mdc`,
+`receiving-label-improve-loop.mdc`, `bol-improve-loop.mdc`, `app-improve-loop.mdc`.
+Shipping layout lock: `shipping-label-approved-layout.mdc`.
+
+## Training contract (every loop)
+
+1. **Read** the latest `improve_summary_latest.json` before changing that domain.
+2. **Attack** top failures that are real (not scorer false positives / honest limits).
+3. **Re-run** the domain runner; promote only score-proven changes.
+4. **Record lessons** in that domain’s `training_lessons.json` (append): what failed,
+   what fixed it, what must never regress, honest capability limits.
+5. **Expand the curriculum** over time — add cases for new failure modes (long text,
+   dual logos, slow restore, history wipe, etc.) so the suite gets harder and smarter.
+6. **Do not plateau silently** — if scores stall, document the limit in
+   `training_lessons.json` and either raise the case matrix or note why further
+   gains need new engines (not invented brand redraws / broken locks).
+
+## Cross-domain
+
+- Fixing Shipping must not break Receiving / BOL (and vice versa) without a
+  scored check.
+- Receiving keeps SO→PM `showRule: true`; do **not** apply Shipping’s
+  `showRule: false` lock to Receiving.
+- Logo restore must not invent brand colors from gray sources.
+- Never “fix” scores by loosening gates that encode approved user layout
+  (especially Shipping SO/Contact lock).
+- Commit/push only per session commit policy / explicit user ask.
+
+## Session habit
+
+When the user’s task touches any domain above, run at least **one** improve-loop
+iteration for that domain before stopping — unless blocked on a long in-flight
+build/publish the user just requested.

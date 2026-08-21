@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,10 +17,20 @@ class AppChangelog {
   /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
   static const campaignId = 'whats_new_1_1_78';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.84)";
+  static const title = "What's new (v1.1.68 – v1.1.85)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.85',
+      bullets: [
+        'BOL: ORDER# fallback when Sales Order is empty; tracking refs shrink/wrap so long values stay visible',
+        'BOL: wide customer logos clamp harder left of Probill / Swift',
+        'Logo restore: faster on large upscales (strip at working size; linear when scale > 8)',
+        'Receiving Label: improve-loop scoring harness (keeps SO→PM hairline; separate from Shipping lock)',
+        'Training loops: shared improve-loop curriculum for Shipping, Receiving, BOL, app, and logo restore',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.84',
       bullets: [

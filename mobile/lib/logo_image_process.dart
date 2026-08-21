@@ -311,8 +311,9 @@ class LogoImageProcessor {
     return Uint8List.fromList(img.encodePng(out));
   }
 
-  /// Cubic resize with premultiplied RGB. Un-premultiplied cubic of a knockout
-  /// mixes ink with "white" stored in transparent pixels and ghosts thin type.
+  /// Premultiplied resize. Prefer cubic for modest scales; for extreme
+  /// enlargements (tiny phone/fax marks → print height) cubic cannot invent
+  /// detail and is O(outPixels·kernel) — use linear so restore stays usable.
   static img.Image resizePremultipliedCubic(
     img.Image src, {
     required int width,
@@ -320,11 +321,17 @@ class LogoImageProcessor {
   }) {
     final work = src.numChannels == 4 ? src.clone() : src.convert(numChannels: 4);
     _premultiplyInPlace(work);
+    final scaleX = width / math.max(1, work.width);
+    final scaleY = height / math.max(1, work.height);
+    final scale = math.max(scaleX, scaleY);
+    final interp = scale > 8
+        ? img.Interpolation.linear
+        : img.Interpolation.cubic;
     final scaled = img.copyResize(
       work,
       width: width,
       height: height,
-      interpolation: img.Interpolation.cubic,
+      interpolation: interp,
     );
     _unpremultiplyInPlace(scaled);
     return scaled;

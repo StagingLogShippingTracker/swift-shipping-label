@@ -24,6 +24,10 @@ class BolLabelPdf {
 
   final ShippingLabelPdf shipping;
 
+  /// Last-page layout dump for QA / improve-loop (PDF pt, bottom-left origin).
+  /// Cleared at the start of each page paint; read after [build]/appendPages].
+  static Map<String, dynamic>? debugLayout;
+
   static const swift = PdfColor.fromInt(0xFFCE4E30);
   static const swiftLight = PdfColor.fromInt(0xFFFDF4F1);
   static const black = PdfColor.fromInt(0xFF1A1A1A);
@@ -258,6 +262,14 @@ class BolLabelPdf {
     final pageW = pageFormat.width;
     final pageH = pageFormat.height;
     var y = pageH - margin - 2;
+    debugLayout = {
+      'copy_label': copyLabel,
+      'page_format': {'width': pageW, 'height': pageH},
+      'margin': margin,
+      'content_w': contentW,
+      'customer_to_probill_gap': customerToProbillGap,
+      'micro_to_value_gap': microToValueGap,
+    };
 
     // Header row: Swift + Probill are absolutely locked first. Customer logos
     // may only occupy the remaining left frame and never move static elements.
@@ -265,6 +277,7 @@ class BolLabelPdf {
     var swiftH = swiftBandH;
     var swiftW = 0.0;
     var swiftX = margin;
+    var swiftY = y - swiftH;
 
     if (swiftLogo != null) {
       final ink = shipping.swiftInk;
@@ -279,10 +292,11 @@ class BolLabelPdf {
         swiftH = targetH;
         swiftX = pageW - margin - swiftW;
         if (swiftX < margin) swiftX = margin;
+        swiftY = ink.bitmapBottomY(y - swiftH, targetH);
         c.drawImage(
           swiftLogo,
           swiftX,
-          ink.bitmapBottomY(y - swiftH, targetH),
+          swiftY,
           ink.drawWidth(targetH),
           ink.drawHeight(targetH),
         );
@@ -298,14 +312,27 @@ class BolLabelPdf {
           }
           swiftX = pageW - margin - swiftW;
           if (swiftX < margin) swiftX = margin;
-          c.drawImage(swiftLogo, swiftX, y - swiftH, swiftW, swiftH);
+          swiftY = y - swiftH;
+          c.drawImage(swiftLogo, swiftX, swiftY, swiftW, swiftH);
         }
       }
     }
+    debugLayout!['swift_rect'] = {
+      'x': swiftX,
+      'y': swiftY,
+      'w': swiftW,
+      'h': swiftH,
+    };
 
     // Probill locks immediately left of Swift (hardcoded relative to Swift).
     // Customer logos never feed these coordinates.
     final probill = _probillBox(swiftX, swiftW, y, swiftH);
+    debugLayout!['probill_rect'] = {
+      'x': probill.x,
+      'y': probill.y,
+      'w': probill.w,
+      'h': probill.h,
+    };
     final staticLeft = swiftW > 0
         ? math.min(swiftX, probill.x)
         : probill.x;
@@ -321,6 +348,12 @@ class BolLabelPdf {
 
     // Title band
     const bandH = 22.0;
+    debugLayout!['title_bar'] = {
+      'x': margin,
+      'y': y - bandH,
+      'w': contentW,
+      'h': bandH,
+    };
     _orangeBar(c, margin, y - bandH, contentW, bandH, r: 3);
     _drawCentered(
       c,
@@ -533,21 +566,64 @@ class BolLabelPdf {
     }
     y -= th;
     cx = margin;
+    final trackCells = <Map<String, dynamic>>[];
+    // Prefer 2-line wrap + shrink so extreme refs stay visible (never vanish).
+    const trackMaxLines = 2;
+    const trackValueSize = 7.0;
+    final trackValueH = math.max(
+      rh - 2 * inset,
+      trackMaxLines * (trackValueSize * 0.72 + 1) - 1,
+    );
+    final trackRowH = math.max(rh, trackValueH + 2 * inset);
+    // If we grew the row, shift the value band down from the header bottom.
+    final valueTop = y;
+    final valueBot = y - trackRowH;
     for (var i = 0; i < trackCols.length; i++) {
-      _rect(c, cx, y - rh, tWidths[i], rh);
+      final key = trackCols[i].$1;
+      final value = _trackingValue(d, key);
+      final cellX = cx;
+      final cellY = valueBot;
+      final cellW = tWidths[i];
+      final cellH = trackRowH;
+      _rect(c, cellX, cellY, cellW, cellH);
       _drawValue(
         c,
         fonts,
-        d.get(trackCols[i].$1),
-        cx + inset,
-        y - rh + inset,
-        tWidths[i] - 2 * inset,
-        rh - 2 * inset,
-        7,
+        value,
+        cellX + inset,
+        cellY + inset,
+        cellW - 2 * inset,
+        cellH - 2 * inset,
+        trackValueSize,
+        maxLines: trackMaxLines,
+        shrinkToFit: true,
+        minSize: 4.0,
       );
+      trackCells.add({
+        'key': key,
+        'label': trackCols[i].$2,
+        'value': value,
+        'value_non_empty': value.trim().isNotEmpty,
+        'x': cellX,
+        'y': cellY,
+        'w': cellW,
+        'h': cellH,
+        'value_box': {
+          'x': cellX + inset,
+          'y': cellY + inset,
+          'w': cellW - 2 * inset,
+          'h': cellH - 2 * inset,
+        },
+      });
       cx += tWidths[i];
     }
-    y -= rh + gap;
+    debugLayout!['tracking_row'] = {
+      'header_y': valueTop + th,
+      'value_y': valueBot,
+      'row_h': trackRowH,
+      'cells': trackCells,
+    };
+    y = valueBot - gap;
 
     // Line items
     final lineCols = [
@@ -982,6 +1058,21 @@ class BolLabelPdf {
     }
   }
 
+  /// ORDER # prefers [BolFields.orderNum], then sales-order aliases used by the form.
+  String _trackingValue(ShippingLabelData d, String key) {
+    if (key == BolFields.orderNum) {
+      final order = d.get(BolFields.orderNum).trim();
+      if (order.isNotEmpty) return order;
+      return d.get(LabelFields.salesOrder).trim();
+    }
+    if (key == BolFields.packingList) {
+      final pack = d.get(BolFields.packingList).trim();
+      if (pack.isNotEmpty) return pack;
+      return d.get(LabelFields.packingSlip).trim();
+    }
+    return d.get(key).trim();
+  }
+
   /// Locked Probill geometry from Swift only (customer logos never feed this).
   /// Prefers the slot immediately left of Swift so the left header stays free
   /// for customer logos; falls back to the right only if left cannot fit.
@@ -1277,13 +1368,51 @@ class BolLabelPdf {
     double targetH,
   ) {
     if (!logo.ink.isValid) return;
-    final h = math.min(
+    // Fit ink width first, then shrink so the full bitmap (incl. transparent
+    // pad) stays inside the cell — clip is a backstop, not the primary clamp.
+    var h = math.min(
       LogoInkMetrics.fitHeightToWidth(logo.ink, targetH, cellW),
       cellH,
     );
     if (h <= 0) return;
-    final draw = _inkDraw(logo.ink, cellY, h);
-    c.drawImage(logo.image, cellX, draw.y, draw.w, draw.h);
+    final drawH0 = logo.ink.drawHeight(h);
+    if (drawH0 > cellH && drawH0 > 0) {
+      h *= cellH / drawH0;
+    }
+    h = math.min(h, LogoInkMetrics.fitHeightToWidth(logo.ink, h, cellW));
+    if (h < 1) return;
+
+    var draw = _inkDraw(logo.ink, cellY, h);
+    // Keep bitmap fully inside the cell (shift up if pad would hang below).
+    if (draw.y < cellY) {
+      draw = (w: draw.w, h: draw.h, y: cellY);
+    }
+    if (draw.y + draw.h > cellY + cellH) {
+      final overflow = (draw.y + draw.h) - (cellY + cellH);
+      draw = (w: draw.w, h: draw.h, y: draw.y - overflow);
+      if (draw.y < cellY) {
+        // Still too tall — uniform shrink to cell.
+        final scale = cellH / draw.h;
+        h *= scale;
+        draw = _inkDraw(logo.ink, cellY, h);
+        if (draw.y < cellY) {
+          draw = (w: draw.w, h: math.min(draw.h, cellH), y: cellY);
+        }
+      }
+    }
+    final drawW = math.min(draw.w, cellW);
+    final drawH = math.min(draw.h, cellH);
+    c.drawImage(logo.image, cellX, draw.y, drawW, drawH);
+    final boxes = debugLayout?['customer_logo_boxes'];
+    if (boxes is List) {
+      boxes.add({
+        'x': cellX,
+        'y': draw.y,
+        'w': drawW,
+        'h': drawH,
+        'cell': {'x': cellX, 'y': cellY, 'w': cellW, 'h': cellH},
+      });
+    }
   }
 
   /// Uploaded logos only — left of the locked Probill / Swift static zone.
@@ -1304,7 +1433,11 @@ class BolLabelPdf {
         logos.add(l);
       }
     }
-    if (logos.isEmpty) return;
+    if (logos.isEmpty) {
+      debugLayout?['customer_logo_frame'] = null;
+      debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
+      return;
+    }
 
     final frameLeft = margin;
     final frameRight = math.min(
@@ -1312,12 +1445,31 @@ class BolLabelPdf {
       margin + contentW,
     );
     final frameW = frameRight - frameLeft;
-    if (frameW < 8) return;
+    if (frameW < 8) {
+      debugLayout?['customer_logo_frame'] = {
+        'x': frameLeft,
+        'y': logoTop - bandH,
+        'w': frameW,
+        'h': bandH,
+        'skipped': true,
+      };
+      debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
+      return;
+    }
 
     final frameTop = logoTop - logoBandInset;
     final frameBot = logoTop - bandH + logoBandInset;
     final frameH = (frameTop - frameBot).clamp(1.0, 10000.0);
     if (frameH <= 0) return;
+
+    debugLayout?['customer_logo_frame'] = {
+      'x': frameLeft,
+      'y': frameBot,
+      'w': frameW,
+      'h': frameH,
+      'right_limit': frameRightLimit,
+    };
+    debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
 
     // Isolate logo drawing so overflow cannot affect Swift / Probill.
     c.saveContext();
@@ -1529,38 +1681,54 @@ class BolLabelPdf {
     int maxLines = 1,
     bool alignTop = false,
     bool alignCenter = false,
+    bool shrinkToFit = false,
+    double minSize = 4.5,
   }) {
     text = _latin1(text).trim();
     if (text.isEmpty || w <= 2 || h <= 2) return;
-    final leading = size + 1;
-    final words = text.split(RegExp(r'\s+'));
-    final lines = <String>[];
-    var line = '';
-    for (final word in words) {
-      final trial = line.isEmpty ? word : '$line $word';
-      if (_sw(fonts.bold, size, trial) > w && line.isNotEmpty) {
-        lines.add(line);
-        line = word;
-        if (lines.length >= maxLines) break;
-      } else {
-        line = trial;
+
+    var useSize = size;
+    var lines = _wrapValueLines(fonts, text, w, useSize, maxLines);
+    if (shrinkToFit) {
+      while (useSize > minSize) {
+        lines = _wrapValueLines(fonts, text, w, useSize, maxLines);
+        final covered = lines.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+        final target = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+        final widthOk = lines.every((l) => _sw(fonts.bold, useSize, l) <= w + 0.5);
+        final heightOk =
+            lines.length * (useSize + 1) - 1 <= h + 0.5 || lines.length <= 1;
+        // Prefer full coverage; allow soft hyphenation of unbroken tokens via
+        // character wrap when needed.
+        if (widthOk && heightOk && (covered == target || covered.length >= target.length * 0.92)) {
+          break;
+        }
+        useSize -= 0.25;
       }
+      lines = _wrapValueLines(
+        fonts,
+        text,
+        w,
+        useSize,
+        maxLines,
+        allowCharBreak: true,
+      );
     }
-    if (line.isNotEmpty && lines.length < maxLines) lines.add(line);
+
     if (lines.isEmpty) return;
+    final leading = useSize + 1;
 
     c
       ..setFillColor(black)
-      ..setFont(fonts.bold, size);
+      ..setFont(fonts.bold, useSize);
 
-    final blockH = lines.length * leading - (leading - size);
+    final blockH = lines.length * leading - (leading - useSize);
 
     if (alignTop) {
-      var yy = y + h - size;
+      var yy = y + h - useSize;
       for (final l in lines) {
         if (yy < y) break;
-        final tx = alignCenter ? x + (w - _sw(fonts.bold, size, l)) / 2 : x;
-        c.drawString(fonts.bold, size, l, tx, yy);
+        final tx = alignCenter ? x + (w - _sw(fonts.bold, useSize, l)) / 2 : x;
+        c.drawString(fonts.bold, useSize, l, tx, yy);
         yy -= leading;
       }
       return;
@@ -1569,13 +1737,73 @@ class BolLabelPdf {
     // Default: vertically middle-align the text block in the cell with a little
     // breathing room from the top/bottom borders.
     var yy = y + (h - blockH) / 2 + (lines.length - 1) * leading;
-    if (yy > y + h - size) yy = y + h - size;
+    if (yy > y + h - useSize) yy = y + h - useSize;
     if (yy < y) yy = y;
     for (final l in lines) {
-      final tx = alignCenter ? x + (w - _sw(fonts.bold, size, l)) / 2 : x;
-      c.drawString(fonts.bold, size, l, tx, yy);
+      final tx = alignCenter ? x + (w - _sw(fonts.bold, useSize, l)) / 2 : x;
+      c.drawString(fonts.bold, useSize, l, tx, yy);
       yy -= leading;
     }
+  }
+
+  /// Word-wrap (and optional character-break) for value cells.
+  List<String> _wrapValueLines(
+    _Fonts fonts,
+    String text,
+    double w,
+    double size,
+    int maxLines, {
+    bool allowCharBreak = false,
+  }) {
+    final words = text.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final lines = <String>[];
+    var line = '';
+
+    void pushLine(String s) {
+      if (s.isEmpty) return;
+      lines.add(s);
+    }
+
+    for (final word in words) {
+      if (lines.length >= maxLines) break;
+      final trial = line.isEmpty ? word : '$line $word';
+      if (_sw(fonts.bold, size, trial) <= w) {
+        line = trial;
+        continue;
+      }
+      if (line.isNotEmpty) {
+        pushLine(line);
+        line = '';
+        if (lines.length >= maxLines) break;
+      }
+      if (_sw(fonts.bold, size, word) <= w) {
+        line = word;
+        continue;
+      }
+      if (!allowCharBreak) {
+        // Keep the long token; caller may shrink font.
+        line = word;
+        continue;
+      }
+      // Character-break an unbroken token that still overflows.
+      var chunk = '';
+      for (final ch in word.split('')) {
+        final next = '$chunk$ch';
+        if (chunk.isNotEmpty && _sw(fonts.bold, size, next) > w) {
+          pushLine(chunk);
+          chunk = ch;
+          if (lines.length >= maxLines) {
+            chunk = '';
+            break;
+          }
+        } else {
+          chunk = next;
+        }
+      }
+      line = chunk;
+    }
+    if (line.isNotEmpty && lines.length < maxLines) pushLine(line);
+    return lines;
   }
 
   double _measureWrapped(

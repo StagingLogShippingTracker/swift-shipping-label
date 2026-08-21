@@ -36,6 +36,7 @@ ESRGAN = ROOT / "logo_restorer.py"
 
 # Reuse golden suite metrics (do not fork scoring).
 sys.path.insert(0, str(ROOT / "scripts"))
+from improve_loop_training import record_run_snapshot  # noqa: E402
 from logo_golden_suite import (  # noqa: E402
     _cubic_upscale,
     score_pair,
@@ -236,12 +237,14 @@ def run_loop(
         ][:20],
         "log": str(LOG.relative_to(ROOT)).replace("\\", "/"),
         "next": (
-            "Improve the lowest-composite engine/recipe gaps; re-run this script; "
-            "promote only techniques that raise scores (esp. swift_orange anchors). "
-            "Neural fine-tune only if suite plateaus."
+            "Read qa_logos/synthetic/training_lessons.json; improve the "
+            "lowest-composite engine/recipe gaps; re-run this script; promote "
+            "only techniques that raise scores (esp. swift_orange anchors); "
+            "append score-proven lessons. Neural fine-tune only if suite plateaus."
         ),
     }
 
+    record_run_snapshot("logo", summary)
     summary_path = SYN / "improve_summary_latest.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 

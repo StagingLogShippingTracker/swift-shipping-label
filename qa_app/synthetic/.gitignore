@@ -1,0 +1,4 @@
+artifacts/
+harness_results.json
+improve_log.jsonl
+improve_summary_latest.json
