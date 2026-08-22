@@ -24,6 +24,7 @@ class AppChangelog {
       version: 'v1.1.89',
       bullets: [
         'BOL: customer logos scale inside the fixed left header frame — single fills the box, dual shrinks side-by-side without pushing the title bar',
+        'Shipping / Receiving: each customer logo fills its red (square) or green (rect) cell height — dual marks keep independent sizes on a shared baseline',
       ],
     ),
     ChangelogSection(

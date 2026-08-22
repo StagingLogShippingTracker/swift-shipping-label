@@ -56,6 +56,9 @@ class LogoInkMetrics {
   /// Drawn bitmap width so the ink box is [targetH] points tall.
   double drawWidth(double targetH) => canvasW * scaleForHeight(targetH);
 
+  /// Ink-box width at [targetH] (layout / pink-limit budget; excludes canvas pad).
+  double inkDrawWidth(double targetH) => width * scaleForHeight(targetH);
+
   /// Drawn bitmap height (may exceed [targetH] when canvas pad remains).
   double drawHeight(double targetH) => canvasH * scaleForHeight(targetH);
 
@@ -98,7 +101,7 @@ class LogoInkMetrics {
     }
     var inkW = 0.0;
     for (var i = 0; i < inks.length; i++) {
-      inkW += inks[i].drawWidth(heights[i]);
+      inkW += inks[i].inkDrawWidth(heights[i]);
     }
     final gaps = inks.length > 1 ? gap * (inks.length - 1) : 0.0;
     final budget = maxTotalW - gaps;

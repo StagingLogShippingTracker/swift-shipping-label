@@ -712,11 +712,12 @@ class ShippingLabelPdf {
     c.drawImage(logo.image, x, y, w, bh);
   }
 
-  /// Per-logo red/green height, then pink-limit width clamp (uniform shrink).
+  /// Per-logo red/green cell height, then pink-limit width clamp (uniform shrink).
   ///
   /// Square-ish / circular → [squareLogoTargetH]; rectangular → [rectLogoTargetH].
-  /// Dual logos keep individual heights; if total width (inks + gap) would reach
-  /// the pink edge / Swift, both heights scale down uniformly.
+  /// Each mark is bottom-aligned on [inkBaselineY] inside a cell of height [h].
+  /// Dual logos keep individual class heights; only shrink uniformly when total
+  /// ink width + gaps would cross the pink Swift edge.
   void _drawCustomerLogosInFrame(
     PdfGraphics c,
     List<_InkLogo> logos,
@@ -724,7 +725,7 @@ class ShippingLabelPdf {
     double frameRight,
     double frameBottom,
     double frameH,
-    double bandCenterY, {
+    double inkBaselineY, {
     double squareH = squareLogoTargetH,
     double rectH = rectLogoTargetH,
   }) {
@@ -764,9 +765,14 @@ class ShippingLabelPdf {
     for (var i = 0; i < valid.length; i++) {
       final h = heights[i];
       if (h < 0.5) continue;
-      final inkBottomY = bandCenterY - h / 2;
-      _drawLogoInk(c, valid[i], x, inkBottomY, h);
-      x += valid[i].ink.drawWidth(h) + customerLogoGap;
+      final cellW = valid[i].ink.drawWidth(h);
+      // Clip to the red/green cell so canvas padding cannot spill or get cropped.
+      c.saveContext();
+      c.drawRect(x, inkBaselineY, cellW, h);
+      c.clipPath();
+      _drawLogoInk(c, valid[i], x, inkBaselineY, h);
+      c.restoreContext();
+      x += cellW + customerLogoGap;
     }
     c.restoreContext();
   }
@@ -857,7 +863,7 @@ class ShippingLabelPdf {
         frameRight,
         logoBottom,
         bandH,
-        bandCenter,
+        yLogoBottom,
         squareH: squareH,
         rectH: rectH,
       );
@@ -888,7 +894,7 @@ class ShippingLabelPdf {
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
       final belowBottom = logoBottom - squareH - 4;
-      final belowCenter = belowBottom + bandH / 2;
+      final belowBaseline = belowBottom + customerLogoBandInset;
       _drawCustomerLogosInFrame(
         c,
         logos,
@@ -896,7 +902,7 @@ class ShippingLabelPdf {
         mx + contentW,
         belowBottom,
         bandH,
-        belowCenter,
+        belowBaseline,
         squareH: squareH,
         rectH: rectH,
       );
