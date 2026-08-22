@@ -14,17 +14,22 @@ import 'theme.dart';
 class AppChangelog {
   AppChangelog._();
 
-  static const campaignId = 'whats_new_1_1_89';
+  static const campaignId = 'whats_new_1_1_90';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.89)";
+  static const title = "What's new (v1.1.68 – v1.1.90)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
     ChangelogSection(
+      version: 'v1.1.90',
+      bullets: [
+        'Shipping / Receiving: each logo conformally fits its red (square/circular) or green (rectangular) cell — dual logos keep independent heights on a shared baseline (fixes Arc + Inked mismatch)',
+      ],
+    ),
+    ChangelogSection(
       version: 'v1.1.89',
       bullets: [
         'BOL: customer logos scale inside the fixed left header frame — single fills the box, dual shrinks side-by-side without pushing the title bar',
-        'Shipping / Receiving: each customer logo fills its red (square) or green (rect) cell height — dual marks keep independent sizes on a shared baseline',
       ],
     ),
     ChangelogSection(
