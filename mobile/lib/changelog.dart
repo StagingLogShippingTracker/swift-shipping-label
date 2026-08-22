@@ -25,6 +25,7 @@ class AppChangelog {
       bullets: [
         'BOL: customer logo placement restored to the prior left-aligned layout (reverts v1.1.87 stack/center experiment)',
       ],
+    ),
     ChangelogSection(
       version: 'v1.1.87',
       bullets: [
