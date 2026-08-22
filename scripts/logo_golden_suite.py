@@ -197,18 +197,29 @@ def _find_python() -> list[str]:
 
 
 def _cubic_upscale(src: Path, dest: Path, min_height: int = 1200) -> Path:
-    """Lightweight baseline: plate/halo knockout + cubic resize (no torch)."""
+    """Lightweight baseline: plate/halo knockout + upscale (no torch)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from logo_raster_finish import finalize_restore, load_rgba, prepare_for_engine
+    from logo_raster_finish import (
+        finalize_restore,
+        is_thin_wordmark,
+        load_rgba,
+        prepare_for_engine,
+    )
 
     source = load_rgba(src)
     prepared = prepare_for_engine(source)
     out = Image.fromarray(prepared, "RGBA")
+    # Thin wordmarks: LANCZOS preserves stroke edges better than BICUBIC.
+    interp = (
+        Image.Resampling.LANCZOS
+        if is_thin_wordmark(prepared)
+        else Image.Resampling.BICUBIC
+    )
     if out.height < min_height:
         scale = min_height / out.height
         out = out.resize(
             (max(1, int(out.width * scale)), min_height),
-            Image.Resampling.BICUBIC,
+            interp,
         )
     # Soft palette lock (do not reject baseline — it is the safety net).
     arr = np.asarray(out, dtype=np.uint8).copy()

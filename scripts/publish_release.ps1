@@ -204,7 +204,14 @@ $title = "Swift Document Generator $Version"
 $notes = @"
 ## Swift Document Generator $Version
 
-### What's new (v1.1.85)
+### What's new (v1.1.87)
+- **Logos:** reuse stored file when name, size, and visual scan match — no more image(1) duplicates
+- **Add from Storage:** attaches existing file instead of importing a copy
+- **Shipping / Receiving / BOL:** extra logo shape cases (badge, tall, ultra-wide, mixed dual) in display loop
+- **Logo knockout:** enclosed counters (O/B/D/P) punch on white/black plates; thin-stroke skeleton guard + hue recovery (Python/Dart parity)
+- **Workspace:** diagnostic probes removed; .tools/ and scratch outputs ignored from git/dist
+
+### What's new (v1.1.86)
 - **BOL:** ORDER# fallback; tracking refs shrink/wrap; wide logos clamp left of Probill/Swift
 - **Logo restore:** faster large upscales (strip at working size; linear when scale > 8)
 - **Receiving Label:** improve-loop scoring harness (SO→PM hairline preserved; Shipping SO/Contact lock unchanged)

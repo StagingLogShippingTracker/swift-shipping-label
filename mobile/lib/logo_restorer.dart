@@ -358,6 +358,7 @@ class LogoRestorer {
         );
       }
       image = LogoImageProcessor.flattenSolidBrandFills(image);
+      image = LogoImageProcessor.hardenFlatEdges(image);
     }
 
     if (image.height < minDimension) {
@@ -383,8 +384,10 @@ class LogoRestorer {
     if (decoded != null && decoded.height > 0 && decoded.height < 900) {
       // Light interior flatten at native size (Swift-like solid fills).
       var flat = LogoImageProcessor.flattenSolidBrandFills(decoded);
+      flat = LogoImageProcessor.hardenFlatEdges(flat);
       if (sourceBytes != null && sourceBytes.isNotEmpty) {
         flat = LogoImageProcessor.snapToSourceBrandColors(flat, sourceBytes);
+        flat = LogoImageProcessor.hardenFlatEdges(flat);
       }
       work = Uint8List.fromList(img.encodePng(flat));
     }

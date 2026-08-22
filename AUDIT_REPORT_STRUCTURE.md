@@ -42,7 +42,7 @@ main.dart
 | Feedback / F2 | Help menu | Not wired |
 | Generate affordance | Workspace pane button **or** File/Ctrl+Enter | Always bottom bar |
 | Share/open PDF | `platform_io` opens file | Native share sheet |
-| Recreate priority | Python → Fly → Rust → Supabase | Fly → Rust → Supabase |
+| Recreate priority | Gemini restore; local rebuild if Gemini is down | Same |
 
 ### 1.3 PDF engines
 
@@ -57,17 +57,14 @@ main.dart
 
 | Step | Windows | Android |
 |------|---------|---------|
-| 1 | Local Python `tools.logo_vectorizer --recreate-customer` | *(skip)* |
-| 2 | Fly.io Python if `GET /health` OK | Same |
-| 3 | On-device Rust FFI | Same |
-| 4 | Supabase Deno/`vtracer` | Same |
+| 1 | Gemini logo restore (Windows + Android) | Same |
+| 2 | Local predictive rebuild if Gemini is down | Same |
+| 3 | Optional local Python `logo_restorer.py` (RealESRGAN) | Windows offline only |
 
 Supporting pieces:
 
-- `services/recreate-logo/` — FastAPI on Fly (`swift-recreate-logo.fly.dev`)
-- `tools/logo_vectorizer/` — Bezier/premium pipeline (bundled into Windows `dist/` by `build_windows.ps1`)
-- `native/logo_recreate/` — Rust MVP polylines; Android `.so` in `jniLibs/`; **no Windows `logo_recreate.dll` in repo/dist**
-- Supabase edge function — last resort (docs still claim Fly was aborted — **stale**)
+- Gemini (`GeminiClient.restoreLogoPng`) — primary print-ready redraw
+- Local `logo_restorer.py` / `LogoImageProcessor.rebuildPredictedEdges` — offline fallback
 
 ### 1.5 Storage / sync
 
@@ -99,8 +96,8 @@ Supporting pieces:
 
 | ID | Issue | Where |
 |----|--------|--------|
-| B1 | **Local Python Recreate PNG defaults to white background** — Dart omits `--render-background`; `__main__.py` defaults `"white"`. Fly forces transparent. Windows preferred path yields opaque white-backed PNGs. | `logo_recreate.dart` ~208–224; `tools/logo_vectorizer/__main__.py` 78–80, 116–117 |
-| B2 | **Fly cold-start health probe (8s) skips premium path** — `min_machines_running = 0`; probe fail → Rust MVP / Supabase with no retry. | `logo_recreate_cloud.dart` 31–37; `fly.toml` |
+| B1 | **Local Python Recreate PNG defaults to white background** — historical Recreate path; logo restore now uses Gemini. | `logo_recreate.dart` (removed from product) |
+| B2 | Cloud ESRGAN host retired; Gemini is primary restore; local rebuild if offline. | `logo_restorer.dart` |
 | B3 | **Windows Generate button only in workspace pane** — if workspace hidden or layout not “wide”, primary Generate vanishes (menu/Ctrl+Enter only). | `home_screen.dart` 2205–2212, 2293–2308 |
 | B4 | **No Windows `logo_recreate.dll` packaged** — offline Windows without Python falls through to broken/missing native then Supabase. `build_windows.ps1` copies `tools/` only. | `build_windows.ps1`; `logo_recreate_native.dart` 195–214 |
 
@@ -115,8 +112,8 @@ Supporting pieces:
 | M5 | Customize **pageOrientation / fontScale are no-ops** for PDF | `pdf_render_options.dart`; `windows_customize.dart`; PDF builders |
 | M6 | Auto-update marks day done **before** dialog/install success | `auto_update_scheduler.dart` 221 |
 | M7 | Setup launched while app still running — file locks possible | `app_update.dart` |
-| M8 | Health can be 200 while Fly auth misconfigured → 401 cascade | `services/recreate-logo/app.py` |
-| M9 | Stale docs: “Fly aborted” contradict live Dart + Fly service | `native/logo_recreate/README.md`; `supabase/.../DEPRECATED.md` |
+| M8 | *(retired)* Cloud restore auth cascade — service removed | — |
+| M9 | *(retired)* Stale cloud-restore docs — service removed | — |
 | M10 | Android release signed with **debug** keystore | `android/app/build.gradle.kts` |
 
 ### Minor / crash-adjacent
@@ -158,8 +155,8 @@ Supporting pieces:
 | Versions | Aligned at **1.1.47** (+70 Flutter); publish without `-Version` won’t bump build |
 | Runner.rc fallback | `#define VERSION_AS_STRING "1.0.0"` only if Flutter macros absent |
 | Android dark/customize | Settings exist; UI cannot change them on phone (intentional mobile focus, but stored prefs can surprise) |
-| Recreate docs vs code | READMEs omit Fly; code + Fly service are primary cloud |
-| render_width | Dart/Fly 3000; local `__main__` fallback 2000; Rust clamp 4096 vs Fly 8000 |
+| Recreate docs vs code | Cloud ESRGAN host retired; Gemini is primary restore |
+| render_width | Gemini/local restore target 3000px tall |
 | Data root | App Documents == this OneDrive git repo |
 | Python `app_paths.py` | LocalAppData when frozen — different from Flutter Documents path |
 
@@ -186,9 +183,9 @@ Suggested future split (not required for Phase 2): form controller, logo workspa
 | Item | Assessment |
 |------|------------|
 | Supabase anon JWT in `app_config.dart` | Expected for client; **RLS is open (`USING (true)`)** — anyone with the key can CRUD shared org presets/logos/signatures |
-| Same anon key as Fly `Authorization` | Public binary → anyone can hit Fly recreate if token matches |
+| Same anon key as old cloud restore | Cloud restore services removed |
 | Update downloads | Trusts GitHub `browser_download_url`; no hash/signature verify |
-| No `.env` in repo | Good; recreate tokens via dart-define / Fly secrets |
+| No `.env` in repo | Good; Gemini tokens via dart-define / gitignored `.env` |
 | Logo finder tokens | Optional env; can appear in query strings if set |
 | Android debug signing | Not Play-ready; sideload/update identity risk |
 
@@ -199,11 +196,10 @@ Suggested future split (not required for Phase 2): form controller, logo workspa
 | Area | Concern |
 |------|---------|
 | Recreate | Flood-fill on large uploads; no client max dimension before recreate |
-| Fly cold start | Extra latency + false “offline” via health |
 | `home_screen` | Rebuild cost; `existsSync` on UI thread for logos |
 | Sync | Whole-file mtime + re-import logos = wasteful and incorrect |
 | DX | Thousands of untracked QA PNGs/SVGs; OneDrive locking dist builds |
-| Local Python deps | `tools/.../requirements.txt` lacks `cairosvg` (Fly has it) |
+| Local Python deps | `tools/.../requirements.txt` may lack optional raster extras |
 | Tests | Unit/integration present; recreate needs network/device |
 
 ---
@@ -214,12 +210,12 @@ Suggested future split (not required for Phase 2): form controller, logo workspa
 
 1. **B1** — Pass `--render-background transparent` (and/or fix `__main__.py` recreate default) — `mobile/lib/logo_recreate.dart`, `tools/logo_vectorizer/__main__.py`
 2. **B3** — Always show Generate on Windows when workspace pane is hidden — `mobile/lib/home_screen.dart`
-3. **B2** — Retry/longer Fly health probe before skipping — `mobile/lib/logo_recreate_cloud.dart`
+3. **B2** — Cloud ESRGAN host retired (Gemini restore) — `mobile/lib/logo_restorer.dart`
 4. **B4** — Document + optionally bundle `logo_recreate.dll` in `scripts/build_windows.ps1` when built (do not invent a broken path)
 
 ### Major
 
-5. **M9** — Fix stale Fly “aborted” docs — `native/logo_recreate/README.md`, `supabase/functions/recreate-logo/DEPRECATED.md`
+5. **M9** — Cloud restore docs retired with the service
 6. **M3** — Stop mutating controllers during build — `home_screen.dart`
 7. **M5** — Hide or wire `pageOrientation`/`fontScale` (prefer hide/label as unused until wired)
 8. **M6** — Mark auto-update day after successful check *or* only after dismiss without “Update” — careful UX
@@ -231,7 +227,7 @@ Suggested future split (not required for Phase 2): form controller, logo workspa
 11. Feedback platform string from `Platform.operatingSystem`
 12. Wrap `PdfImage` load failures
 13. main.dart stale comment cleanup
-14. Align local requirements with Fly (`cairosvg`)
+14. Align local Python restore extras with `logo_restorer.py`
 
 ### Polish
 
@@ -258,22 +254,16 @@ Suggested future split (not required for Phase 2): form controller, logo workspa
 
 ```mermaid
 flowchart TD
-  import[importLogoBytes recreate=true]
-  import --> run[LogoRecreate.run]
-  run --> win{Windows + Python + tools?}
-  win -->|yes| py[Local Python Bezier]
-  win -->|no/fail| flyH{GET Fly /health}
-  flyH -->|ok| fly[POST Fly Python]
-  flyH -->|fail| rust
-  fly -->|fail| rust[Rust FFI MVP]
-  rust -->|fail/missing| sb[POST Supabase vtracer]
-  py -->|fail| flyH
+  import[importLogoBytes restoreHighRes]
+  import --> gemini{Gemini configured?}
+  gemini -->|yes| redraw[Gemini restoreLogoPng]
+  gemini -->|no/fail| local[Local predictive rebuild]
+  redraw -->|fail| local
 ```
 
 ## Appendix C — Do not break
 
-- Windows Recreate priority: Python → Fly → Rust → Supabase
-- Android: Fly → Rust → Supabase
+- Windows/Android logo restore: Gemini, then local predictive rebuild
 - In-app Update: **Setup.exe only** (`AppConfig.windowsSetupAsset`)
 - Asset names in `publish_release.ps1` / `version.py` / `AppConfig`
 
@@ -284,7 +274,6 @@ flowchart TD
 | Fix | Files |
 |-----|--------|
 | Local Recreate PNG transparent | `logo_recreate.dart`, `tools/logo_vectorizer/__main__.py` |
-| Fly health retry + 12s timeout | `logo_recreate_cloud.dart` |
 | Windows Generate when workspace hidden | `home_screen.dart` |
 | Item-type normalize post-frame | `home_screen.dart` |
 | Dispose `_askString` controller | `home_screen.dart` |
@@ -292,7 +281,7 @@ flowchart TD
 | Feedback platform string | `feedback_forms.dart` |
 | Dead `feedbackDiagnosticsJson` removed | `feedback_forms.dart` |
 | Font-scale “not applied yet” label | `windows_customize.dart` |
-| Stale Fly docs corrected | `native/.../README.md`, `DEPRECATED.md` |
+| Cloud restore docs retired | Gemini is the restore path |
 | Optional DLL copy in Windows build | `scripts/build_windows.ps1` |
 | main.dart comment cleanup | `main.dart` |
 | Version bump | `1.1.48` |

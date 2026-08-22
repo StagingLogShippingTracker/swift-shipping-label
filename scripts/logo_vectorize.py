@@ -26,31 +26,37 @@ from logo_raster_finish import (  # noqa: E402
     edge_energy,
     finalize_restore,
     ink_mask_iou,
+    is_thin_stroke_mark,
     is_thin_wordmark,
     load_rgba,
     prepare_for_engine,
+    quantize_thin_path,
     save_rgba,
+    stamp_centerline,
 )
 
 
 def _vectorize_to_svg(src: Path, svg: Path, *, thin_mark: bool = False) -> None:
     import vtracer
 
-    # Thin wordmarks (Arc) lose strokes when filter_speckle=4 on tiny JPEG crops.
+    # Thin strokes: spline on a 2–4 color quantized raster; low speckle +
+    # high color precision keep centerlines. Sharp terminators via a lower
+    # corner threshold (more corners, less rounded caps).
+    # Flat fills: spline + mild filtering for clean solids (Swift/Propak).
     vtracer.convert_image_to_svg_py(
         str(src),
         str(svg),
         colormode="color",
         hierarchical="stacked",
         mode="spline",
-        filter_speckle=2 if thin_mark else 4,
-        color_precision=6,
-        layer_difference=14 if thin_mark else 16,
-        corner_threshold=60,
-        length_threshold=3.5 if thin_mark else 4.0,
-        max_iterations=10,
-        splice_threshold=45,
-        path_precision=3,
+        filter_speckle=1 if thin_mark else 4,
+        color_precision=8 if thin_mark else 6,
+        layer_difference=16,
+        corner_threshold=40 if thin_mark else 60,
+        length_threshold=2.0 if thin_mark else 4.0,
+        max_iterations=12 if thin_mark else 10,
+        splice_threshold=30 if thin_mark else 45,
+        path_precision=4 if thin_mark else 3,
     )
 
 
@@ -156,7 +162,9 @@ def convert(src: Path, dest: Path, min_height: int = 3000) -> Path:
     if not _is_flat_enough(prepared):
         raise RuntimeError("source not flat enough for vectorize")
 
-    thin = _is_thin_wordmark(prepared)
+    thin = is_thin_stroke_mark(prepared)
+    if thin:
+        prepared = quantize_thin_path(prepared, max_colors=4)
     with tempfile.TemporaryDirectory(prefix="swift_vtrace_") as td:
         td_path = Path(td)
         work = td_path / "in.png"
@@ -169,16 +177,23 @@ def convert(src: Path, dest: Path, min_height: int = 3000) -> Path:
         if not _rasterize_svg(svg, tmp_png, min_height):
             raise RuntimeError("SVG rasterize failed (install cairosvg)")
         restored = load_rgba(tmp_png)
+        if thin:
+            # Keep stroke bounds / sharp terminators the spline may have rounded.
+            a = restored[:, :, 3]
+            restored[:, :, 3] = np.where(
+                a >= 64, 255, np.where(a < 24, 0, a)
+            ).astype(np.uint8)
+            restored = stamp_centerline(restored, prepared)
         # Palette lock + plate cleanup; reject collapsed redraws → Lanczos prep.
         # Thin Arc wordmarks: require ink geometry vs prepared source (vectorize
         # can mush strokes while still locking washed fills).
-        max_drift = 0.12 if thin else 0.35
-        min_iou = 0.62 if thin else None
+        max_drift = 0.14 if thin else 0.35
+        min_iou = 0.55 if thin else None
         try:
             finished = finalize_restore(
                 restored,
                 prepared,
-                min_palette=0.18,
+                min_palette=0.14 if thin else 0.18,
                 max_aspect_drift=max_drift,
                 min_ink_iou=min_iou,
             )

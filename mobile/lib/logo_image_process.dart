@@ -131,6 +131,7 @@ class LogoImageProcessor {
 
     if (!alreadyAlpha) {
       _knockOutOuterPlate(image);
+      recoverHueConsistentChroma(image);
     } else if (!studioReady) {
       // Transparent but dirty plate leftovers — gentle outer cleanup only.
       _removeCheckerboardMatte(image);
@@ -536,7 +537,11 @@ class LogoImageProcessor {
     var image = decodeToRgba(input);
     if (image == null) return input;
 
+    final plateForHoles = _hasMeaningfulTransparency(image)
+        ? (255, 255, 255)
+        : (_estimateBackgroundColor(image) ?? (255, 255, 255));
     _knockOutOuterPlate(image);
+    recoverHueConsistentChroma(image);
     stripForeignMarks(image);
     stripHaloFringe(image, protectStrokeFills: true);
 
@@ -550,6 +555,8 @@ class LogoImageProcessor {
     }
 
     image = addSafePad(image);
+    // Halo / crop can isolate counters the first punch saw as border-connected.
+    _punchEnclosedPlateHoles(image, plateForHoles);
 
     // Always re-encode the flooded/cropped bitmap — never keep the padded original.
     return Uint8List.fromList(img.encodePng(image));
@@ -564,6 +571,208 @@ class LogoImageProcessor {
   /// When [protectStrokeFills] is true (Swift-style orange fill + black stroke),
   /// skip punching pixels that sit between chromatic fill and near-black ink —
   /// those AA seams must stay opaque or re-encoding opens white gaps.
+  /// Foreground / AABB density — Arc-class thin strokes sit below 0.18.
+  static bool isThinStrokeMark(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    if (w < 8 || h < 8) return false;
+    var minX = w, minY = h, maxX = -1, maxY = -1, n = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final lum = (r + g + b) / 3.0;
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        if (lum >= 230 && sat <= 22) continue;
+        n++;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (n < 80 || maxX < minX) return false;
+    final area = (maxX - minX + 1) * (maxY - minY + 1);
+    return n / area < 0.18;
+  }
+
+  /// Morphological skeleton of the raw contrast mask (thin strokes only).
+  static Uint8List? centerlineProtectMask(img.Image image) {
+    if (!isThinStrokeMark(image)) return null;
+    final w = image.width;
+    final h = image.height;
+    var ink = Uint8List(w * h);
+    var n = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 40) continue;
+        final r = p.r.toInt(), g = p.g.toInt(), b = p.b.toInt();
+        final lum = (r + g + b) / 3.0;
+        final sat = math.max(r, math.max(g, b)) - math.min(r, math.min(g, b));
+        if (lum >= 230 && sat <= 22) continue;
+        ink[y * w + x] = 1;
+        n++;
+      }
+    }
+    if (n < 20) return null;
+    // 1px close, then Lantuéjoul skeleton (erode leftover).
+    ink = _dilateMask(ink, w, h);
+    ink = _erodeMask(ink, w, h);
+    final skel = Uint8List(w * h);
+    var imgMask = Uint8List.fromList(ink);
+    while (true) {
+      final eroded = _erodeMask(imgMask, w, h);
+      final opened = _dilateMask(eroded, w, h);
+      var remain = 0;
+      for (var i = 0; i < imgMask.length; i++) {
+        if (imgMask[i] != 0 && opened[i] == 0) skel[i] = 1;
+        if (eroded[i] != 0) remain++;
+      }
+      imgMask = eroded;
+      if (remain == 0) break;
+    }
+    for (final v in skel) {
+      if (v != 0) return skel;
+    }
+    return null;
+  }
+
+  static Uint8List _erodeMask(Uint8List src, int w, int h) {
+    final out = Uint8List(w * h);
+    for (var y = 1; y < h - 1; y++) {
+      for (var x = 1; x < w - 1; x++) {
+        if (src[y * w + x] == 0) continue;
+        if (src[y * w + (x - 1)] != 0 &&
+            src[y * w + (x + 1)] != 0 &&
+            src[(y - 1) * w + x] != 0 &&
+            src[(y + 1) * w + x] != 0) {
+          out[y * w + x] = 1;
+        }
+      }
+    }
+    return out;
+  }
+
+  /// HSV hue-angle recover for JPEG-bleached thin-stroke edges.
+  ///
+  /// Propagates the observed chromatic anchor only — never invents a hue.
+  static void recoverHueConsistentChroma(img.Image image) {
+    if (!isThinStrokeMark(image)) return;
+    final w = image.width;
+    final h = image.height;
+    var hSumSin = 0.0, hSumCos = 0.0, nHigh = 0;
+    var sSum = 0.0, vSum = 0.0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 200) continue;
+        final hsv = _rgbToHsv(p.r.toInt(), p.g.toInt(), p.b.toInt());
+        if (hsv.$2 < 0.35) continue;
+        final lum = (p.r.toInt() + p.g.toInt() + p.b.toInt()) / 3.0;
+        if (lum < 35 || lum > 200) continue;
+        final rad = hsv.$1 * math.pi / 180.0;
+        hSumSin += math.sin(rad);
+        hSumCos += math.cos(rad);
+        sSum += hsv.$2;
+        vSum += hsv.$3;
+        nHigh++;
+      }
+    }
+    if (nHigh < 12) return;
+    final hueAnchor =
+        (math.atan2(hSumSin / nHigh, hSumCos / nHigh) * 180.0 / math.pi +
+            360.0) %
+        360.0;
+    final sMed = sSum / nHigh;
+    final vMed = vSum / nHigh;
+    if (sMed < 0.35) return;
+
+    bool nearEmpty(int x, int y) {
+      for (var dy = -2; dy <= 2; dy++) {
+        for (var dx = -2; dx <= 2; dx++) {
+          final nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
+          if (image.getPixel(nx, ny).a.toInt() < 40) return true;
+        }
+      }
+      return false;
+    }
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        if (p.a.toInt() < 48) continue;
+        if (!nearEmpty(x, y)) continue;
+        final hsv = _rgbToHsv(p.r.toInt(), p.g.toInt(), p.b.toInt());
+        if (hsv.$2 < 0.08 || hsv.$2 >= 0.35) continue;
+        var d = (hsv.$1 - hueAnchor).abs() % 360.0;
+        if (d > 180) d = 360 - d;
+        if (d > 25) continue;
+        final rgb = _hsvToRgb(hueAnchor, sMed, vMed);
+        image.setPixelRgba(x, y, rgb.$1, rgb.$2, rgb.$3, p.a.toInt());
+      }
+    }
+  }
+
+  static (double h, double s, double v) _rgbToHsv(int r, int g, int b) {
+    final rf = r / 255.0, gf = g / 255.0, bf = b / 255.0;
+    final mx = math.max(rf, math.max(gf, bf));
+    final mn = math.min(rf, math.min(gf, bf));
+    final df = mx - mn;
+    var h = 0.0;
+    if (df > 1e-8) {
+      if (mx == rf) {
+        h = (60.0 * ((gf - bf) / df) + 360.0) % 360.0;
+      } else if (mx == gf) {
+        h = 60.0 * ((bf - rf) / df) + 120.0;
+      } else {
+        h = 60.0 * ((rf - gf) / df) + 240.0;
+      }
+    }
+    final s = mx > 1e-8 ? df / mx : 0.0;
+    return (h, s, mx);
+  }
+
+  static (int r, int g, int b) _hsvToRgb(double h, double s, double v) {
+    final c = v * s;
+    final hp = (h % 360.0) / 60.0;
+    final x = c * (1.0 - ((hp % 2.0) - 1.0).abs());
+    final m = v - c;
+    late final double rp, gp, bp;
+    if (hp < 1) {
+      rp = c;
+      gp = x;
+      bp = 0;
+    } else if (hp < 2) {
+      rp = x;
+      gp = c;
+      bp = 0;
+    } else if (hp < 3) {
+      rp = 0;
+      gp = c;
+      bp = x;
+    } else if (hp < 4) {
+      rp = 0;
+      gp = x;
+      bp = c;
+    } else if (hp < 5) {
+      rp = x;
+      gp = 0;
+      bp = c;
+    } else {
+      rp = c;
+      gp = 0;
+      bp = x;
+    }
+    return (
+      ((rp + m) * 255).round().clamp(0, 255),
+      ((gp + m) * 255).round().clamp(0, 255),
+      ((bp + m) * 255).round().clamp(0, 255),
+    );
+  }
+
   static void stripHaloFringe(
     img.Image image, {
     bool protectStrokeFills = false,
@@ -585,9 +794,11 @@ class LogoImageProcessor {
       return sat > 45;
     }
 
+    final centerline = centerlineProtectMask(image);
     final punch = Uint8List(w * h);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
+        if (centerline != null && centerline[y * w + x] != 0) continue;
         final p = image.getPixel(x, y);
         final a = p.a.toInt();
         if (a < 40) continue;
@@ -831,8 +1042,79 @@ class LogoImageProcessor {
         final p = image.getPixel(idx % w, idx ~/ w);
         image.setPixelRgba(idx % w, idx ~/ w, fr, fg, fb, p.a.toInt());
       }
+      // Mid-alpha edge mush only — opaque silver rims stay.
+      for (final idx in region) {
+        if (!isEdgePixel(idx)) continue;
+        final p = image.getPixel(idx % w, idx ~/ w);
+        final a = p.a.toInt();
+        if (a < 96 || a >= 240) continue;
+        final d = _colorDistance(
+          p.r.toInt(),
+          p.g.toInt(),
+          p.b.toInt(),
+          fr,
+          fg,
+          fb,
+        );
+        if (d > 40) continue;
+        image.setPixelRgba(idx % w, idx ~/ w, fr, fg, fb, a < 220 ? 255 : a);
+      }
     }
     return image;
+  }
+
+  /// Collapse soft AA / JPEG fringe toward hard neighbor fills (universal).
+  ///
+  /// Only touches mid-alpha boundary fringe. Solid grey/silver letter fills
+  /// (opaque interiors) are left alone.
+  static img.Image hardenFlatEdges(img.Image source) {
+    final image = source.numChannels == 4
+        ? source.clone()
+        : source.convert(numChannels: 4);
+    final w = image.width;
+    final h = image.height;
+    if (w < 4 || h < 4) return image;
+
+    final out = image.clone();
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        final a = p.a.toInt();
+        if (a < 40 || a >= 240) continue;
+
+        var sr = 0, sg = 0, sb = 0, n = 0;
+        var nearEmpty = false;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            final nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              nearEmpty = true;
+              continue;
+            }
+            final q = image.getPixel(nx, ny);
+            if (q.a.toInt() < 80) {
+              nearEmpty = true;
+              continue;
+            }
+            if (q.a.toInt() < 200) continue;
+            final qr = q.r.toInt(), qg = q.g.toInt(), qb = q.b.toInt();
+            final qsat =
+                math.max(qr, math.max(qg, qb)) - math.min(qr, math.min(qg, qb));
+            final qlum = (qr + qg + qb) / 3.0;
+            if (qsat < 24 && qlum > 40 && qlum < 230) continue;
+            sr += qr;
+            sg += qg;
+            sb += qb;
+            n++;
+          }
+        }
+        if (n == 0) continue;
+        if (!nearEmpty && a >= 200) continue;
+        out.setPixelRgba(x, y, sr ~/ n, sg ~/ n, sb ~/ n, a < 220 ? 255 : a);
+      }
+    }
+    return out;
   }
 
   /// True when [source] has a dark stroke hugging chromatic fills (not a plate).
@@ -1246,7 +1528,10 @@ class LogoImageProcessor {
         floodTolerance: 40,
       );
     }
-    _punchEnclosedPlateHoles(image, plate);
+    // When corners disagree (thin dark frame, checker matte) still punch
+    // enclosed near-white counters (O/B/D/P). Large white fields stay —
+    // they exceed the 22% ink cap.
+    _punchEnclosedPlateHoles(image, plate ?? (255, 255, 255));
     _stripJpegWhiteRim(image);
     _stripTexturedPlateRemnants(image, plate);
   }
@@ -1342,7 +1627,25 @@ class LogoImageProcessor {
         raw[y * w + x] = 1;
       }
     }
-    return _dilateMask(raw, w, h);
+    var dilated = _dilateMask(raw, w, h);
+    // Dilation must not paint protect onto plate-fill. That 1px shell around
+    // letters stayed after the flood and 8-way-joined counters to any
+    // border-touching leftover, so `_punchEnclosedPlateHoles` skipped O/B/D/P.
+    if (plate != null) {
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          final i = y * w + x;
+          if (dilated[i] == 0) continue;
+          if (_isPlateFill(image.getPixel(x, y), plate)) dilated[i] = 0;
+        }
+      }
+    }
+    final centerline = centerlineProtectMask(image);
+    if (centerline == null) return dilated;
+    for (var i = 0; i < dilated.length; i++) {
+      if (centerline[i] != 0) dilated[i] = 1;
+    }
+    return dilated;
   }
 
   static Uint8List _dilateMask(Uint8List src, int w, int h) {
@@ -1616,6 +1919,8 @@ class LogoImageProcessor {
           }
         }
         if (touchesBorder) continue;
+        // Letter counters, not 1px JPEG crumbs. Matches Python punch.
+        if (comp.length < 8) continue;
         // Counters are small vs the wordmark; skip large brand fills.
         if (comp.length > inkCount * 0.22) continue;
         final bw = maxX - minX + 1;

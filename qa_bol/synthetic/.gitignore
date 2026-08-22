@@ -5,3 +5,4 @@ improve_summary_latest.json
 manifest.json
 scores_*.json
 __pycache__/
+_loop_run*.txt

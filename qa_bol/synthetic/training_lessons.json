@@ -61,6 +61,24 @@
         "overcrowding",
         "wide"
       ]
+    },
+    {
+      "id": "20260822T175632Z",
+      "ts": "2026-08-22T17:56:32Z",
+      "title": "Dual logos: stack before shrink; center in frame",
+      "lesson": "Side-by-side half-width cells left-pin and over-shrink wide dual marks. Prefer vertical stack (full frame width, no half cells) when min stacked height beats side-by-side; allow band up to dualStackMaxBandH; always center ink in the customer frame between margin and Probill. Fall back to centered side-by-side when stack is not larger.",
+      "do_not_regress": "Probill/Swift absolute lock; customerToProbillGap 12; never invent per-customer logo layout",
+      "case_ids": [],
+      "tags": []
+    },
+    {
+      "id": "20260822T175805Z",
+      "ts": "2026-08-22T17:58:05Z",
+      "title": "Dual logos: stack-before-shrink + center in Probill frame",
+      "lesson": "Side-by-side half-width cells left-pinned and over-shrunk dual marks. Prefer vertical stack (full frame width, optional band up to dualStackMaxBandH) when min stacked height beats side-by-side; always center ink in the customer frame between margin and Probill. Fall back to side-by-side only when stack is not larger.",
+      "do_not_regress": "never invade Probill/Swift; Shipping SO/Contact lock untouched",
+      "case_ids": [],
+      "tags": []
     }
   ],
   "run_snapshots": [
@@ -408,7 +426,237 @@
       ],
       "gate_fails": [],
       "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
+    },
+    {
+      "ts": "2026-08-22T17:52:42Z",
+      "run_id": "20260822T175242Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "baseline_sample",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_square",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_rect",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_dual_arc_trialta",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_wide",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
+    },
+    {
+      "ts": "2026-08-22T18:33:42Z",
+      "run_id": "20260822T183342Z",
+      "mean_composite": 1.0,
+      "ok": true,
+      "top_failures": [
+        {
+          "case_id": "baseline_sample",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_square",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_rect",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_dual_arc_trialta",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        },
+        {
+          "case_id": "logo_wide",
+          "composite": 1.0,
+          "metrics": {
+            "structure": 1.0,
+            "margin_integrity": 1.0,
+            "logo_swift_clearance": 1.0,
+            "logo_probill_clearance": 1.0,
+            "tracking_field_visibility": 1.0,
+            "micro_value_gap_consistency": 1.0,
+            "overcrowding": 1.0
+          },
+          "gates": {
+            "structure_ok": true,
+            "tracking_visible_ok": true,
+            "logo_swift_ok": true,
+            "logo_probill_ok": true,
+            "margin_ok": true,
+            "all_ok": true
+          }
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read this summary + qa_bol/synthetic/training_lessons.json; fix top_failures that are real layout bugs (long-field cutoff, logo under Probill/Swift, margins, overcrowding) without changing Shipping SO/Contact locks; re-run this script; append score-proven lessons."
     }
   ],
-  "updated_at": "2026-08-21T06:50:28Z"
+  "updated_at": "2026-08-22T18:33:46Z"
 }

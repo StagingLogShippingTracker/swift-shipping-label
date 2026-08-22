@@ -66,6 +66,8 @@ void main() {
     final propak = await loadProcessed('Propak-Energy-Services-Logo.png');
     final wpw =
         await loadProcessed('WPW Pipeline and Facility Construction.png');
+    final bfl = await loadProcessed('bfl fabricators.png');
+    final murrays = await loadProcessed('murrays_trucking.png');
     Uint8List tallIsh;
     final tallFile = File('${logosDir.path}/Spartan Delta Corp.png');
     if (tallFile.existsSync()) {
@@ -244,6 +246,42 @@ void main() {
       }(),
       logos: [tallIsh],
       notes: 'taller / square-ish lockup',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'logo_circle_bfl',
+      data: () {
+        final d = baseBol();
+        d.set(LabelFields.customer, 'BFL FABRICATORS');
+        d.set(BolFields.consigneeName, 'BFL FABRICATORS');
+        return d;
+      }(),
+      logos: [bfl],
+      notes: 'circular / badge single',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'logo_ultra_wide_murrays',
+      data: () {
+        final d = baseBol();
+        d.set(LabelFields.customer, "MURRAY'S TRUCKING");
+        d.set(BolFields.consigneeName, "MURRAY'S TRUCKING");
+        return d;
+      }(),
+      logos: [murrays],
+      notes: 'ultra-wide wordmark single',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'logo_mixed_square_rect',
+      data: () {
+        final d = baseBol();
+        d.set(LabelFields.customer, 'ARJAE C/O PROPAK');
+        d.set(BolFields.consigneeName, 'ARJAE C/O PROPAK');
+        return d;
+      }(),
+      logos: [arjae, propak],
+      notes: 'mixed square+rect dual',
     ));
 
     cases.add(await renderCase(

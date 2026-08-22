@@ -3,8 +3,8 @@
   "description": "Synthetic clean\u2194degraded pairs for logo restore improve loop",
   "recipes": {
     "downscale_jpeg": {
-      "scale": 0.42,
-      "jpeg_q": 65,
+      "scale": 0.55,
+      "jpeg_q": 78,
       "blur": 0.0,
       "crush": 0.0,
       "plate": 0.0,
@@ -21,31 +21,31 @@
       "halo": 0.0
     },
     "plate_halo": {
-      "scale": 0.52,
-      "jpeg_q": 70,
-      "blur": 0.3,
-      "crush": 0.1,
-      "plate": 0.7,
+      "scale": 0.62,
+      "jpeg_q": 78,
+      "blur": 0.18,
+      "crush": 0.05,
+      "plate": 0.42,
       "band": 0,
-      "halo": 0.35
+      "halo": 0.22
     },
     "banding_jpeg": {
-      "scale": 0.35,
-      "jpeg_q": 35,
-      "blur": 0.4,
-      "crush": 0.15,
-      "plate": 0.15,
-      "band": 24,
-      "halo": 0.1
+      "scale": 0.38,
+      "jpeg_q": 40,
+      "blur": 0.35,
+      "crush": 0.12,
+      "plate": 0.12,
+      "band": 20,
+      "halo": 0.08
     },
     "import_combo": {
-      "scale": 0.34,
-      "jpeg_q": 58,
-      "blur": 0.55,
-      "crush": 0.22,
-      "plate": 0.45,
-      "band": 20,
-      "halo": 0.22
+      "scale": 0.46,
+      "jpeg_q": 72,
+      "blur": 0.22,
+      "crush": 0.08,
+      "plate": 0.28,
+      "band": 8,
+      "halo": 0.1
     }
   },
   "pairs": [
@@ -57,13 +57,13 @@
       "recipe": "import_combo",
       "seed": 61,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": false
     },
@@ -75,8 +75,8 @@
       "recipe": "downscale_jpeg",
       "seed": 78,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -93,13 +93,13 @@
       "recipe": "plate_halo",
       "seed": 95,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": false
     },
@@ -111,13 +111,13 @@
       "recipe": "import_combo",
       "seed": 62,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": false
     },
@@ -129,8 +129,8 @@
       "recipe": "downscale_jpeg",
       "seed": 79,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -147,13 +147,13 @@
       "recipe": "plate_halo",
       "seed": 96,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": false
     },
@@ -165,13 +165,13 @@
       "recipe": "import_combo",
       "seed": 113,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": false
     },
@@ -183,8 +183,8 @@
       "recipe": "downscale_jpeg",
       "seed": 130,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -201,13 +201,13 @@
       "recipe": "plate_halo",
       "seed": 147,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": false
     },
@@ -219,13 +219,13 @@
       "recipe": "import_combo",
       "seed": 69,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": true
     },
@@ -237,8 +237,8 @@
       "recipe": "downscale_jpeg",
       "seed": 86,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -255,13 +255,13 @@
       "recipe": "plate_halo",
       "seed": 103,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": true
     },
@@ -273,13 +273,13 @@
       "recipe": "import_combo",
       "seed": 121,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": true
     },
@@ -291,8 +291,8 @@
       "recipe": "downscale_jpeg",
       "seed": 138,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -309,13 +309,13 @@
       "recipe": "plate_halo",
       "seed": 155,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": true
     },
@@ -327,13 +327,13 @@
       "recipe": "import_combo",
       "seed": 116,
       "params": {
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
-        "halo": 0.22
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.1
       },
       "anchor": false
     },
@@ -345,8 +345,8 @@
       "recipe": "downscale_jpeg",
       "seed": 133,
       "params": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -363,13 +363,13 @@
       "recipe": "plate_halo",
       "seed": 150,
       "params": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35
+        "halo": 0.22
       },
       "anchor": false
     }

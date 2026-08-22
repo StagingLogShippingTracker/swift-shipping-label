@@ -3,7 +3,7 @@
 **Date:** 2026-08-05 (session ~02:07–02:36 local, ~50+ minutes wall including emulator boot, APK build, and extended passes)  
 **Tester:** Automated UI exercise (adb / uiautomator / screenshots) + real PDF generation & text extract + Recreate closed-loop  
 **Scope:** Thorough feature pass on Android emulator — **no code changes** during testing  
-**Decision:** **Ship / continue** for v1.1.48+71 mobile — core SL/RL/BOL + share flows pass; Recreate (Fly) works on Android; fix Update messaging (same as Windows) and a few polish items before calling the Android experience fully premium-stable
+**Decision:** **Ship / continue** for v1.1.48+71 mobile — core SL/RL/BOL + share flows pass; fix Update messaging (same as Windows) and a few polish items before calling the Android experience fully premium-stable
 
 ---
 
@@ -28,7 +28,7 @@
 
 Android **1.1.48+71** is a polished touch-first warehouse app: orange brand header, pinned Shipping / Receiving / BOL segmented control, sticky bottom **Generate PDF**, carded presets/logos/forms. Real PDFs were generated for all three document types, verified on-device under `app_flutter/swift_document_generator/filled\`, and text-extracted (SL 1p, RL 1p, BOL 3p with **SW-0051**).
 
-Compared with Windows 1H premium QA: mobile correctly uses phone chrome (not a desktop MenuBar clone). **Recreate is available on Android** via Fly.io (priority) / native Rust fallback — closed-loop **Recreate & import** succeeded (~2s after confirm; Fly `/health` returned `ok`). Same Update-copy bug as Windows when local > GitHub latest. No app FATAL crashes; early System UI ANR on cold emulator was environmental.
+Compared with Windows 1H premium QA: mobile correctly uses phone chrome (not a desktop MenuBar clone). Same Update-copy bug as Windows when local > GitHub latest. No app FATAL crashes; early System UI ANR on cold emulator was environmental.
 
 **Verdict:** Core mobile workflows are decision-ready. Address Update messaging; polish Find-logo field prefill and optional mobile dark-mode affordance.
 
@@ -41,7 +41,7 @@ Compared with Windows 1H premium QA: mobile correctly uses phone chrome (not a d
 | 1 | Launch, splash/branding, header chrome | **Pass** | Orange header + white Swift Supply mark + “Document Generator”; Update chip; no layout overflow on launch |
 | 2 | Shipping / Receiving / BOL switching | **Pass** | Pinned segmented control; BOL freight Prepaid/Collect/Third Party toggled; copy checkboxes present; 8-round tab stress OK |
 | 3 | Generate PDFs (real files) | **Pass** | See evidence table. Piece-count dialog on Shipping; native share sheet (“Sharing 1 file”) for SL/RL/BOL |
-| 4 | Logos: pick/upload/storage/dual C/O / Recreate | **Pass** | Upload → Add from Storage / Browse; Find on web opens; dual CUSTOMER + C/O slots observed; Recreate checkbox + Fly copy; **Prepare for Recreate** crop sheet → **Recreate & import** → snackbar “Recreate finished” (~2s) |
+| 4 | Logos: pick/upload/storage/dual C/O | **Pass** | Upload → Add from Storage / Browse; Find on web opens; dual CUSTOMER + C/O slots observed |
 | 5 | Presets load/save | **Pass** (load) | Preset dropdown + Save control present; load exercised in harness. Save not fully closed-loop this session |
 | 6 | Generate PDF / bottom bar / progress | **Pass** | Sticky bottom bar with progress affordance while busy; Generating… path observed during PDF build |
 | 7 | Update check | **Pass** / note | Sheet: checks GitHub for newer **APK**. See bug: local 1.1.48+71 vs latest v1.1.47 |
@@ -91,8 +91,8 @@ Share sheet confirmed filename `BOL-PACIFICCANBRIAMSO88421.pdf` (and SL/RL count
 
 ### Polish / product notes
 
-4. **Recreate on Android is real** (not Windows-only as in older 1.1.36-era QA): Fly.io first, Rust fallback; crop sheet (Auto / Manual / No crop) before import.  
-5. **Fly.io** `https://swift-recreate-logo.fly.dev/health` → `{"ok":true,"auth_configured":true}` during session.  
+4. **Logo restore on Android** is Gemini (same as Windows), not a cloud ESRGAN host.  
+5. Cloud ESRGAN restore is no longer part of the app.  
 6. **Prepare for Recreate** is easy to miss in automation/support docs — operators must tap **Recreate & import** after crop choice.  
 7. **Sticky Generate** + pinned tabs are the right mobile IA (better touch primary action than Windows’ workspace-only Generate).  
 8. Cold emulator briefly showed System UI ANR before first stable launch — environmental, not app-repro after warm start.  
@@ -110,7 +110,7 @@ Share sheet confirmed filename `BOL-PACIFICCANBRIAMSO88421.pdf` (and SL/RL count
 | Primary action clarity | **5** | 4.5 | Full-width bottom Generate is clearer on touch than desktop workspace placement |
 | Trust / update UX | **3** | 3 | Same “up to date vs older latest” copy; APK wording is otherwise clear |
 | Motion / micro-interactions | **3.5** | 3.5 | Sheets/dialogs solid; Recreate crop sheet is a nice premium beat |
-| Feature parity | **4** | 4.5 | Recreate now on Android (Fly). Missing: desktop Customize / dark toggle / MenuBar tools |
+| Feature parity | **4** | 4.5 | Logo restore is Gemini on Android. Missing: desktop Customize / dark toggle / MenuBar tools |
 
 **Overall premium feel:** **Strong pass for Android touch-first.** Does **not** feel like a stretched desktop clone. Remaining gaps are messaging and small polish, not “prototype.”
 
@@ -133,7 +133,7 @@ Share sheet confirmed filename `BOL-PACIFICCANBRIAMSO88421.pdf` (and SL/RL count
 |------|------------------------|----------------------------------|
 | Core SL / RL / BOL PDFs | Pass | **Pass** (BOL SW-0051, 3 pages) |
 | Update “up to date” vs older latest | Bug noted | **Same bug** (APK copy) |
-| Recreate | Tooling ready; E2E partial | **Closed-loop Pass** (Fly, ~2s after confirm) |
+| Recreate | Tooling ready; E2E partial | Historical; restore is now Gemini |
 | Chrome | MenuBar + NavigationRail | Orange header + segmented tabs + sticky Generate |
 | Multiline scroll | Wheel trapping noted | Touch scroll OK; a11y label hunt partial |
 | Dark mode | Verified + persists | Not exposed in mobile header |

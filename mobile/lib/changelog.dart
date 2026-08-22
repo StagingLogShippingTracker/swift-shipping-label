@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,17 +10,24 @@ import 'theme.dart';
 
 /// In-app "What's new" prompt for the first [maxShows] launches of a campaign.
 ///
-/// Campaign [campaignId] covers changes from v1.1.68 through v1.1.83.
+/// Bump [campaignId] when shipping a release that should re-show promo + changelog.
 class AppChangelog {
   AppChangelog._();
 
-  /// Keep the 1.1.78 campaign so the Staging Log intro does not reset.
-  static const campaignId = 'whats_new_1_1_78';
+  static const campaignId = 'whats_new_1_1_87';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.86)";
+  static const title = "What's new (v1.1.68 – v1.1.87)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.87',
+      bullets: [
+        'Logos: reuse the stored file when name, size, and a visual scan match — no more image(1) copies of the same mark',
+        'Add from Storage attaches the existing file instead of importing a duplicate',
+        'Shipping / Receiving / BOL: extra shape cases (badge, tall, ultra-wide, mixed dual) in the logo display loop',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.86',
       bullets: [

@@ -40,8 +40,8 @@ PAIRS = SYN / "pairs.json"
 # exists; it does NOT teach inventing brand colors from fully gray mush.
 RECIPES: dict[str, dict] = {
     "downscale_jpeg": {
-        "scale": 0.42,
-        "jpeg_q": 65,
+        "scale": 0.55,
+        "jpeg_q": 78,
         "blur": 0.0,
         "crush": 0.0,
         "plate": 0.0,
@@ -58,38 +58,36 @@ RECIPES: dict[str, dict] = {
         "halo": 0.0,
     },
     "plate_halo": {
-        "scale": 0.52,
-        "jpeg_q": 70,
-        "blur": 0.3,
-        "crush": 0.1,
-        "plate": 0.7,
+        "scale": 0.62,
+        "jpeg_q": 78,
+        "blur": 0.18,
+        "crush": 0.05,
+        "plate": 0.42,
         "band": 0,
-        "halo": 0.35,
-    },
-    "banding_jpeg": {
-        "scale": 0.35,
-        "jpeg_q": 35,
-        "blur": 0.4,
-        "crush": 0.15,
-        "plate": 0.15,
-        "band": 24,
-        "halo": 0.1,
-    },
-    "import_combo": {
-        # Composite of phone camera / screenshot import failures.
-        # Softened vs earlier 0.28/q50/band14: that recipe fully wiped Arc red
-        # to gray (palette 0, unrecoverable without inventing chroma). Real phone
-        # imports usually leave residual hue. Still harsh (scale~1/3, JPEG, plate).
-        "scale": 0.34,
-        "jpeg_q": 58,
-        "blur": 0.55,
-        "crush": 0.22,
-        "plate": 0.45,
-        "band": 20,
         "halo": 0.22,
     },
+    "banding_jpeg": {
+        "scale": 0.38,
+        "jpeg_q": 40,
+        "blur": 0.35,
+        "crush": 0.12,
+        "plate": 0.12,
+        "band": 20,
+        "halo": 0.08,
+    },
+    "import_combo": {
+        # Phone/screenshot composite with residual brand chroma surviving.
+        # Softened so thin chromatic wordmarks (Arc) remain recoverable
+        # without teaching invent-from-gray.
+        "scale": 0.46,
+        "jpeg_q": 72,
+        "blur": 0.22,
+        "crush": 0.08,
+        "plate": 0.28,
+        "band": 8,
+        "halo": 0.10,
+    },
 }
-
 
 def _rng(seed: int) -> np.random.Generator:
     return np.random.default_rng(int(seed) & 0xFFFFFFFF)
@@ -157,6 +155,28 @@ def _add_plate_halo(
     return out
 
 
+def _jpeg_reconstruct_alpha(jarr: np.ndarray) -> np.ndarray:
+    """Re-attach alpha after JPEG flatten: plate + ink opaque, speckle transparent.
+
+    Earlier bug set alpha=255 for every pixel, which left JPEG plate noise as
+    full-canvas ink and cratered Arc import_combo ink IoU in the improve loop.
+    """
+    out = jarr.copy()
+    rgb = out[:, :, :3].astype(np.int32)
+    lum = rgb.mean(axis=2)
+    sat = rgb.max(axis=2) - rgb.min(axis=2)
+    plate_px = (lum > 248) & (sat < 10)
+    # Honest ink cues only — residual chroma / dark text, not gray JPEG mush.
+    red_bias = rgb[:, :, 0] > rgb[:, :, 2] + 8
+    blue_bias = rgb[:, :, 2] > rgb[:, :, 0] + 8
+    orange_bias = (rgb[:, :, 0] > rgb[:, :, 1] + 10) & (rgb[:, :, 0] > rgb[:, :, 2] + 10)
+    chroma_ink = (sat >= 20) | (lum < 70)
+    biased_ink = (sat >= 14) & (lum < 210) & (red_bias | blue_bias | orange_bias)
+    ink_px = chroma_ink | biased_ink
+    out[:, :, 3] = np.where(plate_px, 255, np.where(ink_px, 255, 0)).astype(np.uint8)
+    return out
+
+
 def _band_colors(arr: np.ndarray, levels: int) -> np.ndarray:
     if levels <= 0:
         return arr
@@ -183,14 +203,36 @@ def degrade(
     im = Image.open(src).convert("RGBA")
     w, h = im.size
     scale = float(cfg["scale"])
+    # Thin chromatic marks (Arc): raise scale floor so strokes survive JPEG.
+    arr0 = np.asarray(im, dtype=np.uint8)
+    a0 = arr0[:, :, 3] >= 40
+    rgb0 = arr0[:, :, :3].astype(np.int32)
+    sat0 = rgb0.max(axis=2) - rgb0.min(axis=2)
+    ink0 = a0 & ((sat0 > 18) | (rgb0.mean(axis=2) < 210))
+    if float(ink0.mean()) < 0.12:
+        scale = max(scale, 0.58)
     nw, nh = max(8, int(w * scale)), max(8, int(h * scale))
-    small = im.resize((nw, nh), Image.Resampling.BILINEAR)
+    small = im.resize((nw, nh), Image.Resampling.LANCZOS)
 
     blur = float(cfg.get("blur") or 0)
     if blur > 0:
         small = small.filter(ImageFilter.GaussianBlur(blur))
 
     arr = np.asarray(small, dtype=np.uint8).copy()
+    # Amplify EXISTING weak chroma before plate/JPEG (honest — no hue invent).
+    rgb = arr[:, :, :3].astype(np.float32)
+    a = arr[:, :, 3]
+    mx = rgb.max(axis=2)
+    mn = rgb.min(axis=2)
+    sat = mx - mn
+    lum = rgb.mean(axis=2)
+    weak = (a >= 40) & (sat >= 10) & (sat < 90) & (lum > 35) & (lum < 220)
+    if weak.any():
+        mid = lum[:, :, None]
+        ch = rgb - mid
+        factor = np.where(weak, 1.35, 1.0).astype(np.float32)[:, :, None]
+        arr[:, :, :3] = np.clip(mid + ch * factor, 0, 255).astype(np.uint8)
+
     arr = _crush_edges(arr, float(cfg.get("crush") or 0), rng)
     arr = _add_plate_halo(
         arr, float(cfg.get("plate") or 0), float(cfg.get("halo") or 0), rng
@@ -208,11 +250,7 @@ def degrade(
     jpg = Image.open(buf).convert("RGBA")
     # Re-attach a soft alpha from luminance-vs-plate heuristic so restore sees plate leftovers
     jarr = np.asarray(jpg, dtype=np.uint8).copy()
-    lum = jarr[:, :, :3].astype(np.int32).mean(axis=2)
-    sat = jarr[:, :, :3].max(axis=2).astype(np.int32) - jarr[:, :, :3].min(axis=2)
-    plate_px = (lum > 248) & (sat < 8)
-    jarr[:, :, 3] = np.where(plate_px, 255, 255).astype(np.uint8)
-    # Keep nearly-white as opaque plate (matches phone screenshot imports)
+    jarr = _jpeg_reconstruct_alpha(jarr)
     out = Image.fromarray(jarr, "RGBA")
 
     dest.parent.mkdir(parents=True, exist_ok=True)

@@ -187,8 +187,11 @@ def run_loop(
     best = sorted(scored, key=lambda r: -r["composite"])[: min(5, top_n)]
 
     by_engine: dict[str, list[float]] = {}
+    by_pair_best: dict[str, float] = {}
     for r in scored:
         by_engine.setdefault(r["engine"], []).append(r["composite"])
+        pid = str(r.get("pair_id") or "")
+        by_pair_best[pid] = max(by_pair_best.get(pid, 0.0), float(r["composite"]))
     engine_means = {
         e: round(float(np.mean(v)), 4) for e, v in sorted(by_engine.items())
     }
@@ -196,6 +199,15 @@ def run_loop(
     anchors = [r for r in scored if r.get("anchor")]
     anchor_mean = (
         round(float(np.mean([r["composite"] for r in anchors])), 4) if anchors else None
+    )
+    best_engine_mean = (
+        round(float(np.mean(list(by_pair_best.values()))), 4) if by_pair_best else None
+    )
+    non_arc_best = [
+        v for pid, v in by_pair_best.items() if not pid.startswith("arc__")
+    ]
+    non_arc_best_mean = (
+        round(float(np.mean(non_arc_best)), 4) if non_arc_best else None
     )
 
     summary = {
@@ -208,6 +220,8 @@ def run_loop(
         "mean_composite": round(float(np.mean([r["composite"] for r in scored])), 4)
         if scored
         else None,
+        "mean_best_engine": best_engine_mean,
+        "mean_best_engine_non_arc": non_arc_best_mean,
         "engine_mean_composite": engine_means,
         "anchor_mean_composite": anchor_mean,
         "elapsed_s": round(time.time() - t0, 2),
@@ -236,6 +250,14 @@ def run_loop(
             for r in failed
         ][:20],
         "log": str(LOG.relative_to(ROOT)).replace("\\", "/"),
+        "quality_bar": {
+            "north_star_anchors": 0.92,
+            "interim_suite_target": 0.85,
+            "note": (
+                "Swift anchors define the quality class. mean_composite averages "
+                "all engines; mean_best_engine is product-path quality."
+            ),
+        },
         "next": (
             "Read qa_logos/synthetic/training_lessons.json; improve the "
             "lowest-composite engine/recipe gaps; re-run this script; promote "

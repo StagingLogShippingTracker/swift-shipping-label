@@ -336,15 +336,16 @@ class BolLabelPdf {
     final staticLeft = swiftW > 0
         ? math.min(swiftX, probill.x)
         : probill.x;
-    _drawCustomerLogosLeft(
+    final headerBandH = math.max(swiftH, customerLogoTargetH);
+    final usedLogoBandH = _drawCustomerLogosLeft(
       c,
       customerLogos,
       logoTop: y,
-      bandH: math.max(swiftH, customerLogoTargetH),
+      bandH: headerBandH,
       frameRightLimit: staticLeft - customerToProbillGap,
     );
     _paintProbillCutout(c, fonts, d, probill);
-    y -= math.max(swiftH, customerLogoTargetH) + 6;
+    y -= math.max(headerBandH, usedLogoBandH) + 6;
 
     // Title band
     const bandH = 22.0;
@@ -1402,11 +1403,13 @@ class BolLabelPdf {
     }
     final drawW = math.min(draw.w, cellW);
     final drawH = math.min(draw.h, cellH);
-    c.drawImage(logo.image, cellX, draw.y, drawW, drawH);
+    // Center ink inside the cell / frame (never left-pin to the margin).
+    final drawX = cellX + (cellW - drawW) / 2;
+    c.drawImage(logo.image, drawX, draw.y, drawW, drawH);
     final boxes = debugLayout?['customer_logo_boxes'];
     if (boxes is List) {
       boxes.add({
-        'x': cellX,
+        'x': drawX,
         'y': draw.y,
         'w': drawW,
         'h': drawH,
@@ -1415,12 +1418,17 @@ class BolLabelPdf {
     }
   }
 
+  /// Max header band when dual logos stack (pt). Keeps Probill/Swift fixed.
+  static const dualStackMaxBandH = customerLogoTargetH * 1.85;
+
   /// Uploaded logos only — left of the locked Probill / Swift static zone.
   ///
-  /// Target ink height matches Swift. If the mark is too wide for the left
-  /// frame, height scales down uniformly so the whole logo stays left of
-  /// Probill (never clipped into the cut-out).
-  void _drawCustomerLogosLeft(
+  /// Target ink height matches Swift. Dual logos prefer a vertical stack
+  /// (full frame width, no half-width cells) when that yields a larger
+  /// mark than side-by-side; otherwise keep side-by-side. Marks are always
+  /// centered in the customer frame between the left margin and Probill.
+  /// Returns the band height actually used (may grow slightly for stacks).
+  double _drawCustomerLogosLeft(
     PdfGraphics c,
     List<_BolInkLogo> customerLogos, {
     required double logoTop,
@@ -1436,7 +1444,7 @@ class BolLabelPdf {
     if (logos.isEmpty) {
       debugLayout?['customer_logo_frame'] = null;
       debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
-      return;
+      return bandH;
     }
 
     final frameLeft = margin;
@@ -1454,13 +1462,61 @@ class BolLabelPdf {
         'skipped': true,
       };
       debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
-      return;
+      return bandH;
+    }
+
+    var usedBandH = bandH;
+    var stackMode = false;
+    var stackHeights = <double>[];
+
+    if (logos.length >= 2) {
+      final cellW = (frameW - customerStackGap) / 2;
+      final hSide = cellW < 4
+          ? 0.0
+          : math.min(
+              LogoInkMetrics.sharedHeightForCells(
+                logos.map((l) => l.ink),
+                customerLogoTargetH,
+                cellW,
+              ),
+              bandH,
+            );
+
+      // Stack: each mark uses the full frame width (no half-width cells).
+      final natural = <double>[
+        for (final l in logos)
+          LogoInkMetrics.fitHeightToWidth(
+            l.ink,
+            customerLogoTargetH,
+            frameW,
+          ),
+      ];
+      final naturalSum =
+          natural.fold<double>(0, (a, b) => a + b) + customerStackGap;
+      final stackBand = math.min(
+        math.max(bandH, naturalSum),
+        dualStackMaxBandH,
+      );
+      var scale = 1.0;
+      final budget = stackBand - customerStackGap;
+      final inkSum = natural.fold<double>(0, (a, b) => a + b);
+      if (inkSum > budget && inkSum > 0) {
+        scale = budget / inkSum;
+      }
+      stackHeights = [for (final h in natural) h * scale];
+      final hStackMin = stackHeights.reduce(math.min);
+
+      // Prefer stack only when it keeps marks meaningfully larger.
+      if (hStackMin > hSide + 0.75) {
+        stackMode = true;
+        usedBandH = stackBand;
+      }
     }
 
     final frameTop = logoTop - logoBandInset;
-    final frameBot = logoTop - bandH + logoBandInset;
+    final frameBot = logoTop - usedBandH + logoBandInset;
     final frameH = (frameTop - frameBot).clamp(1.0, 10000.0);
-    if (frameH <= 0) return;
+    if (frameH <= 0) return usedBandH;
 
     debugLayout?['customer_logo_frame'] = {
       'x': frameLeft,
@@ -1468,6 +1524,9 @@ class BolLabelPdf {
       'w': frameW,
       'h': frameH,
       'right_limit': frameRightLimit,
+      'layout': stackMode
+          ? 'stack'
+          : (logos.length == 1 ? 'single' : 'side_by_side'),
     };
     debugLayout?['customer_logo_boxes'] = <Map<String, dynamic>>[];
 
@@ -1488,14 +1547,38 @@ class BolLabelPdf {
         customerLogoTargetH,
       );
       c.restoreContext();
-      return;
+      return usedBandH;
+    }
+
+    if (stackMode && stackHeights.length == logos.length) {
+      final totalH = stackHeights.fold<double>(0, (a, b) => a + b) +
+          customerStackGap * (logos.length - 1);
+      // Center the stack vertically in the customer frame.
+      var top = frameBot + (frameH + totalH) / 2;
+      for (var i = 0; i < logos.length; i++) {
+        final h = stackHeights[i];
+        if (h < 1) continue;
+        final bot = top - h;
+        _drawLogoInCell(
+          c,
+          logos[i],
+          frameLeft,
+          bot,
+          frameW,
+          h,
+          h,
+        );
+        top = bot - customerStackGap;
+      }
+      c.restoreContext();
+      return usedBandH;
     }
 
     // Dual logos: equal-width cells, one shared height that fits both.
     final cellW = (frameW - customerStackGap) / 2;
     if (cellW < 4) {
       c.restoreContext();
-      return;
+      return usedBandH;
     }
 
     final sharedH = math.min(
@@ -1508,22 +1591,33 @@ class BolLabelPdf {
     );
     if (sharedH < 1) {
       c.restoreContext();
-      return;
+      return usedBandH;
     }
 
+    // Center the side-by-side row as a group when marks are narrower than cells.
+    final rowInkW = logos.fold<double>(
+          0,
+          (a, l) => a + l.ink.drawWidth(sharedH),
+        ) +
+        customerStackGap * (logos.length - 1);
+    final rowLeft = frameLeft + math.max(0.0, (frameW - rowInkW) / 2);
+
+    var x = rowLeft;
     for (var i = 0; i < logos.length; i++) {
-      final cellX = frameLeft + i * (cellW + customerStackGap);
+      final inkW = logos[i].ink.drawWidth(sharedH);
       _drawLogoInCell(
         c,
         logos[i],
-        cellX,
+        x,
         frameBot,
-        cellW,
+        inkW,
         frameH,
         sharedH,
       );
+      x += inkW + customerStackGap;
     }
     c.restoreContext();
+    return usedBandH;
   }
 
   /// Classic radio: thin dark-gray ring; selected = centered dark-gray dot.

@@ -1573,11 +1573,13 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
     if (picked == null || !mounted) return;
-    final bytes = await picked.readAsBytes();
-    await _importBytesWithPrompt(
-      bytes,
-      preferredName: p.basename(picked.path),
-    );
+    // Already in customer_logos — attach the existing file, never copy it.
+    setState(() {
+      if (_logoPaths.length < maxCustomerLogos &&
+          !_logoPaths.contains(picked.path)) {
+        _logoPaths.add(picked.path);
+      }
+    });
     });
   }
 

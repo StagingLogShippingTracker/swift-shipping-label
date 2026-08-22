@@ -75,6 +75,9 @@ void main() {
     final trialta = await loadProcessed('Trialta Projects.png');
     final arjae = await loadProcessed('ARJAE.png');
     final propak = await loadProcessed('Propak-Energy-Services-Logo.png');
+    final bfl = await loadProcessed('bfl fabricators.png');
+    final smjv = await loadProcessed('SMJV_Alpha.png');
+    final murrays = await loadProcessed('murrays_trucking.png');
     // Prefer a naturally small lockup; fall back to downscaled ARJAE.
     Uint8List lowres;
     final smallCandidates = [
@@ -271,6 +274,40 @@ void main() {
       ),
       logos: [arjae, propak],
       notes: 'mixed square+rect dual',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'shape_circle_bfl',
+      data: baseData(customer: 'BFL FABRICATORS', shipTo: 'BFL FABRICATORS'),
+      logos: [bfl],
+      notes: 'circular / badge single',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'shape_tall_smjv',
+      data: baseData(customer: 'SMJV', shipTo: 'SMJV'),
+      logos: [smjv],
+      notes: 'tall / portrait single',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'shape_ultra_wide_murrays',
+      data: baseData(
+        customer: "MURRAY'S TRUCKING",
+        shipTo: "MURRAY'S TRUCKING",
+      ),
+      logos: [murrays],
+      notes: 'ultra-wide wordmark single',
+    ));
+
+    cases.add(await renderCase(
+      caseId: 'shape_dual_badge_rect',
+      data: baseData(
+        customer: 'BFL C/O PROPAK',
+        shipTo: 'BFL C/O PROPAK',
+      ),
+      logos: [bfl, propak],
+      notes: 'circular + rectangular dual',
     ));
 
     cases.add(await renderCase(

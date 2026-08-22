@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'label_data.dart';
+import 'logo_dedupe.dart';
 import 'logo_image_process.dart';
 import 'logo_import_options.dart';
 import 'pdf_render_options.dart';
@@ -15,9 +16,27 @@ import 'pdf_render_options.dart';
 class ImportLogoResult {
   const ImportLogoResult({
     required this.file,
+    this.reused = false,
   });
 
   final File file;
+
+  /// True when an existing stored file was the same mark — no new copy written.
+  final bool reused;
+}
+
+class LogoLibraryDedupeReport {
+  const LogoLibraryDedupeReport({
+    required this.groups,
+    required this.deleted,
+    required this.kept,
+    required this.removed,
+  });
+
+  final int groups;
+  final int deleted;
+  final List<String> kept;
+  final List<String> removed;
 }
 
 /// App-private storage for presets, logos, and generated PDFs.
@@ -338,11 +357,12 @@ class AppStorage {
     );
   }
 
-  /// Save logo bytes into [logosDir] with unique filename.
+  /// Save logo bytes into [logosDir], reusing an existing file when the mark
+  /// already exists (name + size + visual scan).
   ///
-  /// Runs the lightweight [LogoImageProcessor] fast path (trim margins /
-  /// optional background removal). Low-res logos are restored separately
-  /// via [LogoRestorer] (vectorize / Real-ESRGAN / cubic; Gemini opt-in).
+  /// A colliding filename only gets `stem(1).png` when the incoming image is
+  /// actually a different mark. Low-res logos are restored separately via
+  /// [LogoRestorer] (vectorize / Real-ESRGAN / cubic; Gemini opt-in).
   Future<ImportLogoResult> importLogoBytes(
     List<int> bytes, {
     required String preferredName,
@@ -350,18 +370,6 @@ class AppStorage {
     void Function(String)? onLog,
   }) async {
     await logosDir.create(recursive: true);
-
-    var stem = p.basenameWithoutExtension(preferredName.trim());
-    if (stem.isEmpty) stem = 'logo';
-    stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
-    var dest = File(p.join(logosDir.path, '$stem.png'));
-    if (await dest.exists()) {
-      var n = 2;
-      while (await dest.exists()) {
-        dest = File(p.join(logosDir.path, '$stem ($n).png'));
-        n++;
-      }
-    }
 
     final importOptions = options ?? LogoImportOptions.standard();
     var working = Uint8List.fromList(bytes);
@@ -388,8 +396,85 @@ class AppStorage {
           : importOptions,
     );
 
+    final reused = LogoDedupe.findReusable(
+      processedBytes: finalBytes,
+      preferredName: preferredName,
+      stored: listLogos(),
+    );
+    if (reused != null) {
+      onLog?.call('reuse ${p.basename(reused.path)} (same mark already stored)');
+      return ImportLogoResult(file: reused, reused: true);
+    }
+
+    var stem = p.basenameWithoutExtension(preferredName.trim());
+    if (stem.isEmpty) stem = 'logo';
+    stem = stem.replaceAll(RegExp(r'[^\w\- .]+'), '_');
+    var dest = File(p.join(logosDir.path, '$stem.png'));
+    if (await dest.exists()) {
+      dest = LogoDedupe.nextUniqueDest(logosDir.path, stem);
+      onLog?.call('new mark; wrote ${p.basename(dest.path)}');
+    }
+
     await dest.writeAsBytes(finalBytes, flush: true);
     return ImportLogoResult(file: dest);
+  }
+
+  /// Collapse visually-identical copies in [logosDir] and retarget presets.
+  Future<LogoLibraryDedupeReport> dedupeStoredLogos() async {
+    final groups = LogoDedupe.planCleanup(listLogos());
+    var deleted = 0;
+    final kept = <String>[];
+    final removed = <String>[];
+    for (final group in groups) {
+      final keepName = p.basename(group.keep.path);
+      kept.add(keepName);
+      await _remapLogoInPresets(
+        group.delete.map((f) => p.basename(f.path)).toList(),
+        keepName,
+      );
+      for (final file in group.delete) {
+        final name = p.basename(file.path);
+        try {
+          if (await file.exists()) await file.delete();
+          final svg = File(p.setExtension(file.path, '.svg'));
+          if (await svg.exists()) await svg.delete();
+          deleted++;
+          removed.add(name);
+        } catch (_) {}
+      }
+    }
+    return LogoLibraryDedupeReport(
+      groups: groups.length,
+      deleted: deleted,
+      kept: kept,
+      removed: removed,
+    );
+  }
+
+  Future<void> _remapLogoInPresets(
+    List<String> fromNames,
+    String toName,
+  ) async {
+    if (fromNames.isEmpty) return;
+    final drop = fromNames.toSet();
+    var changed = false;
+    for (final entry in presets.entries.toList()) {
+      final preset = entry.value;
+      if (!preset.logoFileNames.any(drop.contains)) continue;
+      final next = <String>[];
+      for (final name in preset.logoFileNames) {
+        final mapped = drop.contains(name) ? toName : name;
+        if (!next.contains(mapped)) next.add(mapped);
+      }
+      presets[entry.key] = CustomerPreset(
+        name: preset.name,
+        kind: preset.kind,
+        fields: preset.fields,
+        logoFileNames: next,
+      );
+      changed = true;
+    }
+    if (changed) await savePresets();
   }
 
   /// Directory used for generated PDFs — custom override when set.

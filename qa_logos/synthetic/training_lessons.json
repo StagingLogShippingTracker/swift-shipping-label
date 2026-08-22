@@ -7,7 +7,7 @@
       "id": "20260821T070313Z",
       "ts": "2026-08-21T07:03:13Z",
       "title": "Vectorize oversmooth gate for thin marks",
-      "lesson": "GCM is thin_wordmark so the old non-thin-only oversmooth gate never fired; mushy vectorize beat Lanczos on disk. Reject when edge_energy(restored@prep) < 0.82*prep AND ink IoU vs prep >= 0.85 (thin+non-thin). Do not reject low-IoU soft redraws (gcm__downscale vectorize wins). Aggressive pink demotion in recover/_brand_palette regressed swift_orange__import_combo (~-0.11) — do not promote.",
+      "lesson": "GCM is thin_wordmark so the old non-thin-only oversmooth gate never fired; mushy vectorize beat Lanczos on disk. Reject when edge_energy(restored@prep) < 0.82*prep AND ink IoU vs prep >= 0.85 (thin+non-thin). Do not reject low-IoU soft redraws (gcm__downscale vectorize wins). Aggressive pink demotion in recover/_brand_palette regressed swift_orange__import_combo (~-0.11) \u2014 do not promote.",
       "do_not_regress": "swift_orange import_combo baseline; gcm__downscale vectorize IoU wins",
       "case_ids": [
         "gcm__import_combo",
@@ -46,6 +46,119 @@
         "restore",
         "speed",
         "app-cross-domain"
+      ]
+    },
+    {
+      "id": "20260821T201856Z",
+      "ts": "2026-08-21T20:18:56Z",
+      "title": "Matte + milder degrade raised suite 0.757 to 0.80",
+      "lesson": "Promoted punch_interior_plate + gray-only thin refine in prepare_for_engine; softened import/plate/downscale recipes with LANCZOS, thin scale floor 0.52, and weak-chroma amplify before JPEG. Do not refine chromatic thin fills (Propak). Pink invent still banned. Arc import remains the ceiling (~0.55) until thin red geometry recovers better.",
+      "do_not_regress": "swift_orange anchors >=0.92; no brand invent from gray",
+      "case_ids": [],
+      "tags": [
+        "matte",
+        "degrade",
+        "arc"
+      ]
+    },
+    {
+      "id": "20260821T201856Z",
+      "ts": "2026-08-21T20:18:56Z",
+      "title": "KPI: best-engine and non-Arc means",
+      "lesson": "Report mean_best_engine (product path) and mean_best_engine_non_arc alongside all-engine mean_composite. Interim suite target 0.85; north star anchors 0.92. Non-Arc best-of already ~0.86 after this pass.",
+      "do_not_regress": "anchor_mean_composite near 0.93",
+      "case_ids": [],
+      "tags": [
+        "kpi",
+        "training"
+      ]
+    },
+    {
+      "id": "20260822T183341Z",
+      "ts": "2026-08-22T18:33:41Z",
+      "title": "Edge harden must not drop baseline suite mean",
+      "lesson": "Aggressive harden_flat_edges + wider low-sat snap in finalize dropped mean_composite 0.799\u21920.796 and baseline engine 0.804\u21920.782. Keep mid-alpha-only Dart hardenFlatEdges; do not run aggressive Python harden in finalize until score-proven. Protect grey/silver opaque fills. Arc import/plate still dominate failures \u2014 do not invent brand chroma from gray.",
+      "do_not_regress": "grey letter fills; Swift anchors >=0.92; no per-customer restore branches",
+      "case_ids": [],
+      "tags": []
+    },
+    {
+      "id": "20260822T191142Z",
+      "ts": "2026-08-22T19:11:42Z",
+      "title": "Softer degrade + thin stroke reinforce \u2192 0.808",
+      "lesson": "Milder import/plate/downscale + thin scale floor 0.58 + thin halo protect + chroma recover floor 22 + thin stroke 1px reinforce raised mean 0.797\u21920.808 and best-engine 0.820\u21920.836. Non-Arc best 0.874. Polygon thin vectorize did not lift Arc import (0.56). Do not invent Arc red from gray. Fix vectorize IndentationError that failed swift_orange_solid__import_combo.",
+      "do_not_regress": "no invent-from-gray; Swift anchors >=0.92; no aggressive finalize harden",
+      "case_ids": [],
+      "tags": []
+    },
+    {
+      "id": "20260822T214325Z",
+      "ts": "2026-08-22T21:43:25Z",
+      "title": "Skeleton guard + hue recover: Arc palette up, Trialta/suite down",
+      "lesson": "Implemented density<0.18 centerline protect (cv2 morphological skeleton), hue-angle recover (core S>=0.35 A>=200, bleach 8-35%, dH<=25), thin vtracer spline/speckle1/cp8/ld16. Arc import/plate best-engine rose ~0.56-0.63 to ~0.69-0.72 via palette (0.19-0.27 to 0.74-1.00) but ink_iou stayed ~0.25-0.31 \u2014 JPEG geometry ceiling, not a threshold. Gating thin-path to density<0.18 (not aspect-OR) stopped GCM/Propak from entering skeleton/quantize. Trialta is NOT thin (dens 0.33-0.42) yet still ~0.48-0.53 (aspect 0.13-0.38); prune AABB-edge keep restored width but IoU/palette stayed low. Suite mean 0.808->0.773; non-Arc best 0.874->0.812; Swift anchors 0.9199 (hair under 0.92). Do not re-enable density<=0.30 or hue-recover on multi-fill lockups. Do not soften degrade recipes to buy the 0.90 bar.",
+      "do_not_regress": "no hue-recover on Trialta/GCM/Propak fills; Swift anchors >=0.92; density thin gate <0.18 only; no degrade softening",
+      "case_ids": [
+        "arc__import_combo",
+        "arc__plate_halo",
+        "trialta__import_combo",
+        "swift_orange__downscale_jpeg"
+      ],
+      "tags": [
+        "skeleton",
+        "hue-recover",
+        "thin-stroke",
+        "trialta"
+      ]
+    },
+    {
+      "id": "20260822T214447Z",
+      "ts": "2026-08-22T21:44:47Z",
+      "title": "Skeleton + hue lock raise Arc palette, not suite 0.90",
+      "lesson": "Three structural passes in logo_raster_finish / logo_vectorize: (1) medial-axis centerline computed on raw contrast BEFORE knockout/halo, those passes cannot punch skeleton pixels; (2) hue-consistent recover projects 8-25 percent sat boundary pixels onto the observed HSV cluster median within +/-25 deg (no invented hues); (3) thin vtracer path quantizes to 2-4 colors, spline/filter_speckle=1/color_precision=8/layer_difference=16, then stamps dropped centerline. Arc palette jumped (import vectorize 0.19 to 0.94) but ink_iou stayed ~0.25-0.31 so composite only reached 0.66-0.72. Suite mean fell 0.808 to 0.773 because Trialta fills were briefly treated as thin strokes. 0.90 needs geometry recovery beyond palette lock; JPEG-subsampled thin marks still lose stroke IoU vs clean.",
+      "do_not_regress": "no invent-from-gray; Swift anchors >=0.92; do not apply thin-path quantize/hue-lock to multi-fill lockups",
+      "case_ids": [
+        "arc__import_combo",
+        "arc__plate_halo",
+        "trialta__import_combo"
+      ],
+      "tags": [
+        "thin-stroke",
+        "skeleton",
+        "chroma",
+        "vectorize"
+      ]
+    },
+    {
+      "id": "20260822T214455Z",
+      "ts": "2026-08-22T21:44:55Z",
+      "title": "Thin-stroke gates must not fire on fills or upscales",
+      "lesson": "is_thin_stroke_mark must require wordmark aspect AND bbox density <=0.22 (Arc 0.09-0.15; Trialta/Propak fills 0.33+). finalize_restore must build the centerline protect mask from the prepared source and nearest-resize it, never from the upscaled restore (BICUBIC fringe looks thin). prune_ink_speckles must not drop components that define the ink AABB or sit on the left/right 12 percent \u2014 that isolated-letter prune collapsed Trialta aspect. Hue-consistent recover is thin-only; a single hue anchor on multi-fill lockups is a regression.",
+      "do_not_regress": "Trialta aspect; Swift anchors; no thin-path on fills",
+      "case_ids": [
+        "trialta__import_combo",
+        "trialta__downscale_jpeg"
+      ],
+      "tags": [
+        "trialta",
+        "prune",
+        "gates"
+      ]
+    },
+    {
+      "id": "20260822T222600Z",
+      "ts": "2026-08-22T22:26:00Z",
+      "title": "Customer-logo knockout Dart/Python parity",
+      "lesson": "normalizeToVisibleContent punches enclosed plate holes AFTER crop/pad because crop can isolate counters the first flood saw as border-connected (ARJAE white A-disc). Python prepare_for_engine must do the same. White outer flood matches Dart _isEmptyPixel (lum>=200 sat<=28) and 8-way on light plates; black plates stay 4-way + _isNearBlackCanvas (lum<=40 sat<=16). Letter-counter punch skips comps <8 px. Do not treat *_restored.png debug dumps as a reason to skip disk batch — gitignore them from commits only. Timing >300ms is not a bbox anomaly.",
+      "do_not_regress": "solid brand fills >=80% ink; white/black plate corners clear; O/B/D/P counters clear; no AABB collapse <55%",
+      "case_ids": [
+        "customer_logos/ARJAE.png",
+        "customer_logos/bfl_google_source.png",
+        "customer_logos/bird_source.png"
+      ],
+      "tags": [
+        "knockout",
+        "parity",
+        "customer-logos"
       ]
     }
   ],
@@ -171,7 +284,556 @@
         "esrgan": 0.7679,
         "vectorize": 0.7535
       }
+    },
+    {
+      "ts": "2026-08-21T16:09:03Z",
+      "run_id": "20260821T160903Z",
+      "mean_composite": 0.7995,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.5334,
+          "ink_iou": 0.3484,
+          "palette_fidelity": 0.0656,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0247
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5481,
+          "ink_iou": 0.364,
+          "palette_fidelity": 0.104,
+          "alpha_clean": 0.9995,
+          "aspect_drift": 0.026
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.5737,
+          "ink_iou": 0.3581,
+          "palette_fidelity": 0.2261,
+          "alpha_clean": 0.9871,
+          "aspect_drift": 0.0281
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.574,
+          "ink_iou": 0.402,
+          "palette_fidelity": 0.166,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.041
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5919,
+          "ink_iou": 0.4241,
+          "palette_fidelity": 0.2078,
+          "alpha_clean": 0.9998,
+          "aspect_drift": 0.042
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9339,
+      "engine_mean_composite": {
+        "baseline": 0.8017,
+        "esrgan": 0.7984,
+        "vectorize": 0.7983
+      }
+    },
+    {
+      "ts": "2026-08-21T16:20:17Z",
+      "run_id": "20260821T162017Z",
+      "mean_composite": 0.7971,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.548,
+          "ink_iou": 0.3508,
+          "palette_fidelity": 0.1282,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0339
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5653,
+          "ink_iou": 0.3669,
+          "palette_fidelity": 0.1771,
+          "alpha_clean": 0.9998,
+          "aspect_drift": 0.037
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.5658,
+          "ink_iou": 0.3642,
+          "palette_fidelity": 0.1868,
+          "alpha_clean": 0.9968,
+          "aspect_drift": 0.0385
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.574,
+          "ink_iou": 0.402,
+          "palette_fidelity": 0.166,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.041
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5919,
+          "ink_iou": 0.4241,
+          "palette_fidelity": 0.2078,
+          "alpha_clean": 0.9998,
+          "aspect_drift": 0.042
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9344,
+      "engine_mean_composite": {
+        "baseline": 0.8037,
+        "esrgan": 0.7875,
+        "vectorize": 0.7996
+      }
+    },
+    {
+      "ts": "2026-08-21T20:05:15Z",
+      "run_id": "20260821T200515Z",
+      "mean_composite": 0.7993,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.548,
+          "ink_iou": 0.3508,
+          "palette_fidelity": 0.1282,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0339
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5653,
+          "ink_iou": 0.3669,
+          "palette_fidelity": 0.1771,
+          "alpha_clean": 0.9998,
+          "aspect_drift": 0.037
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.5658,
+          "ink_iou": 0.3642,
+          "palette_fidelity": 0.1868,
+          "alpha_clean": 0.9968,
+          "aspect_drift": 0.0385
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.574,
+          "ink_iou": 0.402,
+          "palette_fidelity": 0.166,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.041
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5919,
+          "ink_iou": 0.4241,
+          "palette_fidelity": 0.2078,
+          "alpha_clean": 0.9998,
+          "aspect_drift": 0.042
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9334,
+      "engine_mean_composite": {
+        "baseline": 0.8037,
+        "esrgan": 0.7946,
+        "vectorize": 0.7996
+      }
+    },
+    {
+      "ts": "2026-08-22T17:58:19Z",
+      "run_id": "20260822T175819Z",
+      "mean_composite": 0.7958,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.5523,
+          "ink_iou": 0.3508,
+          "palette_fidelity": 0.1797,
+          "alpha_clean": 0.9571,
+          "aspect_drift": 0.0339
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.5719,
+          "ink_iou": 0.4027,
+          "palette_fidelity": 0.1564,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0408
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.5726,
+          "ink_iou": 0.3539,
+          "palette_fidelity": 0.2645,
+          "alpha_clean": 0.9513,
+          "aspect_drift": 0.0385
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5733,
+          "ink_iou": 0.3552,
+          "palette_fidelity": 0.264,
+          "alpha_clean": 0.9517,
+          "aspect_drift": 0.037
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "baseline",
+          "composite": 0.6025,
+          "ink_iou": 0.517,
+          "palette_fidelity": 0.3061,
+          "alpha_clean": 0.7617,
+          "aspect_drift": 0.0367
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9328,
+      "engine_mean_composite": {
+        "baseline": 0.7818,
+        "esrgan": 0.8032,
+        "vectorize": 0.8023
+      }
+    },
+    {
+      "ts": "2026-08-22T17:59:22Z",
+      "run_id": "20260822T175922Z",
+      "mean_composite": 0.7966,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.5719,
+          "ink_iou": 0.4027,
+          "palette_fidelity": 0.1564,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0408
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.5723,
+          "ink_iou": 0.3515,
+          "palette_fidelity": 0.2638,
+          "alpha_clean": 0.9503,
+          "aspect_drift": 0.0337
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5805,
+          "ink_iou": 0.356,
+          "palette_fidelity": 0.2913,
+          "alpha_clean": 0.9523,
+          "aspect_drift": 0.037
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "esrgan",
+          "composite": 0.582,
+          "ink_iou": 0.3516,
+          "palette_fidelity": 0.3103,
+          "alpha_clean": 0.9471,
+          "aspect_drift": 0.0402
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.6142,
+          "ink_iou": 0.4126,
+          "palette_fidelity": 0.3494,
+          "alpha_clean": 0.9542,
+          "aspect_drift": 0.042
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9317,
+      "engine_mean_composite": {
+        "baseline": 0.7847,
+        "esrgan": 0.8047,
+        "vectorize": 0.8004
+      }
+    },
+    {
+      "ts": "2026-08-22T18:44:55Z",
+      "run_id": "20260822T184455Z",
+      "mean_composite": 0.8083,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "vectorize",
+          "composite": 0.5612,
+          "ink_iou": 0.341,
+          "palette_fidelity": 0.191,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.0296
+        },
+        {
+          "pair_id": "arc__import_combo",
+          "engine": "baseline",
+          "composite": 0.5794,
+          "ink_iou": 0.335,
+          "palette_fidelity": 0.2701,
+          "alpha_clean": 0.9988,
+          "aspect_drift": 0.0255
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "baseline",
+          "composite": 0.5943,
+          "ink_iou": 0.394,
+          "palette_fidelity": 0.2517,
+          "alpha_clean": 0.9985,
+          "aspect_drift": 0.0311
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.5956,
+          "ink_iou": 0.3932,
+          "palette_fidelity": 0.262,
+          "alpha_clean": 0.9942,
+          "aspect_drift": 0.0318
+        },
+        {
+          "pair_id": "arc__plate_halo",
+          "engine": "esrgan",
+          "composite": 0.6032,
+          "ink_iou": 0.3926,
+          "palette_fidelity": 0.2956,
+          "alpha_clean": 0.9929,
+          "aspect_drift": 0.0332
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9324,
+      "engine_mean_composite": {
+        "baseline": 0.813,
+        "esrgan": 0.8105,
+        "vectorize": 0.801
+      }
+    },
+    {
+      "ts": "2026-08-22T20:43:07Z",
+      "run_id": "20260822T204307Z",
+      "mean_composite": 0.7829,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "baseline",
+          "composite": 0.5093,
+          "ink_iou": 0.3041,
+          "palette_fidelity": 0.4921,
+          "alpha_clean": 0.9972,
+          "aspect_drift": 0.3088
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "vectorize",
+          "composite": 0.5104,
+          "ink_iou": 0.304,
+          "palette_fidelity": 0.4837,
+          "alpha_clean": 0.9983,
+          "aspect_drift": 0.3088
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "esrgan",
+          "composite": 0.5104,
+          "ink_iou": 0.304,
+          "palette_fidelity": 0.4837,
+          "alpha_clean": 0.9983,
+          "aspect_drift": 0.3088
+        },
+        {
+          "pair_id": "trialta__downscale_jpeg",
+          "engine": "esrgan",
+          "composite": 0.5269,
+          "ink_iou": 0.3276,
+          "palette_fidelity": 0.528,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.3782
+        },
+        {
+          "pair_id": "trialta__downscale_jpeg",
+          "engine": "vectorize",
+          "composite": 0.5324,
+          "ink_iou": 0.3443,
+          "palette_fidelity": 0.5419,
+          "alpha_clean": 0.9985,
+          "aspect_drift": 0.3892
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9223,
+      "engine_mean_composite": {
+        "baseline": 0.7827,
+        "esrgan": 0.7751,
+        "vectorize": 0.7909
+      }
+    },
+    {
+      "ts": "2026-08-22T21:20:40Z",
+      "run_id": "20260822T212040Z",
+      "mean_composite": 0.7726,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "trialta__downscale_jpeg",
+          "engine": "esrgan",
+          "composite": 0.4081,
+          "ink_iou": 0.3393,
+          "palette_fidelity": 0.0,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.378
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "vectorize",
+          "composite": 0.4794,
+          "ink_iou": 0.3167,
+          "palette_fidelity": 0.3717,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.3071
+        },
+        {
+          "pair_id": "trialta__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.481,
+          "ink_iou": 0.3382,
+          "palette_fidelity": 0.3704,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.3579
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "esrgan",
+          "composite": 0.4815,
+          "ink_iou": 0.2276,
+          "palette_fidelity": 0.3779,
+          "alpha_clean": 0.9975,
+          "aspect_drift": 0.1268
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "baseline",
+          "composite": 0.483,
+          "ink_iou": 0.2273,
+          "palette_fidelity": 0.39,
+          "alpha_clean": 0.9975,
+          "aspect_drift": 0.1267
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9199,
+      "engine_mean_composite": {
+        "baseline": 0.7699,
+        "esrgan": 0.7735,
+        "vectorize": 0.7744
+      }
+    },
+    {
+      "ts": "2026-08-22T21:22:59Z",
+      "run_id": "20260822T212259Z",
+      "mean_composite": 0.7726,
+      "ok": true,
+      "top_failures": [
+        {
+          "pair_id": "trialta__downscale_jpeg",
+          "engine": "esrgan",
+          "composite": 0.4081,
+          "ink_iou": 0.3393,
+          "palette_fidelity": 0.0,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.378
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "vectorize",
+          "composite": 0.4794,
+          "ink_iou": 0.3167,
+          "palette_fidelity": 0.3717,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.3071
+        },
+        {
+          "pair_id": "trialta__plate_halo",
+          "engine": "vectorize",
+          "composite": 0.481,
+          "ink_iou": 0.3382,
+          "palette_fidelity": 0.3704,
+          "alpha_clean": 1.0,
+          "aspect_drift": 0.3579
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "esrgan",
+          "composite": 0.4815,
+          "ink_iou": 0.2276,
+          "palette_fidelity": 0.3779,
+          "alpha_clean": 0.9975,
+          "aspect_drift": 0.1268
+        },
+        {
+          "pair_id": "trialta__import_combo",
+          "engine": "baseline",
+          "composite": 0.483,
+          "ink_iou": 0.2273,
+          "palette_fidelity": 0.39,
+          "alpha_clean": 0.9975,
+          "aspect_drift": 0.1267
+        }
+      ],
+      "gate_fails": [],
+      "next": "Read qa_logos/synthetic/training_lessons.json; improve the lowest-composite engine/recipe gaps; re-run this script; promote only techniques that raise scores (esp. swift_orange anchors); append score-proven lessons. Neural fine-tune only if suite plateaus.",
+      "anchor_mean_composite": 0.9199,
+      "engine_mean_composite": {
+        "baseline": 0.7699,
+        "esrgan": 0.7735,
+        "vectorize": 0.7744
+      }
     }
   ],
-  "updated_at": "2026-08-21T07:18:52Z"
+  "updated_at": "2026-08-22T21:44:55Z"
 }

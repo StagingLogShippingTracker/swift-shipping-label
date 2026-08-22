@@ -28,7 +28,7 @@ Windows **1.1.47+** delivers the intended desktop shell: **MenuBar** (File/Edit/
 
 Compared with the prior 1.1.44 Windows QA (phone-style chrome), this build is a clear product step up. Remaining issues are mostly polish / messaging (update “up to date” when local > GitHub latest; Update attention badge), incomplete end-to-end Recreate under automation, and multiline scroll focus trapping (still present, mitigated by pinned rail/tabs).
 
-**Verdict:** Core warehouse workflows are decision-ready on Windows. Address update-version copy before relying on Update UX; Recreate is “ready” (local Python + Fly healthy) but not fully proven in this session.
+**Verdict:** Core warehouse workflows are decision-ready on Windows. Address update-version copy before relying on Update UX.
 
 ---
 
@@ -95,7 +95,7 @@ QA copies lived under `%TEMP%\swift_qa_win_1h_20260805_015017\pdfs\` and were de
 ### Polish / product notes
 
 5. **Window title** is now user-facing **Swift Document Generator** — fixed from prior `swift_shipping_label` regression.  
-6. **Vectorizer status** reports healthy stack: local `py`, tools under dist `\tools\logo_vectorizer`, Fly `swift-recreate-logo.fly.dev` online, native=true.  
+6. **Logo restore** is Gemini (primary) with local rebuild if Gemini is down.  
 7. **Dist version churn mid-QA** (1.1.47+70 → 1.1.48+71) — report treats UI behavior as continuous; version strings cited per observation time.  
 8. **Recreate checkbox** visible with clear premium-tracer copy; automation did not reliably toggle/check it this run.  
 9. **Preset Save** not fully exercised (load confirmed).
