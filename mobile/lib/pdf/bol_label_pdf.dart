@@ -1402,7 +1402,8 @@ class BolLabelPdf {
     }
     final drawW = math.min(draw.w, cellW);
     final drawH = math.min(draw.h, cellH);
-    c.drawImage(logo.image, cellX, draw.y, drawW, drawH);
+    final cellDrawX = cellX + math.max(0.0, (cellW - drawW) / 2);
+    c.drawImage(logo.image, cellDrawX, draw.y, drawW, drawH);
     final boxes = debugLayout?['customer_logo_boxes'];
     if (boxes is List) {
       boxes.add({
@@ -1415,11 +1416,22 @@ class BolLabelPdf {
     }
   }
 
+  /// Max ink height that fits inside a fixed [boxW]×[boxH] frame (may upscale
+  /// up to [boxH] when width allows — never exceeds the box).
+  static double _maxInkHeightInBox(
+    LogoInkMetrics ink,
+    double boxW,
+    double boxH,
+  ) =>
+      LogoInkMetrics.fitHeightToWidth(ink, boxH, boxW);
+
   /// Uploaded logos only — left of the locked Probill / Swift static zone.
   ///
-  /// Target ink height matches Swift. If the mark is too wide for the left
-  /// frame, height scales down uniformly so the whole logo stays left of
-  /// Probill (never clipped into the cut-out).
+  /// Logos are clipped to a fixed frame between the left margin and
+  /// [frameRightLimit]. The header band height is fixed by the caller
+  /// ([bandH]); this method never grows layout below the orange title bar.
+  /// Single marks scale up to fill the frame; dual marks share equal-width
+  /// cells and shrink uniformly so both stay inside the same frame.
   void _drawCustomerLogosLeft(
     PdfGraphics c,
     List<_BolInkLogo> customerLogos, {
@@ -1478,6 +1490,7 @@ class BolLabelPdf {
       ..clipPath();
 
     if (logos.length == 1) {
+      final targetH = _maxInkHeightInBox(logos.first.ink, frameW, frameH);
       _drawLogoInCell(
         c,
         logos.first,
@@ -1485,7 +1498,7 @@ class BolLabelPdf {
         frameBot,
         frameW,
         frameH,
-        customerLogoTargetH,
+        targetH,
       );
       c.restoreContext();
       return;
@@ -1501,7 +1514,7 @@ class BolLabelPdf {
     final sharedH = math.min(
       LogoInkMetrics.sharedHeightForCells(
         logos.map((l) => l.ink),
-        customerLogoTargetH,
+        frameH,
         cellW,
       ),
       frameH,
