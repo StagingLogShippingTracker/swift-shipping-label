@@ -14,12 +14,17 @@ import 'theme.dart';
 class AppChangelog {
   AppChangelog._();
 
-  static const campaignId = 'whats_new_1_1_87';
+  static const campaignId = 'whats_new_1_1_88';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.87)";
+  static const title = "What's new (v1.1.68 – v1.1.88)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.88',
+      bullets: [
+        'BOL: customer logo placement restored to the prior left-aligned layout (reverts v1.1.87 stack/center experiment)',
+      ],
     ChangelogSection(
       version: 'v1.1.87',
       bullets: [
