@@ -312,9 +312,10 @@ class LogoImageProcessor {
     return Uint8List.fromList(img.encodePng(out));
   }
 
-  /// Premultiplied resize. Prefer cubic for modest scales; for extreme
-  /// enlargements (tiny phone/fax marks → print height) cubic cannot invent
-  /// detail and is O(outPixels·kernel) — use linear so restore stays usable.
+  /// Premultiplied resize with smooth interpolation (never nearest-neighbor).
+  ///
+  /// Cubic for upscale / modest resize; average when downscaling to preserve
+  /// anti-aliased edges without blocky stair-steps.
   static img.Image resizePremultipliedCubic(
     img.Image src, {
     required int width,
@@ -325,8 +326,8 @@ class LogoImageProcessor {
     final scaleX = width / math.max(1, work.width);
     final scaleY = height / math.max(1, work.height);
     final scale = math.max(scaleX, scaleY);
-    final interp = scale > 8
-        ? img.Interpolation.linear
+    final interp = scale < 1.0
+        ? img.Interpolation.average
         : img.Interpolation.cubic;
     final scaled = img.copyResize(
       work,

@@ -387,19 +387,10 @@ class ShippingLabelPdf {
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
               if (bytes.isNotEmpty) {
                 final prepared = LogoInkFit.prepare(bytes);
-                final classH = prepared.ink.targetHeight(
-                  squareH: squareLogoTargetH,
-                  rectH: rectLogoTargetH,
-                );
-                final scaled = LogoInkFit.scaleToInkHeight(
-                  prepared.png,
-                  prepared.ink,
-                  classH,
-                );
                 customerLogos.add(
                   _InkLogo(
-                    PdfImage.file(context.document, bytes: scaled.png),
-                    scaled.ink,
+                    PdfImage.file(context.document, bytes: prepared.png),
+                    prepared.ink,
                   ),
                 );
               }
@@ -720,7 +711,7 @@ class ShippingLabelPdf {
     double h,
   ) {
     if (h <= 0 || !logo.ink.isValid) return;
-    // Tight-crop rasters: canvas == ink box → drawn height is exactly [h].
+    // Full-resolution tight-crop PNG embedded in PDF; draw at ink pt size.
     final w = logo.ink.inkDrawWidth(h);
     if (w <= 0) return;
     c.drawImage(logo.image, x, inkBottomY, w, h);

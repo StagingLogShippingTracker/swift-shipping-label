@@ -264,10 +264,8 @@ class LogoInkFit {
     );
   }
 
-  /// Rasterize ink to exactly [inkHeightPt] tall (PDF pt = bitmap px at 72dpi).
-  ///
-  /// Guarantees `drawImage(..., w, h)` fills the red/green cell — no letterboxing
-  /// from transparent canvas padding.
+  /// Rasterize ink to [inkHeightPt] tall (optional helper — Shipping embeds
+  /// full-resolution PNGs; PDF draw scales at print resolution).
   static ({Uint8List png, LogoInkMetrics ink}) scaleToInkHeight(
     Uint8List png,
     LogoInkMetrics ink,
@@ -281,11 +279,15 @@ class LogoInkFit {
     final hPx = math.max(1, inkHeightPt.round());
     final im = img.decodeImage(png);
     if (im == null) return (png: png, ink: ink);
+    final scale = hPx / math.max(1, im.height);
+    final interp = scale < 1.0
+        ? img.Interpolation.average
+        : img.Interpolation.cubic;
     final resized = img.copyResize(
       im,
       width: wPx,
       height: hPx,
-      interpolation: img.Interpolation.linear,
+      interpolation: interp,
     );
     final out = Uint8List.fromList(img.encodePng(resized));
     final synced = LogoInkMetrics(

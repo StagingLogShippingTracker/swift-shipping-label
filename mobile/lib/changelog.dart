@@ -14,12 +14,18 @@ import 'theme.dart';
 class AppChangelog {
   AppChangelog._();
 
-  static const campaignId = 'whats_new_1_1_92';
+  static const campaignId = 'whats_new_1_1_93';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.92)";
+  static const title = "What's new (v1.1.68 – v1.1.93)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.93',
+      bullets: [
+        'Shipping / Receiving: full-resolution logo embed in PDF — no 46px pre-downsample; cubic/average interpolation in restore pipeline for smooth print edges',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.92',
       bullets: [

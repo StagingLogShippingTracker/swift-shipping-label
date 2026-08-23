@@ -32,6 +32,8 @@ void main() {
     // Tight crop: canvas equals ink — drawn PDF height matches target.
     expect(ink.canvasH, ink.height);
     expect(ink.canvasW, ink.width);
+    expect(ink.height, greaterThan(ShippingLabelPdf.rectLogoTargetH),
+        reason: 'embed full-res PNG, not pt-sized downsample');
 
     final target = ShippingLabelPdf.rectLogoTargetH;
     expect(

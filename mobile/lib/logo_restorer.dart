@@ -354,7 +354,7 @@ class LogoRestorer {
           image,
           width: math.max(1, (image.width * s).round()),
           height: 1600,
-          interpolation: img.Interpolation.cubic,
+          interpolation: img.Interpolation.average,
         );
       }
       image = LogoImageProcessor.flattenSolidBrandFills(image);
