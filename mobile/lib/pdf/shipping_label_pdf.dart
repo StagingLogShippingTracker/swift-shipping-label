@@ -387,10 +387,19 @@ class ShippingLabelPdf {
             for (final bytes in customerLogoBytes.take(maxCustomerLogos)) {
               if (bytes.isNotEmpty) {
                 final prepared = LogoInkFit.prepare(bytes);
+                final classH = prepared.ink.targetHeight(
+                  squareH: squareLogoTargetH,
+                  rectH: rectLogoTargetH,
+                );
+                final scaled = LogoInkFit.scaleToInkHeight(
+                  prepared.png,
+                  prepared.ink,
+                  classH,
+                );
                 customerLogos.add(
                   _InkLogo(
-                    PdfImage.file(context.document, bytes: prepared.png),
-                    prepared.ink,
+                    PdfImage.file(context.document, bytes: scaled.png),
+                    scaled.ink,
                   ),
                 );
               }
@@ -684,6 +693,12 @@ class ShippingLabelPdf {
   /// 46 pt ≈ 46 px @72dpi, 61 px @96dpi, 92 px @2× QA render.
   static const rectLogoTargetH = 46.0;
 
+  /// Red box height (square / circular slot).
+  static const targetH_squareCircle = squareLogoTargetH;
+
+  /// Green box height (rectangular / wide / tall slot).
+  static const targetH_rectangular = rectLogoTargetH;
+
   /// Keep logos clear of the orange header frames (band edges).
   static const customerLogoBandInset = 2.0;
 
@@ -711,22 +726,20 @@ class ShippingLabelPdf {
     c.drawImage(logo.image, x, inkBottomY, w, h);
   }
 
-  /// Per-logo red/green cell height, then pink-limit width clamp (uniform shrink).
+  /// Per-logo red/green cell height, pink-limit width clamp, vertical midline center.
   ///
-  /// Square-ish / circular → [squareLogoTargetH]; rectangular → [rectLogoTargetH].
-  /// Each mark is bottom-aligned on [inkBaselineY] inside a cell of height [h].
-  /// Dual logos keep individual class heights; only shrink uniformly when total
-  /// ink width + gaps would cross the pink Swift edge.
-  void _drawCustomerLogosInFrame(
+  /// Square / circular (aspect 0.8–1.3) → [targetH_squareCircle]; else
+  /// [targetH_rectangular]. Ink height strictly equals slot height unless the
+  /// row hits the pink horizontal limit ([rightBoundaryX] − [startX]).
+  void _drawCustomerLogosMatchingHeight(
     PdfGraphics c,
     List<_InkLogo> logos,
-    double frameLeft,
-    double frameRight,
-    double frameBottom,
-    double frameH,
-    double inkBaselineY, {
-    double squareH = squareLogoTargetH,
-    double rectH = rectLogoTargetH,
+    double startX,
+    double rightBoundaryX,
+    double bandBottom,
+    double bandTop, {
+    double squareH = targetH_squareCircle,
+    double rectH = targetH_rectangular,
   }) {
     final valid = [
       for (final l in logos)
@@ -734,44 +747,41 @@ class ShippingLabelPdf {
     ].take(maxCustomerLogos).toList();
     if (valid.isEmpty) return;
 
-    final frameW = frameRight - frameLeft;
-    if (frameW < 8 || frameH <= 0) return;
+    final maxAvailableW = rightBoundaryX - startX;
+    final bandH = bandTop - bandBottom;
+    if (maxAvailableW < 8 || bandH <= 0) return;
 
-    final heights = <double>[
-      for (final l in valid)
-        math.min(
-          l.ink.targetHeight(squareH: squareH, rectH: rectH),
-          frameH,
-        ),
-    ];
     final inks = [for (final l in valid) l.ink];
-    final scale = LogoInkMetrics.uniformWidthFitScale(
+    final scales = LogoInkMetrics.rowScalesForPinkLimit(
       inks,
-      heights,
+      squareH,
+      rectH,
       customerLogoGap,
-      frameW,
+      maxAvailableW,
     );
-    for (var i = 0; i < heights.length; i++) {
-      heights[i] = heights[i] * scale;
-    }
+
+    final bandCenter = (bandTop + bandBottom) / 2;
 
     c.saveContext();
     c
-      ..drawRect(frameLeft, frameBottom, frameW, frameH)
+      ..drawRect(startX, bandBottom, maxAvailableW, bandH)
       ..clipPath();
 
-    var x = frameLeft;
+    var x = startX;
     for (var i = 0; i < valid.length; i++) {
-      final h = heights[i];
+      final ink = valid[i].ink;
+      final scale = scales[i];
+      final h = ink.height * scale;
       if (h < 0.5) continue;
-      final cellW = valid[i].ink.inkDrawWidth(h);
-      // Cell: bottom = ink baseline, height = red/green target (ink fills it).
+      final w = ink.width * scale;
+      final inkBottomY = bandCenter - h / 2;
+
       c.saveContext();
-      c.drawRect(x, inkBaselineY, cellW, h);
+      c.drawRect(x, inkBottomY, w, h);
       c.clipPath();
-      _drawLogoInk(c, valid[i], x, inkBaselineY, h);
+      _drawLogoInk(c, valid[i], x, inkBottomY, h);
       c.restoreContext();
-      x += cellW + customerLogoGap;
+      x += w + customerLogoGap;
     }
     c.restoreContext();
   }
@@ -832,10 +842,8 @@ class ShippingLabelPdf {
 
     final logoH = swiftH > 0 ? swiftH : squareH;
     final bandCenter = (yTop + logoBottom) / 2;
-    // Customer red/green cells share this bottom edge (not Swift-centered).
-    final customerRowBottom = logoBottom + customerLogoBandInset;
     var yLogoBottom = bandCenter - logoH / 2;
-    final minY = customerRowBottom;
+    final minY = logoBottom + customerLogoBandInset;
     final maxY = yTop - customerLogoBandInset - logoH;
     if (yLogoBottom < minY) yLogoBottom = minY;
     if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
@@ -857,14 +865,13 @@ class ShippingLabelPdf {
             : mx + contentW * 0.42;
         frameRight = mx + contentW;
       }
-      _drawCustomerLogosInFrame(
+      _drawCustomerLogosMatchingHeight(
         c,
         logos,
         frameLeft,
         frameRight,
         logoBottom,
-        bandH,
-        customerRowBottom,
+        yTop,
         squareH: squareH,
         rectH: rectH,
       );
@@ -895,15 +902,14 @@ class ShippingLabelPdf {
 
     if (place == PdfLogoPlacement.belowSwift && logos.isNotEmpty) {
       final belowBottom = logoBottom - squareH - 4;
-      final belowBaseline = belowBottom + customerLogoBandInset;
-      _drawCustomerLogosInFrame(
+      final belowTop = belowBottom + bandH;
+      _drawCustomerLogosMatchingHeight(
         c,
         logos,
         mx,
         mx + contentW,
         belowBottom,
-        bandH,
-        belowBaseline,
+        belowTop,
         squareH: squareH,
         rectH: rectH,
       );

@@ -36,19 +36,27 @@ class LogoInkMetrics {
 
   /// Near 1:1 (square, square-ish, or circular) vs clearly wider-than-tall.
   ///
-  /// Threshold: [squareIshAspectMax]. Marks with aspect ≤ this use the taller
-  /// (red) shipping-header height; wider marks use the shorter (green) height.
+  /// Legacy BOL / wide-lockup threshold. Shipping uses [isSquareOrCircle].
   static const squareIshAspectMax = 1.4;
 
   /// True for circles / squares / near-square lockups (red height target).
   bool get isSquareIsh => aspectRatio <= squareIshAspectMax;
 
-  /// Red vs green shipping header height from aspect class.
+  /// Shipping / Receiving shape slot: square or circular (red box height).
+  ///
+  /// Aspect ratio in [0.8, 1.3] → tall red slot; outside → green rectangular slot.
+  bool get isSquareOrCircle {
+    if (!isValid || height <= 0) return true;
+    final ar = width / height;
+    return ar >= 0.8 && ar <= 1.3;
+  }
+
+  /// Red vs green shipping header height from [isSquareOrCircle].
   double targetHeight({
     required double squareH,
     required double rectH,
   }) =>
-      isSquareIsh ? squareH : rectH;
+      isSquareOrCircle ? squareH : rectH;
 
   double scaleForHeight(double targetH) =>
       (!isValid || height <= 0) ? 1 : targetH / height;
@@ -109,6 +117,38 @@ class LogoInkMetrics {
     if (budget <= 0) return 0.01;
     if (inkW <= budget) return 1;
     return budget / inkW;
+  }
+
+  /// Per-logo ink scale factors for Shipping / Receiving header rows.
+  ///
+  /// Each logo starts at 100% of its red/green slot height; uniformly shrinks
+  /// only when total ink width + gaps exceeds [maxTotalW] (pink line limit).
+  /// Inter-logo gaps are fixed — only logo scales shrink.
+  static List<double> rowScalesForPinkLimit(
+    List<LogoInkMetrics> inks,
+    double squareH,
+    double rectH,
+    double gap,
+    double maxTotalW,
+  ) {
+    if (inks.isEmpty || maxTotalW <= 0) return [];
+    final scales = <double>[
+      for (final ink in inks)
+        ink.scaleForHeight(
+          ink.isSquareOrCircle ? squareH : rectH,
+        ),
+    ];
+    var inkW = 0.0;
+    for (var i = 0; i < inks.length; i++) {
+      inkW += inks[i].width * scales[i];
+    }
+    final gaps = inks.length > 1 ? gap * (inks.length - 1) : 0.0;
+    final totalW = inkW + gaps;
+    if (totalW <= maxTotalW || inkW <= 0) return scales;
+    final budget = maxTotalW - gaps;
+    if (budget <= 0) return [for (var _ in inks) 0.01];
+    final shrink = budget / inkW;
+    return [for (final s in scales) s * shrink];
   }
 
   /// PDF y (bitmap bottom-left) so the ink bottom sits on [inkBottomY].
@@ -222,5 +262,40 @@ class LogoInkFit {
       width: maxX - minX + 1,
       height: maxY - minY + 1,
     );
+  }
+
+  /// Rasterize ink to exactly [inkHeightPt] tall (PDF pt = bitmap px at 72dpi).
+  ///
+  /// Guarantees `drawImage(..., w, h)` fills the red/green cell — no letterboxing
+  /// from transparent canvas padding.
+  static ({Uint8List png, LogoInkMetrics ink}) scaleToInkHeight(
+    Uint8List png,
+    LogoInkMetrics ink,
+    double inkHeightPt,
+  ) {
+    if (!ink.isValid || inkHeightPt <= 0 || png.isEmpty) {
+      return (png: png, ink: ink);
+    }
+    final wPt = ink.inkDrawWidth(inkHeightPt);
+    final wPx = math.max(1, wPt.round());
+    final hPx = math.max(1, inkHeightPt.round());
+    final im = img.decodeImage(png);
+    if (im == null) return (png: png, ink: ink);
+    final resized = img.copyResize(
+      im,
+      width: wPx,
+      height: hPx,
+      interpolation: img.Interpolation.linear,
+    );
+    final out = Uint8List.fromList(img.encodePng(resized));
+    final synced = LogoInkMetrics(
+      canvasW: wPx,
+      canvasH: hPx,
+      left: 0,
+      top: 0,
+      width: wPx,
+      height: hPx,
+    );
+    return (png: out, ink: synced);
   }
 }

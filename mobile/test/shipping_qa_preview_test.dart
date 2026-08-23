@@ -153,11 +153,11 @@ void main() {
     final arcInk = LogoInkFit.prepare(arcBytes).ink;
     final trialtaInk = LogoInkFit.prepare(trialtaBytes).ink;
     expect(
-      arcInk.isSquareIsh,
+      arcInk.isSquareOrCircle,
       isFalse,
-      reason: 'Arc Resources LTD.png is a wide lockup, not square-ish',
+      reason: 'Arc Resources LTD.png is a wide lockup, not square/circle',
     );
-    expect(trialtaInk.isSquareIsh, isFalse, reason: 'Trialta should be rect');
+    expect(trialtaInk.isSquareOrCircle, isFalse, reason: 'Trialta should be rect');
     expect(
       arcInk.targetHeight(
         squareH: ShippingLabelPdf.squareLogoTargetH,
@@ -326,9 +326,13 @@ void main() {
     final propak = await loadProcessed('Propak-Energy-Services-Logo.png');
     final arjaeInk = LogoInkFit.prepare(arjae).ink;
     final propakInk = LogoInkFit.prepare(propak).ink;
-    expect(arjaeInk.isSquareIsh, isTrue, reason: 'ARJAE should be square-ish');
     expect(
-      propakInk.isSquareIsh,
+      arcInk.isSquareOrCircle,
+      isFalse,
+      reason: 'ARJAE should be square/circle',
+    );
+    expect(
+      propakInk.isSquareOrCircle,
       isFalse,
       reason: 'Propak should be rectangular',
     );

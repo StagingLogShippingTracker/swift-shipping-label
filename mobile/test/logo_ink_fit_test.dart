@@ -8,7 +8,7 @@ import 'package:swift_shipping_label/logo_ink_fit.dart';
 Uint8List _png(img.Image image) => Uint8List.fromList(img.encodePng(image));
 
 void main() {
-  test('aspect class: square / circle → red; wide → green', () {
+  test('aspect class: square / circle → red; wide or tall → green', () {
     const squareInk = LogoInkMetrics(
       canvasW: 100,
       canvasH: 100,
@@ -33,8 +33,19 @@ void main() {
       width: 400,
       height: 80,
     );
+    const tall = LogoInkMetrics(
+      canvasW: 40,
+      canvasH: 120,
+      left: 0,
+      top: 0,
+      width: 40,
+      height: 120,
+    );
+    expect(squareInk.isSquareOrCircle, isTrue);
+    expect(circleIsh.isSquareOrCircle, isTrue);
+    expect(wide.isSquareOrCircle, isFalse);
+    expect(tall.isSquareOrCircle, isFalse);
     expect(squareInk.isSquareIsh, isTrue);
-    expect(circleIsh.isSquareIsh, isTrue);
     expect(wide.isSquareIsh, isFalse);
     expect(
       squareInk.targetHeight(squareH: 62.24, rectH: 46),
@@ -44,9 +55,13 @@ void main() {
       wide.targetHeight(squareH: 62.24, rectH: 46),
       46,
     );
+    expect(
+      tall.targetHeight(squareH: 62.24, rectH: 46),
+      46,
+    );
   });
 
-  test('uniformWidthFitScale shrinks dual logos to pink limit', () {
+  test('rowScalesForPinkLimit shrinks dual logos to pink limit', () {
     const a = LogoInkMetrics(
       canvasW: 200,
       canvasH: 100,
@@ -63,16 +78,17 @@ void main() {
       width: 200,
       height: 200,
     );
-    // At h=50 each: drawW = 100 and 50 → total 100+10+50=160 > 120
-    final scale = LogoInkMetrics.uniformWidthFitScale(
+    // At h=50 each: inkW = 100 and 50 → total 100+10+50=160 > 120
+    final scales = LogoInkMetrics.rowScalesForPinkLimit(
       [a, b],
-      [50, 50],
+      50,
+      50,
       10,
       120,
     );
-    expect(scale, lessThan(1));
-    expect(a.drawWidth(50 * scale) + 10 + b.drawWidth(50 * scale),
-        closeTo(120, 0.05));
+    expect(scales[0], lessThan(1));
+    expect(scales[1], lessThan(1));
+    expect(a.width * scales[0] + 10 + b.width * scales[1], closeTo(120, 0.05));
   });
 
   test('padded square and padded wide mark get the same ink draw height', () {
@@ -191,7 +207,7 @@ void main() {
     final wide = LogoInkFit.prepare(arc.readAsBytesSync());
 
     expect(wide.ink.width / wide.ink.height, greaterThan(2.5));
-    expect(wide.ink.isSquareIsh, isFalse);
+    expect(wide.ink.isSquareOrCircle, isFalse);
     final squareTarget = square.ink.targetHeight(squareH: squareH, rectH: rectH);
     final wideTarget = wide.ink.targetHeight(squareH: squareH, rectH: rectH);
     expect(

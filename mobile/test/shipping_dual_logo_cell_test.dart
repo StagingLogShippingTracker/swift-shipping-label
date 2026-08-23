@@ -23,37 +23,39 @@ void main() {
     final arcInk = LogoInkFit.prepare(arcFile.readAsBytesSync()).ink;
     final squareInk = LogoInkFit.prepare(squareFile.readAsBytesSync()).ink;
 
-    expect(arcInk.isSquareIsh, isFalse);
-    expect(squareInk.isSquareIsh, isTrue);
+    expect(arcInk.isSquareOrCircle, isFalse);
+    expect(squareInk.isSquareOrCircle, isTrue);
 
     final arcTarget = arcInk.targetHeight(squareH: squareH, rectH: rectH);
     final squareTarget = squareInk.targetHeight(squareH: squareH, rectH: rectH);
     expect(arcTarget, rectH);
     expect(squareTarget, squareH);
 
-    // Pink-limit scale uses ink width, not padded canvas width.
-    final scale = LogoInkMetrics.uniformWidthFitScale(
+    // Pink-limit scale uses ink width at class target height.
+    final scales = LogoInkMetrics.rowScalesForPinkLimit(
       [arcInk, squareInk],
-      [arcTarget, squareTarget],
+      squareH,
+      rectH,
       ShippingLabelPdf.customerLogoGap,
       500,
     );
-    expect(scale, greaterThan(0.85), reason: 'typical frame should not crush both');
 
-    final arcH = arcTarget * scale;
-    final squareCellH = squareTarget * scale;
+    final arcDrawH = arcInk.height * scales[0];
+    final squareDrawH = squareInk.height * scales[1];
     expect(
-      arcInk.height * arcInk.scaleForHeight(arcH),
-      closeTo(arcH, 0.5),
+      arcInk.height * arcInk.scaleForHeight(arcDrawH),
+      closeTo(arcDrawH, 0.5),
       reason: 'Arc ink must fill green cell',
     );
     expect(
-      squareInk.height * squareInk.scaleForHeight(squareCellH),
-      closeTo(squareCellH, 0.5),
+      squareInk.height * squareInk.scaleForHeight(squareDrawH),
+      closeTo(squareDrawH, 0.5),
       reason: 'Square ink must fill red cell',
     );
+    expect(arcDrawH, closeTo(rectH, 1.5), reason: 'Arc at green height');
+    expect(squareDrawH, closeTo(squareH, 1.5), reason: 'Square at red height');
     expect(
-      squareCellH / arcH,
+      squareDrawH / arcDrawH,
       closeTo(squareH / rectH, 0.08),
       reason: 'red/green ratio preserved (not shared tiny height)',
     );

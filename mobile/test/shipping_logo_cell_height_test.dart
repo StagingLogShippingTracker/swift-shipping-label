@@ -19,7 +19,7 @@ void main() {
     expect(propak.existsSync(), isTrue);
     final bytes = propak.readAsBytesSync();
     final ink = LogoInkFit.prepare(bytes).ink;
-    expect(ink.isSquareIsh, isFalse);
+    expect(ink.isSquareOrCircle, isFalse);
 
     final shipping = await ShippingLabelPdf.load();
     final pdf = await shipping.build(
