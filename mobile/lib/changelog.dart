@@ -14,12 +14,18 @@ import 'theme.dart';
 class AppChangelog {
   AppChangelog._();
 
-  static const campaignId = 'whats_new_1_1_90';
+  static const campaignId = 'whats_new_1_1_91';
   static const maxShows = 3;
-  static const title = "What's new (v1.1.68 – v1.1.90)";
+  static const title = "What's new (v1.1.68 – v1.1.91)";
 
   /// Ordered newest-first sections shown in the dialog.
   static const sections = <ChangelogSection>[
+    ChangelogSection(
+      version: 'v1.1.91',
+      bullets: [
+        'Shipping / Receiving: logos always fill the red (square/circular) or green (rectangular) cell height — tight ink crop, bottom-aligned row; pink line is the only width shrink',
+      ],
+    ),
     ChangelogSection(
       version: 'v1.1.90',
       bullets: [

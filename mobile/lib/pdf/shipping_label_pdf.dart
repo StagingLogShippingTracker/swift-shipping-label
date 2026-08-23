@@ -705,11 +705,10 @@ class ShippingLabelPdf {
     double h,
   ) {
     if (h <= 0 || !logo.ink.isValid) return;
-    final w = logo.ink.drawWidth(h);
-    final bh = logo.ink.drawHeight(h);
-    if (w <= 0 || bh <= 0) return;
-    final y = logo.ink.bitmapBottomY(inkBottomY, h);
-    c.drawImage(logo.image, x, y, w, bh);
+    // Tight-crop rasters: canvas == ink box → drawn height is exactly [h].
+    final w = logo.ink.inkDrawWidth(h);
+    if (w <= 0) return;
+    c.drawImage(logo.image, x, inkBottomY, w, h);
   }
 
   /// Per-logo red/green cell height, then pink-limit width clamp (uniform shrink).
@@ -765,8 +764,8 @@ class ShippingLabelPdf {
     for (var i = 0; i < valid.length; i++) {
       final h = heights[i];
       if (h < 0.5) continue;
-      final cellW = valid[i].ink.drawWidth(h);
-      // Clip to the red/green cell so canvas padding cannot spill or get cropped.
+      final cellW = valid[i].ink.inkDrawWidth(h);
+      // Cell: bottom = ink baseline, height = red/green target (ink fills it).
       c.saveContext();
       c.drawRect(x, inkBaselineY, cellW, h);
       c.clipPath();
@@ -833,8 +832,10 @@ class ShippingLabelPdf {
 
     final logoH = swiftH > 0 ? swiftH : squareH;
     final bandCenter = (yTop + logoBottom) / 2;
+    // Customer red/green cells share this bottom edge (not Swift-centered).
+    final customerRowBottom = logoBottom + customerLogoBandInset;
     var yLogoBottom = bandCenter - logoH / 2;
-    final minY = logoBottom + customerLogoBandInset;
+    final minY = customerRowBottom;
     final maxY = yTop - customerLogoBandInset - logoH;
     if (yLogoBottom < minY) yLogoBottom = minY;
     if (maxY >= minY && yLogoBottom > maxY) yLogoBottom = maxY;
@@ -863,7 +864,7 @@ class ShippingLabelPdf {
         frameRight,
         logoBottom,
         bandH,
-        yLogoBottom,
+        customerRowBottom,
         squareH: squareH,
         rectH: rectH,
       );

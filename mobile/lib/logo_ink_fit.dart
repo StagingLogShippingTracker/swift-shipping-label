@@ -153,27 +153,17 @@ class LogoInkFit {
     return (png: cropped, ink: ink);
   }
 
-  /// Trim canvas to visible ink (+ tiny pad) so PDF scale uses artwork bounds.
+  /// Trim canvas to visible ink only — no pad so PDF scale height = ink height.
   static Uint8List _cropToInkBounds(Uint8List png, LogoInkMetrics ink) {
     if (!ink.isValid || png.isEmpty) return png;
     final image = img.decodeImage(png);
     if (image == null) return png;
-    const pad = 2;
-    final x = math.max(0, ink.left - pad);
-    final y = math.max(0, ink.top - pad);
-    final w = math.min(
-      image.width - x,
-      ink.width + pad * 2,
-    );
-    final h = math.min(
-      image.height - y,
-      ink.height + pad * 2,
-    );
+    final x = ink.left;
+    final y = ink.top;
+    final w = ink.width;
+    final h = ink.height;
     if (w <= 0 || h <= 0) return png;
-    if (x == 0 &&
-        y == 0 &&
-        w == image.width &&
-        h == image.height) {
+    if (x == 0 && y == 0 && w == image.width && h == image.height) {
       return png;
     }
     return Uint8List.fromList(
